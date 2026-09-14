@@ -839,6 +839,255 @@ def scan_captures(directory: str) -> str:
     return "\n".join(lines)
 
 
+# --------------------------------------------------------------------------
+# tone matching
+# --------------------------------------------------------------------------
+
+
+@mcp.tool()
+@surface_errors
+def list_audio_devices() -> str:
+    """List audio interfaces, flagging the HeadRush if it is connected.
+
+    Hardware tone testing needs the Core connected over USB-B and exposing
+    all six input channels - channel 5 is the dry DI, which is what makes
+    reamping a single performance through many candidates possible.
+    """
+    from ..match.render_device import AudioUnavailable, find_headrush_device, list_devices
+
+    try:
+        devices = list_devices()
+    except AudioUnavailable as exc:
+        return str(exc)
+
+    lines = [f"{len(devices)} audio device(s):"]
+    lines.extend(f"  {d.describe()}" for d in devices)
+
+    try:
+        headrush = find_headrush_device()
+        lines.append(f"\nHeadRush: {headrush.describe()}")
+        if not headrush.has_full_channel_layout:
+            lines.append(
+                "  WARNING: fewer than 5 input channels visible, so the dry DI "
+                "is not reachable. Check the Core's USB audio mode."
+            )
+    except AudioUnavailable as exc:
+        lines.append(f"\n{exc}")
+    return "\n".join(lines)
+
+
+@mcp.tool()
+@surface_errors
+def isolate_guitar(audio_path: str, output_dir: str | None = None) -> str:
+    """Separate a guitar stem from a mixed recording, using Demucs htdemucs_6s.
+
+    Slow (minutes per track on CPU) and offline.
+
+    The result is a timbral reference, not a clean target: it still carries
+    the record's amp, cab, mic, and mix processing, plus separation
+    artefacts. Score against it in distribution mode only.
+    """
+    from ..match.separate import SeparationUnavailable, separate
+
+    settings = get_settings()
+    settings.ensure_workspace()
+    destination = Path(output_dir) if output_dir else settings.audio_dir / "stems"
+
+    try:
+        result = separate(audio_path, destination)
+    except (SeparationUnavailable, FileNotFoundError) as exc:
+        return str(exc)
+    return result.describe()
+
+
+@mcp.tool()
+@surface_errors
+def capture_di(duration_s: float = 15.0, name: str = "take") -> str:
+    """Record one performance, capturing the wet tone and the dry DI together.
+
+    Play the part once. The dry DI on channel 5 can then be reamped through
+    any number of candidate rigs, each compared against this same wet
+    reference - so trying more candidates costs compute, not playing time.
+
+    Needs the Core connected over USB-B.
+    """
+    from ..match.render_device import AudioUnavailable, capture_performance
+    from ..match.render_offline import RenderUnavailable, save_audio
+
+    require_writable("record audio to the workspace")
+    settings = get_settings()
+    settings.ensure_workspace()
+
+    try:
+        capture = capture_performance(duration_s)
+    except AudioUnavailable as exc:
+        return str(exc)
+
+    lines = [capture.describe()]
+    try:
+        wet_path = save_audio(
+            settings.audio_dir / f"{name}-wet.wav", capture.wet, capture.sample_rate
+        )
+        lines.append(f"wet: {wet_path}")
+        if capture.dry is not None:
+            dry_path = save_audio(
+                settings.audio_dir / f"{name}-dry.wav", capture.dry, capture.sample_rate
+            )
+            lines.append(f"dry: {dry_path}")
+    except RenderUnavailable as exc:
+        lines.append(f"could not save: {exc}")
+    return "\n".join(lines)
+
+
+@mcp.tool()
+@surface_errors
+def reamp_di(di_path: str, name: str = "candidate") -> str:
+    """Play a DI through the Core's currently loaded rig and record the result.
+
+    Round-trip latency is measured and compensated, because a few
+    milliseconds of offset is enough to make an aligned comparison report a
+    perfect match as a catastrophic one.
+
+    Load the rig you want to test on the device first.
+    """
+    from ..match.render_device import AudioUnavailable, reamp
+    from ..match.render_offline import RenderUnavailable, load_audio, save_audio
+
+    require_writable("record audio to the workspace")
+    settings = get_settings()
+    settings.ensure_workspace()
+
+    try:
+        di, sample_rate = load_audio(di_path)
+        capture = reamp(di, sample_rate=sample_rate)
+    except (AudioUnavailable, RenderUnavailable, OSError) as exc:
+        return str(exc)
+
+    path = save_audio(
+        settings.audio_dir / f"{name}-reamped.wav", capture.wet, capture.sample_rate
+    )
+    return f"{capture.describe()}\nsaved: {path}"
+
+
+@mcp.tool()
+@surface_errors
+def score_candidates(
+    target_path: str,
+    candidate_paths: dict[str, str],
+    mode: Literal["aligned", "distribution"] = "distribution",
+) -> str:
+    """Score rendered candidates against a target and rank them.
+
+    Args:
+        target_path: The reference audio.
+        candidate_paths: {label: path} of rendered candidates.
+        mode: Use 'aligned' ONLY when the target and candidates are the same
+            performance - your own DI reamped through each rig, against your
+            own reference. Use 'distribution' against anything separated from
+            a record, which is a different performance.
+
+    In distribution mode the sample-wise metrics (ESR, STFT loss) are not
+    computed at all. Against a different performance they are unstable to
+    arbitrary timing offsets and report nonsense.
+    """
+    from ..match.metrics import ComparisonMode
+    from ..match.render_offline import RenderUnavailable, load_audio
+    from ..match.score import rank_candidates, render_ranking
+
+    if not candidate_paths:
+        raise ToolError("no candidates given")
+
+    try:
+        target, sample_rate = load_audio(target_path)
+        loaded = {}
+        for label, path in candidate_paths.items():
+            audio, rate = load_audio(path)
+            if rate != sample_rate:
+                from ..match.render_offline import resample
+
+                audio = resample(audio, rate, sample_rate)
+            loaded[label] = audio
+    except (RenderUnavailable, OSError) as exc:
+        return str(exc)
+
+    scores = rank_candidates(
+        target, loaded, sample_rate, mode=ComparisonMode(mode)
+    )
+    detail = "\n\n".join(s.render() for s in scores[:3])
+    return f"{render_ranking(scores)}\n\nTop candidates in detail:\n\n{detail}"
+
+
+@mcp.tool()
+@surface_errors
+def start_ab_test(
+    session_id: str,
+    target_label: str,
+    candidates: dict[str, str],
+    pairs: int | None = None,
+) -> str:
+    """Start a blind A/B listening test over candidate renders.
+
+    Metrics rank; ears decide. Candidate identities are hidden until results
+    are requested, because knowing which one the agent recommended is enough
+    to hear it as better.
+
+    Args:
+        candidates: {label: audio path}, at least two.
+        pairs: Cap the number of trials. Defaults to every unique pairing,
+            which is n*(n-1)/2 - worth capping above four candidates.
+    """
+    from ..match.ab import create_session
+
+    require_writable("create an A/B session")
+    settings = get_settings()
+    settings.ensure_workspace()
+
+    session = create_session(session_id, target_label, candidates, pairs=pairs)
+    session.save(settings.audio_dir / f"ab-{session_id}.json")
+    return (
+        f"Created blind A/B session '{session_id}' with {len(session.trials)} "
+        f"trial(s) over {len(candidates)} candidates.\n\n{session.render_next()}"
+    )
+
+
+@mcp.tool()
+@surface_errors
+def submit_ab_verdict(
+    session_id: str,
+    trial_id: int,
+    verdict: Literal["left", "right", "tie"],
+    confidence: int | None = None,
+    comment: str | None = None,
+) -> str:
+    """Record a verdict for one blind A/B trial and present the next one."""
+    from ..match.ab import ABSession
+
+    require_writable("record an A/B verdict")
+    path = get_settings().audio_dir / f"ab-{session_id}.json"
+    if not path.exists():
+        raise ToolError(f"no A/B session '{session_id}'")
+
+    session = ABSession.load(path)
+    session.answer(trial_id, verdict, confidence=confidence, comment=comment)
+    session.save(path)
+
+    if session.complete:
+        return f"Trial {trial_id} recorded. All trials done.\n\n{session.render_standings()}"
+    return f"Trial {trial_id} recorded.\n\n{session.render_next()}"
+
+
+@mcp.tool()
+@surface_errors
+def ab_results(session_id: str) -> str:
+    """Unblind a listening session and show the standings."""
+    from ..match.ab import ABSession
+
+    path = get_settings().audio_dir / f"ab-{session_id}.json"
+    if not path.exists():
+        raise ToolError(f"no A/B session '{session_id}'")
+    return ABSession.load(path).render_standings()
+
+
 def main() -> None:
     """Run the server over stdio."""
     mcp.run(transport="stdio")
