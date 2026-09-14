@@ -1,0 +1,24 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+build/
+.pytest_cache/
+.venv/
+venv/
+
+# Never commit vendor firmware, bundles, or extracted binaries.
+reference/*.pdf
+reference/firmware/
+captures/
+workspace/
+*.nam
+*.rig
+*.ac
+*.wav
+!tests/data/*.wav
+
+# Local credentials / tokens
+.env
+.acro/
