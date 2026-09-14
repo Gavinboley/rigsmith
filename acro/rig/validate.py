@@ -70,6 +70,9 @@ class ValidationResult:
 
     findings: list[Finding] = field(default_factory=list)
     estimated_cpu: float = 0.0
+    unknown_models: list[tuple[int, str]] = field(default_factory=list)
+    """(slot, model_id) pairs absent from an unverified catalog, reported
+    once as a group rather than as one warning per block."""
 
     @property
     def errors(self) -> list[Finding]:
@@ -184,13 +187,17 @@ def _validate_block(
 
     spec = catalog.get(block.model_id)
     if spec is None:
-        severity = "warning" if not catalog.is_verified else "error"
-        result.add(
-            severity,
-            f"model '{block.model_id}' is not in the catalog"
-            + ("" if catalog.is_verified else " (catalog is unverified, so this may be fine)"),
-            slot=slot,
-        )
+        if catalog.is_verified:
+            result.add(
+                "error",
+                f"model '{block.model_id}' is not in the catalog",
+                slot=slot,
+            )
+        # Against an unverified catalog every real model id is "unknown",
+        # so the caller collects these and reports them once rather than
+        # burying the useful findings under one warning per block.
+        else:
+            result.unknown_models.append((slot, block.model_id))
         return
 
     if spec.category is not block.category:
@@ -366,10 +373,21 @@ def validate_rig(rig: Rig, catalog: Catalog | None = None) -> ValidationResult:
         )
 
     if not catalog.is_verified:
-        result.add(
-            "info",
-            "catalog is unverified - model ids and parameter ranges have not "
-            "been extracted from a device, so those checks were lenient",
-        )
+        if result.unknown_models:
+            names = ", ".join(
+                f"{model} (slot {slot})" for slot, model in result.unknown_models
+            )
+            result.add(
+                "info",
+                f"{len(result.unknown_models)} model(s) not in the catalog: {names}. "
+                "The catalog is unverified - model ids and parameter ranges have "
+                "not been extracted from a device - so these were not checked.",
+            )
+        else:
+            result.add(
+                "info",
+                "catalog is unverified - model ids and parameter ranges have not "
+                "been extracted from a device, so those checks were lenient",
+            )
 
     return result
