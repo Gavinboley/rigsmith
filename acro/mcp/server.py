@@ -689,12 +689,31 @@ async def write_rig(draft_id: str, confirm: bool = False) -> str:
             "Run discover_device, or export_rig to a file and import it over USB."
         )
 
+    # Back up before touching anything. If storage is not mounted we say so
+    # rather than proceeding without a safety net.
+    backup_line = ""
+    from ..device.usbmsc import DeviceStorageError, find_device_volume, timestamped_backup
+
+    settings = get_settings()
+    settings.ensure_workspace()
+    try:
+        volume = find_device_volume()
+        result = timestamped_backup(settings.backups_dir, volume)
+        backup_line = f"Backup taken first: {result.file_count} file(s) -> {result.destination}\n\n"
+    except DeviceStorageError:
+        backup_line = (
+            "No backup was taken - the device's USB storage is not mounted "
+            "(Menu > USB Transfer). Mount it and rerun to get a safety net "
+            "before writing.\n\n"
+        )
+
     return (
+        f"{backup_line}"
         "Device write is not implemented yet.\n\n"
         "The Remote Editor protocol has to be captured against real hardware "
         "first - run probe_protocol with the Core on the network, which "
         "records the endpoints this will use. Until then, use export_rig and "
-        "import the result manually.\n\n"
+        "import the result manually over USB.\n\n"
         f"Draft is valid and ready:\n{difference.render()}"
     )
 
@@ -837,6 +856,75 @@ def scan_captures(directory: str) -> str:
     unknown = sum(1 for m in models if m.generation.value == "unknown")
     lines.append(f"\nA2: {a2}   A1: {len(models) - a2 - unknown}   undetermined: {unknown}")
     return "\n".join(lines)
+
+
+# --------------------------------------------------------------------------
+# device storage
+# --------------------------------------------------------------------------
+
+
+@mcp.tool()
+@surface_errors
+def device_storage_status(path: str | None = None) -> str:
+    """Check whether the device's USB storage is mounted, and what is on it.
+
+    Put the device into Menu > USB Transfer with a USB-B cable attached. It
+    mounts as a drive named 'HeadRush' holding Rigs, Setlists, Blocks,
+    Impulse Responses, Amp Clones, and NAM folders.
+    """
+    from ..device.usbmsc import DeviceStorageError, find_device_volume
+
+    try:
+        volume = find_device_volume(path)
+    except DeviceStorageError as exc:
+        return str(exc)
+    return volume.describe()
+
+
+@mcp.tool()
+@surface_errors
+def device_backup(path: str | None = None) -> str:
+    """Copy everything off the device into a timestamped local backup.
+
+    Reads only - the device is not modified. Run this before any write; the
+    authoring pipeline does it automatically, but taking one by hand before a
+    session of experimenting is cheap insurance.
+    """
+    from ..device.usbmsc import DeviceStorageError, find_device_volume, timestamped_backup
+
+    require_writable("write a device backup")
+    settings = get_settings()
+    settings.ensure_workspace()
+
+    try:
+        volume = find_device_volume(path)
+        result = timestamped_backup(settings.backups_dir, volume)
+    except DeviceStorageError as exc:
+        return str(exc)
+    return result.describe()
+
+
+@mcp.tool()
+@surface_errors
+def install_capture(nam_path: str, device_path: str | None = None, overwrite: bool = False) -> str:
+    """Copy a NAM capture onto the device over USB.
+
+    The capture is checked first: the Core loads A2 Full/Lite and A1
+    Standard/Lite/Nano/Feather, and anything outside that is refused rather
+    than copied and left to fail silently on the device.
+
+    The on-screen TONE3000 browser is usually easier - it downloads straight
+    to the device over Wi-Fi with no computer involved. Use this for captures
+    you already have locally.
+    """
+    from ..device.usbmsc import DeviceStorageError, find_device_volume, install_nam
+
+    require_writable("copy a capture to the device")
+    try:
+        volume = find_device_volume(device_path)
+        return install_nam(nam_path, volume, overwrite=overwrite)
+    except (DeviceStorageError, OSError) as exc:
+        return str(exc)
 
 
 # --------------------------------------------------------------------------

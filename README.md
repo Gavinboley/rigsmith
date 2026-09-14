@@ -4,7 +4,7 @@
 
 `acro` is an [MCP](https://modelcontextprotocol.io) server plus a CLI. It lets an AI agent do the slow parts of tone recreation — working out what amp, pedals, and cab were actually used on a record, finding a NAM capture that matches, assembling a 14-block rig with Scenes, and then measuring how close the result really is.
 
-> **Status: early.** Device discovery, protocol capture, and the CLI shell are working. The rig authoring, NAM, and tone-matching layers are in progress. See [Roadmap](#roadmap).
+> **Status: pre-hardware.** Everything that can be built and tested without the device is done and covered by 131 tests: rig authoring, validation, NAM analysis, the tone-matching harness, USB backup, MIDI control, firmware analysis, and a 31-tool MCP server. The one remaining piece is the Remote Editor's wire protocol, which has to be captured against a powered-on Core — see [docs/PROTOCOL.md](docs/PROTOCOL.md).
 
 ---
 
@@ -62,6 +62,26 @@ acro probe --dump-app
 
 This fetches the same files a browser would when you open the editor, mines them for endpoints, WebSocket URLs, and message types, and writes an inventory to your workspace (`~/.acro/captures/`).
 
+Other things you can do right now, with or without the device:
+
+```bash
+acro device status              # is USB storage mounted, and what is on it
+acro device backup              # timestamped backup, reads only
+acro nam inspect amp.nam        # A1/A2, size, calibration, Core compatibility
+acro nam scan ./captures        # summarise a capture library
+acro firmware analyse fw.bin --unpack-to ./out --strings
+acro rig list                   # drafts in progress
+acro serve                      # run the MCP server over stdio
+```
+
+### Using it from Claude Code
+
+```bash
+claude mcp add acro -- python -m acro.mcp.server
+```
+
+Then ask for a tone. The agent researches the gear, finds an A2 capture, builds the rig with scenes on footswitches, validates it, and shows you a diff before anything is written.
+
 ## How it talks to the device
 
 Four transports, tried in order, so the tool degrades instead of failing:
@@ -89,14 +109,23 @@ Three layers, usable independently:
 
 - [x] Device discovery (mDNS, zeroconf browse, subnet sweep)
 - [x] Remote Editor bundle capture and API surface extraction
-- [x] CLI shell
-- [ ] Live traffic recorder
-- [ ] Firmware static analysis (read-only) for the model/parameter catalog
-- [ ] Rig / Block / Scene model, validation, diffing
-- [ ] Device client and write pipeline
-- [ ] MCP server
-- [ ] TONE3000 client and NAM capture selection
-- [ ] Tone matching harness
+- [x] Rig / Block / Scene model, validation, CPU estimation, diffing
+- [x] MCP server — 31 tools
+- [x] NAM capture analysis (A1/A2 detection with evidence)
+- [x] TONE3000 OAuth client
+- [x] Tone matching: metrics, offline render, hardware reamp, blind A/B
+- [x] USB backup, restore, and capture installation
+- [x] MIDI control and verification
+- [x] Firmware static analysis (read-only)
+- [x] CLI
+- [ ] **Live protocol capture against hardware** ← the remaining blocker
+- [ ] Native device client and write pipeline
+- [ ] Model/parameter catalog extraction
+
+## Documentation
+
+- [docs/PROTOCOL.md](docs/PROTOCOL.md) — what is known about the Remote Editor protocol, what is not, and how it gets captured
+- [docs/TONE_MATCHING.md](docs/TONE_MATCHING.md) — how tone comparison works and where the numbers stop being trustworthy
 
 ## License
 

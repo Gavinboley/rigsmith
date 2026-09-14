@@ -231,5 +231,238 @@ def doctor() -> None:
     click.echo(f"  subnets to sweep: {', '.join(str(n) for n in local_subnets()) or 'none detected'}")
 
 
+# --------------------------------------------------------------------------
+# device storage
+# --------------------------------------------------------------------------
+
+
+@main.group()
+def device() -> None:
+    """Device storage: backup, restore, and file transfer over USB."""
+
+
+@device.command("status")
+@click.option("--path", type=click.Path(path_type=Path), help="Explicit mount path.")
+def device_status(path: Path | None) -> None:
+    """Show whether the device's USB storage is mounted, and what is on it."""
+    from .device.usbmsc import DeviceStorageError, find_device_volume
+
+    try:
+        click.echo(find_device_volume(path).describe())
+    except DeviceStorageError as exc:
+        click.echo(click.style(str(exc), fg="yellow"))
+        sys.exit(1)
+
+
+@device.command("backup")
+@click.option("--path", type=click.Path(path_type=Path), help="Explicit mount path.")
+@click.option("--to", "destination", type=click.Path(path_type=Path), help="Backup directory.")
+def device_backup(path: Path | None, destination: Path | None) -> None:
+    """Copy everything off the device into a timestamped local backup.
+
+    Reads only; the device is not modified.
+    """
+    from .device.usbmsc import DeviceStorageError, find_device_volume, timestamped_backup
+
+    settings = get_settings()
+    settings.ensure_workspace()
+    try:
+        volume = find_device_volume(path)
+        result = timestamped_backup(destination or settings.backups_dir, volume)
+    except DeviceStorageError as exc:
+        click.echo(click.style(str(exc), fg="yellow"))
+        sys.exit(1)
+    click.echo(result.describe())
+
+
+@device.command("install-nam")
+@click.argument("nam_file", type=click.Path(exists=True, path_type=Path))
+@click.option("--path", type=click.Path(path_type=Path), help="Explicit mount path.")
+@click.option("--overwrite", is_flag=True, help="Replace an existing file of the same name.")
+def device_install_nam(nam_file: Path, path: Path | None, overwrite: bool) -> None:
+    """Copy a NAM capture onto the device over USB."""
+    from .device.usbmsc import DeviceStorageError, find_device_volume, install_nam
+
+    try:
+        volume = find_device_volume(path)
+        click.echo(install_nam(nam_file, volume, overwrite=overwrite))
+    except DeviceStorageError as exc:
+        click.echo(click.style(str(exc), fg="red"))
+        sys.exit(1)
+
+
+# --------------------------------------------------------------------------
+# firmware
+# --------------------------------------------------------------------------
+
+
+@main.group()
+def firmware() -> None:
+    """Read-only static analysis of a firmware image.
+
+    Never writes to, patches, or reflashes a device - these commands only
+    open local files.
+    """
+
+
+@firmware.command("analyse")
+@click.argument("image", type=click.Path(exists=True, path_type=Path))
+@click.option("--unpack-to", type=click.Path(path_type=Path), help="Extract here, when the container allows it.")
+@click.option("--strings", "mine", is_flag=True, help="Also mine extracted files for catalog strings.")
+def firmware_analyse(image: Path, unpack_to: Path | None, mine: bool) -> None:
+    """Identify an image's container, unpack it, and classify what is inside."""
+    from .protocol.firmware import analyse_firmware, mine_catalog_strings
+
+    report = analyse_firmware(image, unpack_to=unpack_to)
+    click.echo(report.render())
+
+    if mine and report.files:
+        click.echo("\nCatalog string leads:")
+        for hint, values in mine_catalog_strings(report.files).items():
+            click.echo(f"  [{hint}] {len(values)} match(es)")
+            for value in values[:5]:
+                click.echo(f"    {value[:100]}")
+
+
+# --------------------------------------------------------------------------
+# NAM captures
+# --------------------------------------------------------------------------
+
+
+@main.group()
+def nam() -> None:
+    """Inspect Neural Amp Modeler captures."""
+
+
+@nam.command("inspect")
+@click.argument("capture", type=click.Path(exists=True, path_type=Path))
+def nam_inspect(capture: Path) -> None:
+    """Report a capture's architecture, size, calibration, and compatibility."""
+    from .tone.nam import parse_nam
+
+    try:
+        model = parse_nam(capture)
+    except ValueError as exc:
+        click.echo(click.style(str(exc), fg="red"))
+        sys.exit(1)
+
+    click.echo(model.describe())
+    click.echo(f"\ngeneration: {model.generation.value}")
+    for item in model.generation_evidence:
+        click.echo(f"  - {item}")
+    click.echo(f"size: {model.size or 'unknown'}")
+    for item in model.size_evidence:
+        click.echo(f"  - {item}")
+
+    verdict = {
+        True: click.style("yes", fg="green"),
+        False: click.style("NO - the Core does not accept this combination", fg="red"),
+        None: click.style("cannot tell - generation or size unknown", fg="yellow"),
+    }[model.headrush_compatible]
+    click.echo(f"loadable on the Core: {verdict}")
+
+
+@nam.command("scan")
+@click.argument("directory", type=click.Path(exists=True, file_okay=False, path_type=Path))
+def nam_scan(directory: Path) -> None:
+    """Summarise every capture in a directory."""
+    from .tone.nam import scan_directory
+
+    models = scan_directory(directory)
+    if not models:
+        click.echo(f"No readable .nam files under {directory}.")
+        return
+
+    click.echo(f"{len(models)} capture(s):")
+    for model in models:
+        click.echo(f"  {model.describe()}")
+
+    a2 = sum(1 for m in models if m.generation.value == "A2")
+    unknown = sum(1 for m in models if m.generation.value == "unknown")
+    click.echo(f"\nA2: {a2}   A1: {len(models) - a2 - unknown}   undetermined: {unknown}")
+
+
+# --------------------------------------------------------------------------
+# rigs
+# --------------------------------------------------------------------------
+
+
+@main.group()
+def rig() -> None:
+    """Work with rig drafts."""
+
+
+@rig.command("list")
+def rig_list() -> None:
+    """List drafts in progress."""
+    from .mcp.session import get_store
+
+    drafts = get_store().list_drafts()
+    if not drafts:
+        click.echo("No drafts. Create one with the MCP server or 'acro rig new'.")
+        return
+    for draft in drafts:
+        click.echo(
+            f"  {draft.draft_id:24} '{draft.rig.name}'  "
+            f"{len(draft.rig.blocks)}/14 blocks, {len(draft.rig.scenes)} scenes"
+        )
+
+
+@rig.command("show")
+@click.argument("draft_id")
+def rig_show(draft_id: str) -> None:
+    """Print a draft in full."""
+    from .mcp.session import get_store
+
+    try:
+        draft = get_store().get(draft_id)
+    except KeyError as exc:
+        click.echo(click.style(str(exc), fg="red"))
+        sys.exit(1)
+    click.echo(draft.rig.describe())
+    click.echo(f"\nchain: {draft.rig.signal_chain()}")
+
+
+@rig.command("validate")
+@click.argument("draft_id")
+def rig_validate(draft_id: str) -> None:
+    """Check a draft for problems."""
+    from .mcp.session import get_store
+    from .rig.validate import validate_rig
+
+    try:
+        draft = get_store().get(draft_id)
+    except KeyError as exc:
+        click.echo(click.style(str(exc), fg="red"))
+        sys.exit(1)
+
+    result = validate_rig(draft.rig)
+    header = click.style("VALID", fg="green") if result.ok else click.style(
+        f"INVALID - {len(result.errors)} error(s)", fg="red"
+    )
+    click.echo(header)
+    click.echo(result.report())
+    if not result.ok:
+        sys.exit(1)
+
+
+# --------------------------------------------------------------------------
+# MCP server
+# --------------------------------------------------------------------------
+
+
+@main.command()
+def serve() -> None:
+    """Run the MCP server over stdio.
+
+    Register it with Claude Code:
+
+      claude mcp add acro -- python -m acro.mcp.server
+    """
+    from .mcp.server import main as run_server
+
+    run_server()
+
+
 if __name__ == "__main__":
     main()
