@@ -1,6 +1,6 @@
 """Serialise rigs to and from JSON.
 
-This is *acro's* format, not the device's. The HeadRush `.rig` binary format
+This is *rigsmith's* format, not the device's. The HeadRush `.rig` binary format
 is undocumented, and deliberately not on the critical path: the Remote Editor
 can create rigs, so the device writes its own files. What this module gives us
 is a durable, reviewable, diffable representation for drafts, exports, and
@@ -138,7 +138,7 @@ def rig_from_dict(data: dict) -> Rig:
     if version > FORMAT_VERSION:
         raise ValueError(
             f"rig uses format version {version}, but this build understands "
-            f"up to {FORMAT_VERSION}. Upgrade acro rather than risk a bad write."
+            f"up to {FORMAT_VERSION}. Upgrade rigsmith rather than risk a bad write."
         )
     rig = Rig(
         name=data["name"],

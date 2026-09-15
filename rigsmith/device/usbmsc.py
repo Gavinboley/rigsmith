@@ -220,7 +220,7 @@ def backup(
     manifest.write_text(
         "\n".join(
             [
-                f"acro backup of {volume.root}",
+                f"rigsmith backup of {volume.root}",
                 f"taken: {datetime.now().isoformat(timespec='seconds')}",
                 f"files: {result.file_count}",
                 f"bytes: {result.total_bytes}",

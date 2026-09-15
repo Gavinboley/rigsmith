@@ -9,23 +9,23 @@ from __future__ import annotations
 import pytest
 
 mcp_sdk = pytest.importorskip(
-    "mcp", reason="the MCP SDK is optional; install with pip install 'acro[mcp]'"
+    "mcp", reason="the MCP SDK is optional; install with pip install 'rigsmith[mcp]'"
 )
 
 
 @pytest.fixture()
 def server(tmp_path, monkeypatch):
     """A server with an isolated workspace, so tests never touch real drafts."""
-    monkeypatch.setenv("ACRO_WORKSPACE", str(tmp_path))
-    monkeypatch.delenv("ACRO_READONLY", raising=False)
+    monkeypatch.setenv("RIGSMITH_WORKSPACE", str(tmp_path))
+    monkeypatch.delenv("RIGSMITH_READONLY", raising=False)
 
-    from acro import config
-    from acro.mcp import session
+    from rigsmith import config
+    from rigsmith.mcp import session
 
     config.set_settings(config.Settings())
     session.set_store(session.DraftStore(tmp_path / "drafts"))
 
-    from acro.mcp import server as module
+    from rigsmith.mcp import server as module
 
     yield module
 
@@ -165,9 +165,9 @@ async def test_write_blocked_by_validation_errors(server):
 async def test_readonly_mode_blocks_export(server, monkeypatch):
     await call(server, "create_rig", {"name": "Locked"})
 
-    from acro import config
+    from rigsmith import config
 
-    monkeypatch.setenv("ACRO_READONLY", "1")
+    monkeypatch.setenv("RIGSMITH_READONLY", "1")
     config.set_settings(config.Settings())
 
     with pytest.raises(Exception) as excinfo:
@@ -185,7 +185,7 @@ async def test_drafts_survive_a_new_store(server, tmp_path):
         {"draft_id": "persist", "category": "amp", "model_id": "Plexi"},
     )
 
-    from acro.mcp import session
+    from rigsmith.mcp import session
 
     session.set_store(session.DraftStore(tmp_path / "drafts"))
 
@@ -210,12 +210,12 @@ async def test_scene_slots_follow_blocks_through_a_move(server):
 
     await call(server, "move_block", {"draft_id": "reorder", "from_slot": 4, "to_slot": 1})
 
-    from acro.mcp.session import get_store
+    from rigsmith.mcp.session import get_store
 
     rig = get_store().get("reorder").rig
     slots = {b.model_id: b.slot for b in rig.blocks}
     scene = rig.scenes[0]
-    from acro.rig.model import SceneBlockState
+    from rigsmith.rig.model import SceneBlockState
 
     assert scene.states[slots["Muff"]] is SceneBlockState.OFF
     assert scene.states[slots["Delay"]] is SceneBlockState.ON

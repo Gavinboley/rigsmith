@@ -95,7 +95,7 @@ def separate(
         raise SeparationUnavailable(
             "Demucs is not installed. Install it with:\n"
             "  pip install -U demucs\n\n"
-            f"Then acro can isolate a guitar stem with the {DEFAULT_MODEL} model. "
+            f"Then rigsmith can isolate a guitar stem with the {DEFAULT_MODEL} model. "
             "Note it is slow on CPU - expect minutes per track."
         )
 

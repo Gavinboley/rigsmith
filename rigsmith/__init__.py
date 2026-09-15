@@ -1,4 +1,4 @@
-"""acro - AI tone authoring for the HeadRush Core.
+"""rigsmith - AI tone authoring for the HeadRush Core.
 
 Research a song's guitar tone, build the matching rig on the device over
 local Wi-Fi, and test the result against the source recording.

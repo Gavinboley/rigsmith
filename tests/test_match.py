@@ -10,8 +10,8 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from acro.match.ab import ABSession, create_session
-from acro.match.metrics import (
+from rigsmith.match.ab import ABSession, create_session
+from rigsmith.match.metrics import (
     ComparisonMode,
     esr,
     log_spectral_distance,
@@ -21,7 +21,7 @@ from acro.match.metrics import (
     spectral_summary,
     to_mono,
 )
-from acro.match.score import rank_candidates, render_ranking, score_candidate
+from rigsmith.match.score import rank_candidates, render_ranking, score_candidate
 
 SR = 48000
 

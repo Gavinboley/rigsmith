@@ -20,7 +20,7 @@ played by a different person on a different guitar, and no amount of
 alignment makes sample-wise error meaningful. They give a *ranking*, never an
 absolute verdict.
 
-:mod:`acro.match.score` enforces which family applies.
+:mod:`rigsmith.match.score` enforces which family applies.
 """
 
 from __future__ import annotations

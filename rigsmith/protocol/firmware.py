@@ -152,7 +152,7 @@ class FirmwareReport:
             lines.append(
                 "  HIGH ENTROPY with no recognisable signatures - the image may "
                 "be encrypted or solidly compressed. The live-capture path "
-                "(acro probe) does not depend on this and should be preferred."
+                "(rigsmith probe) does not depend on this and should be preferred."
             )
         if self.signatures:
             lines.append(f"\n  {len(self.signatures)} signature(s):")
@@ -332,18 +332,18 @@ def analyse_firmware(
 
     if report.web_assets:
         report.next_steps.append(
-            "run acro.protocol.capture.analyse_bundle over the extracted web "
+            "run rigsmith.protocol.capture.analyse_bundle over the extracted web "
             "assets to recover the Remote Editor API without needing the device"
         )
     if report.candidate_catalog_files:
         report.next_steps.append(
             "inspect the data files for the model catalog, then feed it to "
-            "acro.protocol.catalog_extract"
+            "rigsmith.protocol.catalog_extract"
         )
     if not report.files:
         report.next_steps.append(
             "if the container cannot be opened, the live-capture path "
-            "(acro probe against a powered-on device) recovers the same API "
+            "(rigsmith probe against a powered-on device) recovers the same API "
             "surface and does not depend on unpacking firmware at all"
         )
 

@@ -7,7 +7,7 @@ the device does come online, we already know the miner works.
 
 from __future__ import annotations
 
-from acro.protocol.capture import Endpoint, Inventory, analyse_bundle
+from rigsmith.protocol.capture import Endpoint, Inventory, analyse_bundle
 
 BUNDLE = """
 const BASE = "/api/v1";
@@ -94,7 +94,7 @@ def test_empty_bundle_yields_nothing_rather_than_guessing():
 
 
 def test_inventory_round_trips_through_json(tmp_path):
-    from acro.protocol.capture import load_inventory
+    from rigsmith.protocol.capture import load_inventory
 
     endpoints, generic, websockets, ctors, message_types = analyse()
     inventory = Inventory(

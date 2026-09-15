@@ -368,7 +368,7 @@ async def capture(
         inventory.notes.append(
             "No endpoints recovered. The bundle may be minified beyond these "
             "patterns, lazily loaded, or served from a path other than /. "
-            "Fall back to acro.protocol.recorder to capture live traffic."
+            "Fall back to rigsmith.protocol.recorder to capture live traffic."
         )
     if not websockets and not ws_ctors:
         inventory.notes.append(

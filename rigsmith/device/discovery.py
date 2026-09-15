@@ -11,7 +11,7 @@ Three strategies, tried in order of decreasing confidence:
    fingerprints the response. Slower, but it works when mDNS is blocked
    entirely, which happens on mesh networks and guest VLANs.
 
-An explicit ``ACRO_DEVICE`` setting short-circuits all three.
+An explicit ``RIGSMITH_DEVICE`` setting short-circuits all three.
 """
 
 from __future__ import annotations

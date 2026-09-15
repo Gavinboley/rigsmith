@@ -1,6 +1,6 @@
 """Settings, workspace layout, and the global read-only guard.
 
-The workspace defaults to ``~/.acro`` and holds everything that must survive
+The workspace defaults to ``~/.rigsmith`` and holds everything that must survive
 between sessions: device backups, protocol captures, cached research, audio
 renders, and credentials. It is deliberately outside the repo so that nothing
 device-specific or copyrighted ends up in version control.
@@ -12,7 +12,7 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
-DEFAULT_WORKSPACE = Path.home() / ".acro"
+DEFAULT_WORKSPACE = Path.home() / ".rigsmith"
 
 #: mDNS hostnames the HeadRush family answers to, most specific first.
 KNOWN_HOSTNAMES = (
@@ -36,20 +36,20 @@ class Settings:
     """Runtime configuration, assembled from environment and defaults."""
 
     workspace: Path = field(default_factory=lambda: Path(
-        os.environ.get("ACRO_WORKSPACE") or DEFAULT_WORKSPACE
+        os.environ.get("RIGSMITH_WORKSPACE") or DEFAULT_WORKSPACE
     ))
 
     #: When true every write tool is disabled at startup. This is checked in
     #: one place (``require_writable``) so it cannot be bypassed piecemeal.
-    readonly: bool = field(default_factory=lambda: _env_flag("ACRO_READONLY"))
+    readonly: bool = field(default_factory=lambda: _env_flag("RIGSMITH_READONLY"))
 
     #: Skip the interactive confirmation before writing to the device. Only
     #: honoured for writes into the scratch slot range.
-    assume_yes: bool = field(default_factory=lambda: _env_flag("ACRO_ASSUME_YES"))
+    assume_yes: bool = field(default_factory=lambda: _env_flag("RIGSMITH_ASSUME_YES"))
 
-    #: Explicit device address, bypassing discovery (``ACRO_DEVICE=192.168.1.x``).
+    #: Explicit device address, bypassing discovery (``RIGSMITH_DEVICE=192.168.1.x``).
     device_host: str | None = field(
-        default_factory=lambda: os.environ.get("ACRO_DEVICE") or None
+        default_factory=lambda: os.environ.get("RIGSMITH_DEVICE") or None
     )
 
     tone3000_client_id: str | None = field(
@@ -103,7 +103,7 @@ class Settings:
 
 
 class ReadOnlyError(RuntimeError):
-    """Raised when a write is attempted while acro is in read-only mode."""
+    """Raised when a write is attempted while rigsmith is in read-only mode."""
 
 
 _settings: Settings | None = None
@@ -131,10 +131,10 @@ def require_writable(action: str) -> None:
             surfaced in the error so the caller knows what was blocked.
 
     Raises:
-        ReadOnlyError: if ``ACRO_READONLY`` is set.
+        ReadOnlyError: if ``RIGSMITH_READONLY`` is set.
     """
     if get_settings().readonly:
         raise ReadOnlyError(
-            f"refusing to {action}: acro is in read-only mode "
-            "(unset ACRO_READONLY to allow writes)"
+            f"refusing to {action}: rigsmith is in read-only mode "
+            "(unset RIGSMITH_READONLY to allow writes)"
         )

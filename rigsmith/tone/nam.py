@@ -368,7 +368,7 @@ def rank_for_target(
     Returns ``(model, score, reasons)`` sorted best first. The score is a
     *ranking* aid built from metadata agreement, not a measure of how close
     the capture sounds - that only comes from actually rendering audio
-    through it (see :mod:`acro.match`).
+    through it (see :mod:`rigsmith.match`).
     """
     scored: list[tuple[NamModel, float, list[str]]] = []
 

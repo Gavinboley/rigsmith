@@ -292,7 +292,7 @@ class Tone3000Client:
     # -- plumbing ---------------------------------------------------------
 
     def _headers(self) -> dict[str, str]:
-        headers = {"Accept": "application/json", "User-Agent": "acro/0.1 (+github.com/Gavinboley/acro-plan)"}
+        headers = {"Accept": "application/json", "User-Agent": "rigsmith/0.1 (+github.com/Gavinboley/rigsmith)"}
         if self.tokens:
             headers["Authorization"] = f"{self.tokens.token_type} {self.tokens.access_token}"
         return headers
@@ -317,7 +317,7 @@ class Tone3000Client:
             detail = resp.text[:300]
             if not self.tokens:
                 raise Tone3000AuthError(
-                    f"{path} requires authentication. Run 'acro tone3000 login' first. "
+                    f"{path} requires authentication. Run 'rigsmith tone3000 login' first. "
                     f"({resp.status_code}: {detail})"
                 )
             if resp.status_code == 403:

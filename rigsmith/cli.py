@@ -1,4 +1,4 @@
-"""Command line interface for acro.
+"""Command line interface for rigsmith.
 
 Mirrors the MCP tool surface so anything an agent can do, a human can do too -
 and so the protocol work can be driven before the MCP server exists.
@@ -30,9 +30,9 @@ def _echo_device(info, index: int | None = None) -> None:
 
 
 @click.group(context_settings={"help_option_names": ["-h", "--help"]})
-@click.version_option(__version__, prog_name="acro")
+@click.version_option(__version__, prog_name="rigsmith")
 @click.option("--device", "device_host", metavar="HOST", help="Device host or IP, skipping discovery.")
-@click.option("--workspace", type=click.Path(path_type=Path), help="Override the acro workspace directory.")
+@click.option("--workspace", type=click.Path(path_type=Path), help="Override the rigsmith workspace directory.")
 @click.option("--readonly", is_flag=True, help="Disable every write for this invocation.")
 def main(device_host: str | None, workspace: Path | None, readonly: bool) -> None:
     """AI tone authoring for the HeadRush Core.
@@ -92,7 +92,7 @@ def discover(no_sweep: bool, timeout: float, zeroconf_timeout: float, as_json: b
             "  3. Same band - a 2.4G/5G split or guest VLAN will hide it\n"
             "  4. No VPN active on this machine\n"
             "  5. Still stuck? Double-tap 'HeadRush Remote' on the device to\n"
-            "     read its IP, then rerun with:  acro --device <ip> discover"
+            "     read its IP, then rerun with:  rigsmith --device <ip> discover"
         )
         sys.exit(1)
 
@@ -135,7 +135,7 @@ def probe(dump_app: bool, out: Path | None, max_assets: int, timeout: float) -> 
     settings = get_settings()
     device = _run(find_device())
     if device is None:
-        click.echo(click.style("No device found. Run 'acro discover' first.", fg="red"))
+        click.echo(click.style("No device found. Run 'rigsmith discover' first.", fg="red"))
         sys.exit(1)
 
     click.echo(f"Probing {device.base_url} ...")
@@ -186,10 +186,10 @@ def probe(dump_app: bool, out: Path | None, max_assets: int, timeout: float) -> 
 
 @main.command()
 def doctor() -> None:
-    """Report what acro can and cannot do in this environment."""
+    """Report what rigsmith can and cannot do in this environment."""
     settings = get_settings()
 
-    click.echo(f"acro {__version__}")
+    click.echo(f"rigsmith {__version__}")
     click.echo(f"workspace: {settings.workspace}")
     click.echo(f"read-only: {settings.readonly}")
     click.echo("")
@@ -206,12 +206,12 @@ def doctor() -> None:
     probe_import("httpx (device HTTP)", "httpx", "required - pip install httpx")
     probe_import("websockets (device WS)", "websockets", "required - pip install websockets")
     probe_import("zeroconf (mDNS discovery)", "zeroconf", "pip install zeroconf - without it, discovery falls back to hostname + sweep")
-    probe_import("mcp (MCP server)", "mcp", "pip install 'acro[mcp]' to expose tools to an agent")
-    probe_import("mido (MIDI verification)", "mido", "pip install 'acro[midi]' for rig/scene switching and write verification")
-    probe_import("sounddevice (hardware reamp)", "sounddevice", "pip install 'acro[audio]' for hardware-in-the-loop tone testing")
-    probe_import("soundfile (audio I/O)", "soundfile", "pip install 'acro[audio]'")
-    probe_import("scipy (IR convolution)", "scipy", "pip install 'acro[match]' for offline rendering")
-    probe_import("playwright (editor fallback)", "playwright", "pip install 'acro[browser]' for the browser-driven fallback transport")
+    probe_import("mcp (MCP server)", "mcp", "pip install 'rigsmith[mcp]' to expose tools to an agent")
+    probe_import("mido (MIDI verification)", "mido", "pip install 'rigsmith[midi]' for rig/scene switching and write verification")
+    probe_import("sounddevice (hardware reamp)", "sounddevice", "pip install 'rigsmith[audio]' for hardware-in-the-loop tone testing")
+    probe_import("soundfile (audio I/O)", "soundfile", "pip install 'rigsmith[audio]'")
+    probe_import("scipy (IR convolution)", "scipy", "pip install 'rigsmith[match]' for offline rendering")
+    probe_import("playwright (editor fallback)", "playwright", "pip install 'rigsmith[browser]' for the browser-driven fallback transport")
 
     for state, label, why in checks:
         mark = click.style("  ok  ", fg="green") if state == "ok" else click.style(" --   ", fg="yellow")
@@ -399,7 +399,7 @@ def rig_list() -> None:
 
     drafts = get_store().list_drafts()
     if not drafts:
-        click.echo("No drafts. Create one with the MCP server or 'acro rig new'.")
+        click.echo("No drafts. Create one with the MCP server or 'rigsmith rig new'.")
         return
     for draft in drafts:
         click.echo(
@@ -457,7 +457,7 @@ def serve() -> None:
 
     Register it with Claude Code:
 
-      claude mcp add acro -- python -m acro.mcp.server
+      claude mcp add rigsmith -- python -m rigsmith.mcp.server
     """
     from .mcp.server import main as run_server
 

@@ -12,7 +12,7 @@ import json
 
 import pytest
 
-from acro.device.usbmsc import (
+from rigsmith.device.usbmsc import (
     BACKUP_FOLDERS,
     DeviceStorageError,
     backup,
@@ -110,7 +110,7 @@ def test_backup_writes_a_manifest(volume, tmp_path):
     destination = tmp_path / "backup"
     result = backup(destination, volume)
     manifest = (destination / "manifest.txt").read_text(encoding="utf-8")
-    assert "acro backup" in manifest
+    assert "rigsmith backup" in manifest
     assert f"files: {result.file_count}" in manifest
 
 

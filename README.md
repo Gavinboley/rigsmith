@@ -1,8 +1,8 @@
-# acro
+# rigsmith
 
 **AI tone authoring for the HeadRush Core.** Research a song's guitar tone, build the matching rig on the device over local Wi-Fi, and test the result against the source recording.
 
-`acro` is an [MCP](https://modelcontextprotocol.io) server plus a CLI. It lets an AI agent do the slow parts of tone recreation — working out what amp, pedals, and cab were actually used on a record, finding a NAM capture that matches, assembling a 14-block rig with Scenes, and then measuring how close the result really is.
+`rigsmith` is an [MCP](https://modelcontextprotocol.io) server plus a CLI. It lets an AI agent do the slow parts of tone recreation — working out what amp, pedals, and cab were actually used on a record, finding a NAM capture that matches, assembling a 14-block rig with Scenes, and then measuring how close the result really is.
 
 > **Status: pre-hardware.** Everything that can be built and tested without the device is done and covered by 131 tests: rig authoring, validation, NAM analysis, the tone-matching harness, USB backup, MIDI control, firmware analysis, and a 31-tool MCP server. The one remaining piece is the Remote Editor's wire protocol, which has to be captured against a powered-on Core — see [docs/PROTOCOL.md](docs/PROTOCOL.md).
 
@@ -20,15 +20,15 @@ This project does **not** modify, patch, or reflash device firmware, and it neve
 
 - Device writes go through the same interfaces the official Remote Editor uses.
 - Every write is gated: **validate → backup → diff → confirm → write → verify**.
-- `ACRO_READONLY=1` disables all write tools at startup.
+- `RIGSMITH_READONLY=1` disables all write tools at startup.
 - Firmware analysis, where used, is read-only static inspection for interoperability. No vendor firmware, binaries, or bundled assets are committed to this repo — only derived documentation.
 - If something does go wrong on the device, holding footswitches **4+5** at power-on restores factory rigs.
 
 ## Install
 
 ```bash
-git clone https://github.com/Gavinboley/acro-plan
-cd acro-plan
+git clone https://github.com/Gavinboley/rigsmith
+cd rigsmith
 pip install -e ".[all]"
 ```
 
@@ -39,45 +39,45 @@ Minimal install (`pip install -e .`) covers discovery and protocol capture. The 
 Check what your environment supports:
 
 ```bash
-acro doctor
+rigsmith doctor
 ```
 
 Put the Core on the same Wi-Fi network, then enable **Global Settings → Wi-Fi → HeadRush Remote = On** and find it:
 
 ```bash
-acro discover
+rigsmith discover
 ```
 
 If mDNS is blocked on your network, double-tap "HeadRush Remote" on the device to read its IP and pass it directly:
 
 ```bash
-acro --device 192.168.1.42 discover
+rigsmith --device 192.168.1.42 discover
 ```
 
 Then map the editor's API surface:
 
 ```bash
-acro probe --dump-app
+rigsmith probe --dump-app
 ```
 
-This fetches the same files a browser would when you open the editor, mines them for endpoints, WebSocket URLs, and message types, and writes an inventory to your workspace (`~/.acro/captures/`).
+This fetches the same files a browser would when you open the editor, mines them for endpoints, WebSocket URLs, and message types, and writes an inventory to your workspace (`~/.rigsmith/captures/`).
 
 Other things you can do right now, with or without the device:
 
 ```bash
-acro device status              # is USB storage mounted, and what is on it
-acro device backup              # timestamped backup, reads only
-acro nam inspect amp.nam        # A1/A2, size, calibration, Core compatibility
-acro nam scan ./captures        # summarise a capture library
-acro firmware analyse fw.bin --unpack-to ./out --strings
-acro rig list                   # drafts in progress
-acro serve                      # run the MCP server over stdio
+rigsmith device status              # is USB storage mounted, and what is on it
+rigsmith device backup              # timestamped backup, reads only
+rigsmith nam inspect amp.nam        # A1/A2, size, calibration, Core compatibility
+rigsmith nam scan ./captures        # summarise a capture library
+rigsmith firmware analyse fw.bin --unpack-to ./out --strings
+rigsmith rig list                   # drafts in progress
+rigsmith serve                      # run the MCP server over stdio
 ```
 
 ### Using it from Claude Code
 
 ```bash
-claude mcp add acro -- python -m acro.mcp.server
+claude mcp add rigsmith -- python -m rigsmith.mcp.server
 ```
 
 Then ask for a tone. The agent researches the gear, finds an A2 capture, builds the rig with scenes on footswitches, validates it, and shows you a diff before anything is written.
@@ -103,7 +103,7 @@ Three layers, usable independently:
 2. **Hardware in the loop** — the Core's USB interface is 6-in/4-out with a dry DI on channel 5 alongside stereo wet on 1–2, and supports reamping. Play a riff *once*, then reamp that exact performance through unlimited candidates automatically.
 3. **Human blind A/B** — ranked candidates presented without labels; your rating feeds the refinement loop.
 
-**On metric honesty.** A commercial recording is not a DI and is not the same performance. Sample-aligned ESR — the metric the NAM ecosystem trusts — is only valid when comparing *your* DI through the Core against *your* reference. Against a source-separated stem from a record, only distribution-level metrics apply, and only as a *ranking* signal. `acro` enforces that distinction rather than reporting a confident number it cannot justify.
+**On metric honesty.** A commercial recording is not a DI and is not the same performance. Sample-aligned ESR — the metric the NAM ecosystem trusts — is only valid when comparing *your* DI through the Core against *your* reference. Against a source-separated stem from a record, only distribution-level metrics apply, and only as a *ranking* signal. `rigsmith` enforces that distinction rather than reporting a confident number it cannot justify.
 
 ## Roadmap
 

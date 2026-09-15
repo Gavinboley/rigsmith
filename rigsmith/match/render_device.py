@@ -52,7 +52,7 @@ def _sounddevice():
     except (ImportError, OSError) as exc:
         raise AudioUnavailable(
             "sounddevice is required for hardware rendering. Install with:\n"
-            "  pip install 'acro[audio]'\n"
+            "  pip install 'rigsmith[audio]'\n"
             "On Windows, ASIO support needs a PortAudio build with ASIO; see "
             "the python-sounddevice docs."
         ) from exc

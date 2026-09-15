@@ -2,7 +2,7 @@
 
 Fast, needs no hardware, and approximate. Use it to narrow a large field of
 candidate captures down to a shortlist; then confirm the shortlist on the
-actual device (:mod:`acro.match.render_device`), because only the Core's own
+actual device (:mod:`rigsmith.match.render_device`), because only the Core's own
 DSP is the Core's tone.
 
 What this can do faithfully is cabinet IR convolution - that is a plain
@@ -61,7 +61,7 @@ def load_audio(path: str | Path, *, mono: bool = True) -> tuple[np.ndarray, int]
     except ImportError as exc:
         raise RenderUnavailable(
             "soundfile is required to read audio. Install with: "
-            "pip install 'acro[audio]'"
+            "pip install 'rigsmith[audio]'"
         ) from exc
 
     data, sample_rate = sf.read(str(path), always_2d=False)
@@ -77,7 +77,7 @@ def save_audio(path: str | Path, audio: np.ndarray, sample_rate: int) -> Path:
     except ImportError as exc:
         raise RenderUnavailable(
             "soundfile is required to write audio. Install with: "
-            "pip install 'acro[audio]'"
+            "pip install 'rigsmith[audio]'"
         ) from exc
 
     path = Path(path)

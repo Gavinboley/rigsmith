@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from acro.rig import (
+from rigsmith.rig import (
     Block,
     BlockCategory,
     Doubling,
@@ -13,7 +13,7 @@ from acro.rig import (
     SceneBlockState,
     SignalPath,
 )
-from acro.rig.model import MAX_SLOTS
+from rigsmith.rig.model import MAX_SLOTS
 
 
 def make_rig(*model_ids: str) -> Rig:

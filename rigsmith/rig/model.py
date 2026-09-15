@@ -133,7 +133,7 @@ class Block:
     enabled: bool = True
     params: dict[str, Any] = field(default_factory=dict)
     """Model-specific parameters. Each amp model has its own knob set, so
-    this is deliberately open; :mod:`acro.rig.validate` checks it against the
+    this is deliberately open; :mod:`rigsmith.rig.validate` checks it against the
     extracted catalog rather than a hardcoded schema."""
 
     # Advanced block edit - available on every block regardless of model.

@@ -12,7 +12,7 @@ import zipfile
 
 import pytest
 
-from acro.device.midi import (
+from rigsmith.device.midi import (
     CC_BLOCK_TOGGLE_BASE,
     CC_FOOTSWITCH_BASE,
     CC_TAP_TEMPO,
@@ -21,7 +21,7 @@ from acro.device.midi import (
     find_headrush_port,
     footswitch_cc,
 )
-from acro.protocol.firmware import (
+from rigsmith.protocol.firmware import (
     analyse_firmware,
     extract_strings,
     find_signatures,
@@ -203,7 +203,7 @@ def test_controller_rejects_an_invalid_channel():
 
 
 def test_controller_refuses_to_send_before_opening():
-    from acro.device.midi import MidiUnavailable
+    from rigsmith.device.midi import MidiUnavailable
 
     controller = MidiController()
     with pytest.raises(MidiUnavailable, match="not open"):
@@ -221,7 +221,7 @@ def test_find_headrush_port_returns_none_when_absent():
 
 def test_activate_scene_requires_a_footswitch():
     """MIDI has no direct scene-select control."""
-    from acro.rig.model import Scene
+    from rigsmith.rig.model import Scene
 
     controller = MidiController()
     with pytest.raises(ValueError, match="no footswitch"):

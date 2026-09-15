@@ -1,6 +1,6 @@
 # Tone matching: what the numbers mean, and what they don't
 
-This document explains how `acro` decides whether a rig sounds like the record — and, more importantly, where that judgement stops being trustworthy. If you read one section, read [The trap](#the-trap).
+This document explains how `rigsmith` decides whether a rig sounds like the record — and, more importantly, where that judgement stops being trustworthy. If you read one section, read [The trap](#the-trap).
 
 ---
 
@@ -28,7 +28,7 @@ This is the single easiest way to build a tone-matching tool that produces autho
 
 ## The two modes
 
-`acro` therefore splits comparison into two modes, and **the mode is a required argument, never inferred**:
+`rigsmith` therefore splits comparison into two modes, and **the mode is a required argument, never inferred**:
 
 ### `ALIGNED`
 
@@ -90,7 +90,7 @@ Sessions persist to JSON, so listening can be spread over days, and verdicts car
 
 Source separation via Demucs `htdemucs_6s` — the only widely available open model with a first-class **guitar** stem (four-stem models fold guitar into "other"). It runs offline; expect minutes per track on CPU.
 
-A separated stem is **not a DI and not ground truth**. It still carries the record's amp, cabinet, microphone, room, and mix processing — compression, EQ, saturation, bus glue — plus separation artefacts. It is a timbral reference for ranking, and `acro` labels it as such everywhere it appears.
+A separated stem is **not a DI and not ground truth**. It still carries the record's amp, cabinet, microphone, room, and mix processing — compression, EQ, saturation, bus glue — plus separation artefacts. It is a timbral reference for ranking, and `rigsmith` labels it as such everywhere it appears.
 
 ## Practical workflow
 

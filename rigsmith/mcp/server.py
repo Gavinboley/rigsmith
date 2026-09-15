@@ -1,4 +1,4 @@
-"""The acro MCP server.
+"""The rigsmith MCP server.
 
 Exposes tone research, rig authoring, and device control to an AI agent.
 
@@ -38,12 +38,12 @@ from ..rig.validate import validate_rig as run_validation
 from .session import get_store
 
 INSTRUCTIONS = """\
-acro drives a HeadRush Core amp modeler over the local network so you can
+rigsmith drives a HeadRush Core amp modeler over the local network so you can
 recreate specific recorded guitar tones.
 
 Typical flow for "make me the tone from <song>":
 
- 1. Research the gear yourself (web search, interviews, rig rundowns). acro
+ 1. Research the gear yourself (web search, interviews, rig rundowns). rigsmith
     does not browse for you - it gives you somewhere to put the conclusion.
  2. search_captures  - find a NAM capture of the amp. The Core runs A2 Full
     and A2 Lite plus all A1 sizes; A2 is preferred.
@@ -69,7 +69,7 @@ def _server():
         from mcp.server.mcpserver import MCPServer
 
         return MCPServer(
-            name="acro",
+            name="rigsmith",
             version=__version__,
             instructions=INSTRUCTIONS,
         )
@@ -77,10 +77,10 @@ def _server():
         try:  # MCP SDK v1
             from mcp.server.fastmcp import FastMCP
 
-            return FastMCP("acro", instructions=INSTRUCTIONS)
+            return FastMCP("rigsmith", instructions=INSTRUCTIONS)
         except ImportError as exc:  # pragma: no cover - dependency missing
             raise SystemExit(
-                "The MCP SDK is not installed. Run:  pip install 'acro[mcp]'"
+                "The MCP SDK is not installed. Run:  pip install 'rigsmith[mcp]'"
             ) from exc
 
 
@@ -158,7 +158,7 @@ def _catalog_caveat() -> str:
     return (
         "\n\nNote: the model catalog is UNVERIFIED - it has not been extracted "
         "from a real device, so model ids here are placeholders. Run "
-        "'acro catalog extract' against hardware before relying on them."
+        "'rigsmith catalog extract' against hardware before relying on them."
     )
 
 
@@ -189,7 +189,7 @@ async def discover_device(include_sweep: bool = True) -> str:
             "Check: powered on; same Wi-Fi network and band; "
             "Global Settings > Wi-Fi > HeadRush Remote = On; no VPN active.\n"
             "You can also double-tap 'HeadRush Remote' on the device to read "
-            "its IP, then set ACRO_DEVICE to that address."
+            "its IP, then set RIGSMITH_DEVICE to that address."
         )
 
     lines = [f"{len(devices)} host(s) answered:"]
@@ -199,7 +199,7 @@ async def discover_device(include_sweep: bool = True) -> str:
     if not any(d.confirmed for d in devices):
         lines.append(
             "\nNone fingerprinted as HeadRush. If one of these is the Core, "
-            "set ACRO_DEVICE to its address."
+            "set RIGSMITH_DEVICE to its address."
         )
     return "\n".join(lines)
 
@@ -211,7 +211,7 @@ async def probe_protocol(max_assets: int = 200) -> str:
 
     Read-only: requests the same files a browser would when opening the
     editor, then mines them for endpoints, WebSocket URLs, and message types.
-    This is how acro learns the device's undocumented protocol.
+    This is how rigsmith learns the device's undocumented protocol.
     """
     from ..device.discovery import find_device
     from ..protocol.capture import capture
@@ -642,7 +642,7 @@ def preview_changes(draft_id: str) -> str:
 def export_rig(draft_id: str, path: str | None = None) -> str:
     """Write a draft to a JSON file.
 
-    This is acro's own format, readable and diffable - not the device's
+    This is rigsmith's own format, readable and diffable - not the device's
     binary `.rig`. Useful for version control, sharing, and review.
     """
     draft = _draft(draft_id)
@@ -760,7 +760,7 @@ async def search_captures(
     if tokens is None:
         return (
             "Not authenticated with TONE3000.\n\n"
-            "Set TONE3000_CLIENT_ID, then run 'acro tone3000 login'.\n\n"
+            "Set TONE3000_CLIENT_ID, then run 'rigsmith tone3000 login'.\n\n"
             "You can also browse TONE3000 directly on the Core's touchscreen - "
             "that path needs no API access and downloads straight to the device."
         )

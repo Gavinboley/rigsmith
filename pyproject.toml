@@ -3,7 +3,7 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "acro"
+name = "rigsmith"
 version = "0.1.0"
 description = "AI tone authoring for the HeadRush Core - research a song's guitar tone, build the rig over Wi-Fi, and test it against the source."
 readme = "README.md"
@@ -40,17 +40,17 @@ all = [
 ]
 
 [project.scripts]
-acro = "acro.cli:main"
+rigsmith = "rigsmith.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/Gavinboley/acro-plan"
-Source = "https://github.com/Gavinboley/acro-plan"
+Homepage = "https://github.com/Gavinboley/rigsmith"
+Source = "https://github.com/Gavinboley/rigsmith"
 
 [tool.setuptools.packages.find]
-include = ["acro*"]
+include = ["rigsmith*"]
 
 [tool.setuptools.package-data]
-"acro.protocol" = ["maps/*.json"]
+"rigsmith.protocol" = ["maps/*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

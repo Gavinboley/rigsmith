@@ -6,7 +6,7 @@ there is no universal amp schema and no published per-model parameter table.
 Transcribing that by hand would be both enormous and wrong within one firmware
 release.
 
-So :mod:`acro.protocol.catalog_extract` harvests the real catalog from the
+So :mod:`rigsmith.protocol.catalog_extract` harvests the real catalog from the
 device and the firmware, and this module loads it. Until that has run, a small
 seed catalog provides the *shape* of the data - categories, families, counts
 from the vendor's published model list - so the rest of the system can be
@@ -302,7 +302,7 @@ def seed_catalog() -> Catalog:
     catalog = Catalog(source="seed")
     catalog.warnings.append(
         "Seed catalog: model names and per-model parameters have NOT been "
-        "extracted from a device. Run 'acro catalog extract' against real "
+        "extracted from a device. Run 'rigsmith catalog extract' against real "
         "hardware before trusting any model id or parameter range."
     )
 

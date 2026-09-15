@@ -63,7 +63,7 @@ def _mido():
     except ImportError as exc:
         raise MidiUnavailable(
             "MIDI needs mido and a backend. Install with:\n"
-            "  pip install 'acro[midi]'"
+            "  pip install 'rigsmith[midi]'"
         ) from exc
 
 
@@ -192,7 +192,7 @@ class MidiController:
         self.control(footswitch_cc(footswitch), ON_VALUE)
 
     def activate_scene(self, scene) -> None:
-        """Activate a :class:`~acro.rig.model.Scene` via its footswitch.
+        """Activate a :class:`~rigsmith.rig.model.Scene` via its footswitch.
 
         Raises:
             ValueError: if the scene has no footswitch assigned, since there

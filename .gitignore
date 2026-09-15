@@ -21,4 +21,4 @@ workspace/
 
 # Local credentials / tokens
 .env
-.acro/
+.rigsmith/

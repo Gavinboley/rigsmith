@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from acro.rig import Block, BlockCategory, Doubling, Rig, Scene, SceneBlockState
-from acro.rig.catalog import ModelSpec, ParamSpec, seed_catalog
-from acro.rig.validate import estimate_cpu, validate_rig
+from rigsmith.rig import Block, BlockCategory, Doubling, Rig, Scene, SceneBlockState
+from rigsmith.rig.catalog import ModelSpec, ParamSpec, seed_catalog
+from rigsmith.rig.validate import estimate_cpu, validate_rig
 
 
 def catalog():
