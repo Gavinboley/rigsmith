@@ -76,7 +76,8 @@ def test_internal_links_resolve():
 
 def test_readme_documents_every_extra():
     """A new extra that nobody is told about may as well not exist."""
-    import tomllib
+    # tomllib is stdlib only from 3.11; the check still runs on newer jobs.
+    tomllib = pytest.importorskip("tomllib", reason="needs Python 3.11+")
 
     pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     extras = set(pyproject["project"]["optional-dependencies"]) - {"all"}

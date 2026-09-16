@@ -1,8 +1,10 @@
 """Audio similarity metrics for comparing a rendered tone to a target.
 
-Implemented on numpy and scipy so the core comparison works without a heavy
-dependency stack. ``librosa`` is used when present, but nothing here requires
-it.
+Implemented on numpy and scipy alone. That is deliberate rather than
+incidental: these numbers only mean anything relative to each other, so a
+metric that changed depending on which optional packages happened to be
+installed would silently reorder candidates between two users - or between
+a developer's machine and CI, which is how this was found.
 
 **The distinction that matters.** These metrics fall into two families, and
 mixing them up produces confident nonsense:
@@ -236,19 +238,18 @@ def mfcc(
 ) -> np.ndarray:
     """MFCCs, shape ``(n_mfcc, frames)``.
 
-    Uses librosa when available for consistency with the wider ecosystem,
-    and falls back to an equivalent numpy/scipy implementation otherwise.
+    Deliberately self-contained rather than delegating to librosa when it
+    happens to be installed. This once used librosa if available, and the two
+    implementations disagreed enough to change the *ranking* of candidates -
+    so the same comparison gave different answers depending on which optional
+    extras a user had. A metric whose result depends on the environment is
+    worse than a slightly less canonical one, because the whole purpose here
+    is comparing candidates against each other.
+
+    The absolute values are not meant to match librosa's, and nothing in
+    rigsmith compares them to anything outside itself.
     """
     signal = to_mono(signal)
-    try:
-        import librosa
-
-        return librosa.feature.mfcc(
-            y=signal.astype(np.float32), sr=sample_rate, n_mfcc=n_mfcc, n_fft=n_fft
-        )
-    except ImportError:
-        pass
-
     hop = n_fft // 4
     magnitude = _stft_magnitude(signal, n_fft, hop)
     power = magnitude**2
