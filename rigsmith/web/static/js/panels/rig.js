@@ -405,6 +405,78 @@ async function newDraft() {
   if (created) await refreshDrafts(created.draft_id);
 }
 
+/* ------------------------------------------------------------------ write */
+
+/* The one irreversible thing this tool does. A rig built by hand on the
+ * device's own screen exists nowhere else, so the diff is shown in full
+ * before the question is asked, and the backup gate is a checkbox that
+ * starts off - waiving it has to be a decision somebody made. */
+
+let writeJob = null;
+
+async function startWrite() {
+  if (!current) throw new Error("No rig open");
+
+  const preview = await api.previewWrite(current.draft_id);
+  if (!preview.validation?.ok) {
+    toast(preview.message, { kind: "error", timeout: 12000 });
+    return;
+  }
+
+  const answer = await prompt(`Write "${current.rig.name}" to the device?`, [
+    { type: "pre", text: preview.diff_rendered || preview.message },
+    {
+      type: "note",
+      text: `Estimated CPU ~${Math.round(
+        (preview.validation.estimated_cpu || 0) * 100
+      )}%. The device's own meter is the one that counts.`,
+    },
+    {
+      type: "note",
+      class: "notice warn",
+      text:
+        "A backup is taken first, which needs the Core in Menu > USB " +
+        "Transfer. Without it the write is refused, because whatever is in " +
+        "that slot has nowhere else to exist.",
+    },
+    {
+      name: "no_backup",
+      label: "Write anyway if no backup can be taken",
+      type: "checkbox",
+      value: false,
+    },
+  ], { okLabel: "Write" });
+
+  if (!answer) return;
+
+  const { job_id } = await api.writeDraft(current.draft_id, {
+    allowWithoutBackup: answer.no_backup,
+  });
+  writeJob = job_id;
+  toast("Writing - looking for the device...", { timeout: 4000 });
+}
+
+export function onJobs(jobs) {
+  if (!writeJob) return;
+  const job = jobs.find((candidate) => candidate.id === writeJob);
+  if (!job?.finished) return;
+
+  writeJob = null;
+  attempt(async () => {
+    const { result, state, error } = await api.job(job.id);
+    if (state !== "succeeded") {
+      toast(error || "The write did not complete.", { kind: "error", timeout: 12000 });
+      return;
+    }
+    toast(result.message, {
+      kind: result.written ? "ok" : "error",
+      timeout: 14000,
+    });
+    // The device is the new baseline once it has been written to.
+    if (result.written) await refreshDrafts(current?.draft_id ?? null);
+  });
+}
+
 /* -------------------------------------------------------------------- init */
 
 export function init() {
@@ -462,11 +534,7 @@ export function init() {
       toast("Exported", { kind: "ok", hint: path });
     });
 
-  $("#write-btn").onclick = () =>
-    attempt(async () => {
-      const dry = await api.writeDraft(current.draft_id, false);
-      toast(dry.message, { kind: dry.ok ? "" : "error", timeout: 11000 });
-    });
+  $("#write-btn").onclick = () => attempt(startWrite);
 
   $("#rig-name").ondblclick = async () => {
     const values = await prompt("Rename rig", [

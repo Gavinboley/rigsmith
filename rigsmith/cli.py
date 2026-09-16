@@ -455,8 +455,14 @@ def rig_export(draft_id: str, out: Path | None) -> None:
 @rig.command("write")
 @click.argument("draft_id")
 @click.option("--yes", is_flag=True, help="Skip the confirmation prompt.")
+@click.option(
+    "--no-backup",
+    is_flag=True,
+    help="Write even if the device's USB storage is not mounted. The slot's "
+         "current contents are then unrecoverable.",
+)
 @handled
-def rig_write(draft_id: str, yes: bool) -> None:
+def rig_write(draft_id: str, yes: bool, no_backup: bool) -> None:
     """Write a draft to the device, after a backup and a diff."""
     from .core import rigs
 
@@ -475,7 +481,11 @@ def rig_write(draft_id: str, yes: bool) -> None:
         click.echo("Not written.")
         return
 
-    result = rigs.write(draft_id, confirm=True)
+    # Discovery sweeps the subnet when nothing answers, which is ten seconds
+    # or more of silence otherwise.
+    click.echo("")
+    click.echo("Backing up and looking for the device...")
+    result = rigs.write(draft_id, confirm=True, allow_without_backup=no_backup)
     click.echo("")
     if result.backup_path:
         click.echo(f"Backup taken first: {result.backup_path}")

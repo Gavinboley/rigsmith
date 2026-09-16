@@ -132,7 +132,16 @@ class WriteResult:
             "backup_path": str(self.backup_path) if self.backup_path else None,
             "diff": [c.description for c in self.diff.changes],
             "diff_summary": self.diff.summary(),
+            # The rendered diff, because a surface that asks "write this?"
+            # has to be able to show what "this" is.
+            "diff_rendered": self.diff.render(),
             "ok": self.validation.ok,
+            "validation": {
+                "ok": self.validation.ok,
+                "estimated_cpu": self.validation.estimated_cpu,
+                "errors": [str(f) for f in self.validation.errors],
+                "warnings": [str(f) for f in getattr(self.validation, "warnings", [])],
+            },
             "report": self.report.to_dict() if self.report is not None else None,
         }
 
@@ -495,11 +504,19 @@ def export(draft_id: str, path: str | Path | None = None) -> Path:
     return save_rig(draft.rig, target)
 
 
-def write(draft_id: str, *, confirm: bool = False) -> WriteResult:
+def write(
+    draft_id: str, *, confirm: bool = False, allow_without_backup: bool = False
+) -> WriteResult:
     """Write a draft to the device: validate, back up, diff, then write.
 
     Returns without writing when ``confirm`` is false, so the diff can be
     reviewed first.
+
+    A write overwrites a rig slot on the device, and a rig built by hand on
+    the device's own screen exists nowhere else. So the backup is a gate, not
+    a courtesy: without one this refuses and says how to mount the storage.
+    ``allow_without_backup`` is the deliberate override for someone who knows
+    the slot is expendable.
     """
     draft = _get(draft_id)
     validation = _validate_rig(draft.rig)
@@ -538,10 +555,25 @@ def write(draft_id: str, *, confirm: bool = False) -> WriteResult:
         volume = find_device_volume()
         backup = timestamped_backup(settings.backups_dir, volume)
         backup_path = backup.destination
-    except DeviceStorageError:
+    except DeviceStorageError as exc:
+        if not allow_without_backup:
+            return WriteResult(
+                draft=draft,
+                diff=difference,
+                validation=validation,
+                written=False,
+                message=(
+                    "Refusing to write without a backup.\n\n"
+                    f"{exc}\n\n"
+                    "A write overwrites a rig slot, and a rig built on the "
+                    "device's own screen exists nowhere else. Put the Core "
+                    "into Menu > USB Transfer so a backup can be taken, or "
+                    "pass allow_without_backup if the slot is expendable."
+                ),
+            )
         backup_note = (
-            "No backup was taken - the device's USB storage is not mounted "
-            "(Menu > USB Transfer). Mount it and rerun for a safety net.\n\n"
+            "NO BACKUP WAS TAKEN - this write explicitly waived the backup "
+            "gate. Whatever was in that slot is gone.\n\n"
         )
 
     import asyncio

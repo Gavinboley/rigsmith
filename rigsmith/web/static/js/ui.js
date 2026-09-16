@@ -75,8 +75,28 @@ export function prompt(title, fields, { okLabel = "OK" } = {}) {
   $("#modal-ok").textContent = okLabel;
 
   for (const field of fields) {
+    // A note is not an input - it is the context somebody needs to answer
+    // the question, and a dialog that asks without showing it is a trap.
+    if (field.type === "note") {
+      body.append(el("div", { class: field.class || "hint", text: field.text }));
+      continue;
+    }
+    if (field.type === "pre") {
+      body.append(el("pre", { class: "out", text: field.text }));
+      continue;
+    }
+
     body.append(el("label", { text: field.label, for: `f-${field.name}` }));
-    if (field.type === "select") {
+    if (field.type === "checkbox") {
+      body.append(
+        el("input", {
+          id: `f-${field.name}`,
+          name: field.name,
+          type: "checkbox",
+          checked: Boolean(field.value),
+        })
+      );
+    } else if (field.type === "select") {
       body.append(
         el(
           "select",
@@ -114,7 +134,10 @@ export function prompt(title, fields, { okLabel = "OK" } = {}) {
         if (dialog.returnValue !== "ok") return resolve(null);
         const values = {};
         for (const field of fields) {
-          values[field.name] = body.querySelector(`#f-${field.name}`).value;
+          if (field.type === "note" || field.type === "pre") continue;
+          const node = body.querySelector(`#f-${field.name}`);
+          values[field.name] =
+            field.type === "checkbox" ? node.checked : node.value;
         }
         resolve(values);
       },

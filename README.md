@@ -11,7 +11,7 @@ pip install -e ".[all]"
 rigsmith ui
 ```
 
-> **Status: works without hardware; one thing needs it.** Rig authoring, validation, NAM analysis, tone matching, catalog extraction, USB backup, MIDI and the web UI are all done and covered by 489 tests. The Remote Editor's wire protocol still has to be captured against a powered-on Core before `write_rig` can write — everything else runs today. See [docs/PROTOCOL.md](docs/PROTOCOL.md).
+> **Status: works without hardware; one thing needs it.** Rig authoring, validation, NAM analysis, tone matching, catalog extraction, USB backup, MIDI and the web UI are all done and covered by 517 tests. The Remote Editor's wire protocol still has to be captured against a powered-on Core before `write_rig` can write — everything else runs today. See [docs/PROTOCOL.md](docs/PROTOCOL.md).
 
 ---
 
@@ -26,7 +26,7 @@ As far as public sources show, nothing like this exists for HeadRush — no MCP 
 This project does **not** modify, patch, or reflash device firmware, and it never will.
 
 - Device writes go through the same interfaces the official Remote Editor uses.
-- Every write is gated: **validate → backup → diff → confirm → write → verify**.
+- Every write is gated: **validate → backup → diff → confirm → write → verify**. The backup is a gate, not a courtesy — without one the write is refused, because a rig built on the device's own screen exists nowhere else. Waiving it is explicit (`--no-backup`) and says what it cost.
 - `RIGSMITH_READONLY=1` disables every write at startup.
 - The web UI binds to **loopback only** and warns loudly if you override that — it can control an amp modeler on your network, and exposing it to that network would be a real footgun.
 - Firmware analysis is read-only static inspection for interoperability. No vendor firmware, binaries, or assets are committed here — only derived documentation.

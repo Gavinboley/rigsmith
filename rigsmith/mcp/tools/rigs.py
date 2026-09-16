@@ -290,13 +290,23 @@ def export_rig(draft_id: str, path: str | None = None) -> str:
 
 
 @tool
-def write_rig(draft_id: str, confirm: bool = False) -> str:
+def write_rig(
+    draft_id: str, confirm: bool = False, allow_without_backup: bool = False
+) -> str:
     """Write a draft to the device.
 
     Validates, backs up, and shows a diff first. Requires confirm=True so the
     diff can be reviewed before anything changes on the hardware.
+
+    Args:
+        allow_without_backup: Write even when the device's USB storage is not
+            mounted and no backup can be taken. Do not set this on the user's
+            behalf - a write overwrites a rig slot, and a rig built on the
+            device's own screen exists nowhere else. Ask them first.
     """
-    result = rigs.write(draft_id, confirm=confirm)
+    result = rigs.write(
+        draft_id, confirm=confirm, allow_without_backup=allow_without_backup
+    )
     rendered = result.render()
     if not result.written and not confirm and result.validation.ok:
         # Core's message is surface-agnostic; name the actual argument here.

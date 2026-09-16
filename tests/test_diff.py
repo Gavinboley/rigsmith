@@ -8,6 +8,8 @@ attribute one block's edit to another.
 
 from __future__ import annotations
 
+import pytest
+
 import copy
 
 from rigsmith.rig import Block, BlockCategory, Doubling, Rig, Scene, SceneBlockState
@@ -191,3 +193,130 @@ def test_summary_counts_by_kind():
     before = rig_with("a")
     after = rig_with("a", "b")
     assert "add" in diff_rigs(before, after).summary()
+
+
+# --------------------------------------------------------------------------
+# nothing that reaches the device may be invisible in a diff
+# --------------------------------------------------------------------------
+
+#: Fields that deliberately never appear in a diff, and why. A diff is what a
+#: person approves before a write, so anything missing from this list has to
+#: show up in one - and anything added to it is a decision on the record
+#: rather than an omission nobody noticed.
+NOT_DEVICE_STATE = {
+    "Block": {
+        "model_name": "a display label; model_id is the thing that is written",
+        "params": "diffed per parameter, not as a whole dict",
+        "slot": "diffed as a move, not as a field change",
+        "category": "changing it is a remove plus an add",
+    },
+    "Scene": {
+        "name": "diffed as a scene add/remove",
+        "states": "diffed per slot",
+        "presets": "diffed per slot",
+    },
+    "Rig": {
+        "name": "the rig's identity, not its contents",
+        "blocks": "diffed per block",
+        "scenes": "diffed per scene",
+        "notes": "rigsmith's own annotation; never written to the device",
+        "source_recipe": "provenance; never written to the device",
+    },
+}
+
+
+def _rig_with_one_block() -> Rig:
+    rig = rig_with("muff")
+    rig.scenes.append(
+        Scene(
+            name="Lead",
+            states={1: SceneBlockState.ON},
+            footswitch=1,
+        )
+    )
+    return rig
+
+
+@pytest.mark.parametrize(
+    "owner,field_name,value",
+    [
+        ("Block", "enabled", False),
+        ("Block", "input_gain_db", -3.0),
+        ("Block", "output_gain_db", 2.5),
+        ("Block", "doubled_model_id", "twin"),
+        ("Block", "led_color", "red"),
+        ("Block", "lane", 2),
+        ("Scene", "footswitch", 4),
+        ("Scene", "led_color", "blue"),
+        ("Rig", "rig_width", 60),
+        ("Rig", "setlist", "Set A"),
+        ("Rig", "slot_number", 7),
+    ],
+)
+def test_every_device_facing_field_shows_up_in_a_diff(owner, field_name, value):
+    import copy
+
+    from rigsmith.rig.diff import diff_rigs
+
+    before = _rig_with_one_block()
+    after = copy.deepcopy(before)
+
+    target = {
+        "Block": lambda: after.blocks[0],
+        "Scene": lambda: after.scenes[0],
+        "Rig": lambda: after,
+    }[owner]()
+    setattr(target, field_name, value)
+
+    difference = diff_rigs(before, after)
+    assert difference.changes, f"changing {owner}.{field_name} produced no change"
+    rendered = difference.render().lower()
+    assert difference.changes, rendered
+
+
+def test_the_exclusion_list_covers_every_field_that_is_not_diffed():
+    """A field nobody diffs and nobody excused is a silent write."""
+    import copy
+    from dataclasses import fields
+
+    from rigsmith.rig.diff import diff_rigs
+    from rigsmith.rig.model import Block, Rig, Scene
+
+    samples = {
+        "Block": (Block, lambda rig: rig.blocks[0]),
+        "Scene": (Scene, lambda rig: rig.scenes[0]),
+        "Rig": (Rig, lambda rig: rig),
+    }
+    # Values that differ from the defaults used by _rig_with_one_block.
+    probes = {
+        bool: False,
+        int: 9,
+        float: -4.0,
+        str: "changed",
+    }
+
+    undiffed: list[str] = []
+    for owner, (cls, pick) in samples.items():
+        for descriptor in fields(cls):
+            if descriptor.name in NOT_DEVICE_STATE[owner]:
+                continue
+
+            before = _rig_with_one_block()
+            after = copy.deepcopy(before)
+            target = pick(after)
+            current = getattr(target, descriptor.name)
+
+            probe = probes.get(type(current))
+            if probe is None or probe == current:
+                # Enums, lists and dicts are exercised by the parametrised
+                # test above, or are containers diffed element by element.
+                continue
+            setattr(target, descriptor.name, probe)
+
+            if not diff_rigs(before, after).changes:
+                undiffed.append(f"{owner}.{descriptor.name}")
+
+    assert not undiffed, (
+        "these reach the device but never appear in a diff, so a person would "
+        f"approve a write that silently changed them: {undiffed}"
+    )

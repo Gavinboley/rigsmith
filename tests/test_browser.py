@@ -720,3 +720,42 @@ def test_the_panel_says_what_is_wrong_not_just_how_wrong(browser, server, tmp_pa
 
         low = page.locator("#bands .band", has_text="low end")
         assert "quiet" in (low.get_attribute("class") or "")
+
+
+def test_writing_asks_before_it_writes_and_shows_what(browser, server):
+    """The one irreversible thing this tool does, so the dialog has to carry
+    the diff, the cost, and the backup gate - not just a yes/no."""
+    with page_at(browser, server) as page:
+        page.evaluate(
+            """async () => {
+                const created = await fetch('/api/drafts', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({name: 'Cherub Rock'}),
+                }).then((r) => r.json());
+                await fetch(`/api/drafts/${created.draft_id}/blocks`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({category: 'nam', model_id: 'JMP-1959'}),
+                });
+            }"""
+        )
+        page.reload(wait_until="networkidle")
+        page.click("#tabs .tab[data-panel='rig']")
+        page.wait_for_selector("#board .slot[data-category='nam']")
+
+        page.click("#write-btn")
+        page.wait_for_selector("#modal[open]", timeout=15000)
+
+        body = page.inner_text("#modal-body")
+        assert "JMP-1959" in body, "the diff has to be in the dialog"
+        assert "Estimated CPU" in body
+        assert "USB Transfer" in body, "the backup gate has to be explained"
+
+        # The waiver starts off. Somebody has to choose it.
+        assert page.locator("#f-no_backup").is_checked() is False
+
+        # Cancelling writes nothing and leaves the rig alone.
+        page.click("#modal-form button[value='cancel']")
+        page.wait_for_selector("#modal[open]", state="detached", timeout=5000)
+        assert "JMP-1959" in page.inner_text("#board")

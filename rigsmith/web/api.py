@@ -582,8 +582,31 @@ def export_draft(draft_id: str) -> dict:
 
 
 @router.post("/drafts/{draft_id}/write")
-def write_draft(draft_id: str, confirm: bool = False) -> dict:
-    return rigs.write(draft_id, confirm=confirm).to_dict()
+def write_draft(
+    draft_id: str, confirm: bool = False, allow_without_backup: bool = False
+) -> dict:
+    """Preview a write, or perform one.
+
+    The preview is synchronous - it touches nothing but the draft. The real
+    write is a job, because finding the device can take ten seconds or more
+    when nothing answers, and a page that simply stops for that long looks
+    broken rather than busy.
+    """
+    if not confirm:
+        return rigs.write(draft_id, confirm=False).to_dict()
+
+    job = get_manager().submit(
+        f"write '{draft_id}' to the device",
+        lambda progress: (
+            progress.update(0.1, "looking for the device"),
+            rigs.write(
+                draft_id,
+                confirm=True,
+                allow_without_backup=allow_without_backup,
+            ).to_dict(),
+        )[1],
+    )
+    return {"job_id": job.id, "name": job.name}
 
 
 # --------------------------------------------------------------------------

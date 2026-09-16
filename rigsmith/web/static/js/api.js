@@ -89,8 +89,13 @@ export const api = {
 
   preview: (id) => api.get(`/api/drafts/${id}/preview`),
   exportDraft: (id) => api.post(`/api/drafts/${id}/export`),
-  writeDraft: (id, confirm) =>
-    api.post(`/api/drafts/${id}/write`, {}, { confirm }),
+  previewWrite: (id) => api.post(`/api/drafts/${id}/write`, {}, { confirm: false }),
+  writeDraft: (id, { allowWithoutBackup = false } = {}) =>
+    api.post(
+      `/api/drafts/${id}/write`,
+      {},
+      { confirm: true, allow_without_backup: allowWithoutBackup }
+    ),
 
   catalogSearch: (params) => api.get("/api/catalog/search", params),
 

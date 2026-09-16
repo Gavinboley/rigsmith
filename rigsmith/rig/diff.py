@@ -237,6 +237,19 @@ def _diff_scenes(before: Rig, after: Rig, changes: list[Change]) -> None:
             changes.append(
                 Change("scene", f"scene '{scene.name}': preset recalls changed")
             )
+        # The scene's LED colour is what the footswitch lights up as, so it
+        # is device state and belongs in the diff a person approves - even
+        # though it changes nothing about the sound.
+        if old.led_color != scene.led_color:
+            changes.append(
+                Change(
+                    "scene",
+                    f"scene '{scene.name}': LED "
+                    f"{old.led_color or 'default'} -> {scene.led_color or 'default'}",
+                    before=old.led_color,
+                    after=scene.led_color,
+                )
+            )
 
     for key, scene in by_name_before.items():
         if key not in by_name_after:

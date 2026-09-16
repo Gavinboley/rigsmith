@@ -818,3 +818,45 @@ def test_band_comparison_makes_its_files_servable(client, outside_file):
         json={"target_path": str(outside_file), "candidate_path": str(outside_file)},
     )
     assert client.get("/api/audio", params={"path": str(outside_file)}).status_code == 200
+
+
+# --------------------------------------------------------------------------
+# writing, which is the one irreversible thing
+# --------------------------------------------------------------------------
+
+
+def test_previewing_a_write_is_synchronous_and_shows_the_diff(client):
+    draft_id = client.post("/api/drafts", json={"name": "W"}).json()["draft_id"]
+    client.post(
+        f"/api/drafts/{draft_id}/blocks", json={"category": "nam", "model_id": "JMP"}
+    )
+
+    preview = client.post(f"/api/drafts/{draft_id}/write").json()
+    assert preview["written"] is False
+    assert "job_id" not in preview, "a preview touches nothing; it need not be a job"
+    # The page has to be able to show what it is asking about.
+    assert preview["diff_rendered"]
+    assert preview["validation"]["estimated_cpu"] > 0
+    assert preview["validation"]["ok"] is True
+
+
+def test_a_confirmed_write_is_a_job(client):
+    """Finding the device can take ten seconds; a page that stops for that
+    long looks broken rather than busy."""
+    draft_id = client.post("/api/drafts", json={"name": "W"}).json()["draft_id"]
+    client.post(
+        f"/api/drafts/{draft_id}/blocks", json={"category": "nam", "model_id": "JMP"}
+    )
+
+    started = client.post(
+        f"/api/drafts/{draft_id}/write", params={"confirm": True}
+    ).json()
+    assert started["job_id"]
+
+    from rigsmith.core.jobs import get_manager
+
+    get_manager().cancel(started["job_id"])
+
+
+def test_a_write_preview_on_a_missing_draft_is_404(client):
+    assert client.post("/api/drafts/ghost/write").status_code == 404
