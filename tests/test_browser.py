@@ -440,3 +440,53 @@ def test_the_offline_sweep_reports_its_own_failure_in_the_panel(
             timeout=30000,
         )
         assert "failed" in page.inner_text("#search-progress")
+
+
+def test_the_blind_test_can_be_decided_from_the_keyboard(browser, server, tmp_path):
+    """Hands off the mouse, eyes off the buttons - one less thing that is not
+    the sound."""
+    first = audio_file(tmp_path, "one.wav")
+    second = audio_file(tmp_path, "two.wav")
+
+    with page_at(browser, server) as page:
+        page.evaluate(
+            """async ([a, b]) => {
+                await fetch('/api/ab', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        session_id: 'keys',
+                        target_label: 'the record',
+                        candidates: {one: a, two: b},
+                    }),
+                });
+            }""",
+            [str(first), str(second)],
+        )
+        page.reload(wait_until="networkidle")
+        page.click("#tabs .tab[data-panel='match']")
+        page.select_option("#ab-session", "keys")
+        page.wait_for_selector("#ab-trial .ab-pair")
+        page.wait_for_selector(".ab-side.playing", timeout=15000)
+
+        # A and B move the audible side without moving the playhead.
+        page.keyboard.press("b")
+        page.wait_for_function(
+            "() => document.querySelectorAll('.ab-side')[1]"
+            ".classList.contains('playing')",
+            timeout=5000,
+        )
+        page.keyboard.press("a")
+        page.wait_for_function(
+            "() => document.querySelectorAll('.ab-side')[0]"
+            ".classList.contains('playing')",
+            timeout=5000,
+        )
+
+        # 1 records "A is closer" and moves on.
+        page.keyboard.press("1")
+        page.wait_for_function(
+            "() => document.querySelector('#ab-trial').textContent.includes('1/1')"
+            " || document.querySelector('#ab-standings').children.length > 0",
+            timeout=10000,
+        )

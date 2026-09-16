@@ -389,6 +389,7 @@ async function renderSession(sessionId) {
   const host = clear($("#ab-trial"));
   const standings = clear($("#ab-standings"));
   stopPlayback();
+  unbindKeys();
   if (!sessionId) return;
 
   const session = await attempt(() => api.abSession(sessionId));
@@ -467,13 +468,57 @@ async function renderSession(sessionId) {
       text:
         "Both clips are already decoded and playing in sync - switching only " +
         "changes which one you hear, so the comparison is fair.",
+    }),
+    el("div", {
+      class: "hint",
+      text:
+        "Keys:  A / B switch  -  space toggles  -  1 A is closer, 2 tie, " +
+        "3 B is closer. Worth using: deciding without looking at the screen " +
+        "removes one more thing that is not the sound.",
     })
   );
+
+  bindKeys(sessionId, trial.trial_id);
 
   await attempt(async () => {
     await startPair(urls, 0);
     markActive(0);
   });
+}
+
+/* Deciding by ear works better when the hands are not on a mouse and the
+ * eyes are not on a button. One handler at a time, replaced per trial. */
+
+let keyHandler = null;
+
+function unbindKeys() {
+  if (keyHandler) document.removeEventListener("keydown", keyHandler);
+  keyHandler = null;
+}
+
+function bindKeys(sessionId, trialId) {
+  unbindKeys();
+  keyHandler = (event) => {
+    if (event.metaKey || event.ctrlKey || event.altKey) return;
+    const tag = event.target?.tagName;
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+    if (!player) return;
+
+    const key = event.key.toLowerCase();
+    const actions = {
+      a: () => switchTo(0),
+      b: () => switchTo(1),
+      " ": () => switchTo(player.active === 0 ? 1 : 0),
+      1: () => answer(sessionId, trialId, "left"),
+      2: () => answer(sessionId, trialId, "tie"),
+      3: () => answer(sessionId, trialId, "right"),
+    };
+    const action = actions[key];
+    if (!action) return;
+    event.preventDefault();
+    action();
+  };
+  document.addEventListener("keydown", keyHandler);
 }
 
 async function answer(sessionId, trialId, verdict) {
@@ -616,6 +661,7 @@ export const onShow = refreshSessions;
 
 export function onHide() {
   stopPlayback();
+  unbindKeys();
   waves?.target.stop();
   waves?.candidate.stop();
 }

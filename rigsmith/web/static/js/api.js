@@ -101,6 +101,7 @@ export const api = {
 
   scanCaptures: (directory) => api.get("/api/captures/scan", { directory }),
   tone3000Status: () => api.get("/api/tone3000/status"),
+  tone3000Login: () => api.post("/api/tone3000/login"),
   tone3000Search: (params) => api.get("/api/tone3000/search", params),
 
   matchDevices: () => api.get("/api/match/devices"),

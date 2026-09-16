@@ -605,3 +605,21 @@ def test_a_blinded_clip_url_that_does_not_exist_is_404(client, tmp_path):
         },
     )
     assert client.get("/api/ab/s/audio/nonsense").status_code == 404
+
+
+def test_tone3000_login_is_reachable_from_the_page(client):
+    """Sign-in used to be a CLI-only step in an otherwise complete panel."""
+    response = client.post("/api/tone3000/login")
+    assert response.status_code == 200
+    job_id = response.json()["job_id"]
+
+    # Without a client id it fails fast and says what to set - it must not sit
+    # there holding a connection open waiting on a browser that never opened.
+    for _ in range(100):
+        job = client.get(f"/api/jobs/{job_id}").json()
+        if job["finished"]:
+            break
+        time.sleep(0.05)
+    assert job["finished"]
+    if job["state"] == "failed":
+        assert "client id" in (job["error"] or "").lower()

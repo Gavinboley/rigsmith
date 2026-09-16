@@ -75,12 +75,20 @@ async function refreshAuth() {
   host.className = "notice warn";
   host.append(
     el("div", { text: "Not connected to TONE3000." }),
-    el("div", {
-      class: "hint",
-      text: !status.client_id
-        ? "Set TONE3000_CLIENT_ID, then run: rigsmith tone3000 login"
-        : "Run: rigsmith tone3000 login",
-    }),
+    status.client_id
+      ? el("button", {
+          class: "btn primary",
+          text: "Sign in",
+          title: "Opens TONE3000 in a new tab and catches the redirect here.",
+          onclick: () => attempt(startLogin),
+        })
+      : el("div", {
+          class: "hint",
+          text:
+            "Set TONE3000_CLIENT_ID to a publishable client id from " +
+            "https://www.tone3000.com/api, then restart rigsmith.",
+        }),
+    el("div", { id: "t3k-login", class: "hint" }),
     el("div", {
       class: "hint",
       text:
@@ -88,6 +96,46 @@ async function refreshAuth() {
         "needs no API access and downloads straight to the device.",
     })
   );
+}
+
+/* The flow waits on a person deciding something in another tab, so it runs
+ * as a job and this watches it. The URL is shown as well as opened: a browser
+ * that opens somewhere the user is not looking should not be a dead end. */
+
+let loginJob = null;
+
+async function startLogin() {
+  const { job_id } = await api.tone3000Login();
+  loginJob = job_id;
+  const host = $("#t3k-login");
+  if (host) host.textContent = "Waiting for you to authorise in the other tab...";
+}
+
+export function onJobs(jobs) {
+  if (!loginJob) return;
+  const job = jobs.find((candidate) => candidate.id === loginJob);
+  if (!job) return;
+
+  const host = $("#t3k-login");
+  if (host && job.message) {
+    clear(host);
+    if (job.message.startsWith("http")) {
+      host.append(
+        el("span", { text: "If no tab opened: " }),
+        el("a", { href: job.message, target: "_blank", text: "authorise here" })
+      );
+    } else {
+      host.textContent = job.message;
+    }
+  }
+
+  if (job.finished) {
+    loginJob = null;
+    if (job.state === "failed" && host) {
+      host.textContent = job.error || "Sign-in did not complete.";
+    }
+    refreshAuth();
+  }
 }
 
 export function init() {

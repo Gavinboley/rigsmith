@@ -492,6 +492,26 @@ def tone3000_status() -> dict:
     return captures.auth_status().to_dict()
 
 
+@router.post("/tone3000/login")
+def tone3000_login() -> dict:
+    """Start the OAuth flow, and hand back the URL as well as opening it.
+
+    A job rather than a request: the flow waits on a person deciding something
+    in another tab, which is minutes at the outer edge and is not a thing to
+    hold a connection open for. The URL comes back in the job's log because a
+    browser that refuses to open - or opens somewhere the user is not looking
+    - should not be a dead end.
+    """
+    def run(progress):
+        return captures.login(
+            open_browser=True,
+            on_url=lambda url: progress.update(None, url),
+        ).to_dict()
+
+    job = get_manager().submit("TONE3000 sign-in", run)
+    return {"job_id": job.id, "name": job.name}
+
+
 @router.get("/tone3000/search")
 async def tone3000_search(
     q: str = "",
