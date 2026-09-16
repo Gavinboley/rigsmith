@@ -379,3 +379,74 @@ def test_invalid_sort_is_rejected_before_a_request():
     client = Tone3000Client(tokens=TokenSet(access_token="t"))
     with pytest.raises(ValueError, match="sort must be"):
         asyncio.run(client.search("x", sort="whatever"))
+
+
+# --------------------------------------------------------------------------
+# who the credentials belong to
+# --------------------------------------------------------------------------
+
+
+def test_identify_is_the_only_status_call_that_touches_the_network(
+    tmp_path, monkeypatch
+):
+    """auth_status runs on every page load and every doctor; it must stay offline."""
+    import asyncio
+
+    from rigsmith import config
+    from rigsmith.core import captures
+
+    monkeypatch.setenv("RIGSMITH_WORKSPACE", str(tmp_path))
+    monkeypatch.setenv("TONE3000_CLIENT_ID", "test-client")
+    config.set_settings(config.Settings())
+    try:
+        (tmp_path / "credentials.json").write_text(
+            '{"tone3000": {"access_token": "t", "refresh_token": "r",'
+            ' "expires_at": 9999999999}}',
+            encoding="utf-8",
+        )
+
+        offline = captures.auth_status()
+        assert offline.ready
+        assert offline.username is None, "the offline call must not have asked"
+
+        class FakeClient:
+            async def whoami(self):
+                return {"username": "gavin"}
+
+        monkeypatch.setattr(captures, "_client", lambda: FakeClient())
+        named = asyncio.run(captures.identify())
+        assert named.username == "gavin"
+        assert "as gavin" in named.render()
+    finally:
+        config.set_settings(None)
+
+
+def test_credentials_the_api_rejects_are_reported_as_expired(tmp_path, monkeypatch):
+    """More useful than the status code of a call the user did not make."""
+    import asyncio
+
+    from rigsmith import config
+    from rigsmith.core import captures
+    from rigsmith.tone.tone3000 import Tone3000Error
+
+    monkeypatch.setenv("RIGSMITH_WORKSPACE", str(tmp_path))
+    monkeypatch.setenv("TONE3000_CLIENT_ID", "test-client")
+    config.set_settings(config.Settings())
+    try:
+        (tmp_path / "credentials.json").write_text(
+            '{"tone3000": {"access_token": "t", "refresh_token": "r",'
+            ' "expires_at": 9999999999}}',
+            encoding="utf-8",
+        )
+
+        class RefusingClient:
+            async def whoami(self):
+                raise Tone3000Error("401 unauthorized")
+
+        monkeypatch.setattr(captures, "_client", lambda: RefusingClient())
+        status = asyncio.run(captures.identify())
+        assert status.expired
+        assert not status.ready
+        assert "token expired" in status.render()
+    finally:
+        config.set_settings(None)

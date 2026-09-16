@@ -137,7 +137,9 @@ async function refreshAuth() {
 
   if (status.ready) {
     host.className = "notice";
-    host.textContent = "Authenticated.";
+    host.textContent = status.username
+      ? `Authenticated as ${status.username}.`
+      : "Authenticated.";
     return;
   }
   host.className = "notice warn";
@@ -201,6 +203,8 @@ function onLoginJobs(jobs) {
     loginJob = null;
     if (job.state === "failed" && host) {
       host.textContent = job.error || "Sign-in did not complete.";
+    } else if (host) {
+      clear(host);
     }
     refreshAuth();
   }

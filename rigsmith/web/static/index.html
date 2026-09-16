@@ -346,6 +346,16 @@
       </div>
 
       <div class="row">
+        <input type="number" id="midi-bpm" class="narrow" min="20" max="400" placeholder="BPM">
+        <button class="btn" id="midi-tap">Tap tempo</button>
+        <span class="hint">
+          Delay and modulation times on a record are the song's tempo. There
+          is no set-BPM message, so this taps at the interval and the device
+          averages it &mdash; close, not exact.
+        </span>
+      </div>
+
+      <div class="row">
         <select id="midi-draft" class="grow" title="Draft to exercise"></select>
         <button class="btn" id="midi-verify">Verify over MIDI</button>
         <span class="hint">

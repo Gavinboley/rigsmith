@@ -561,6 +561,23 @@ def midi_fs_cmd(number: int, port: str | None, channel: int) -> None:
     click.echo(devices.press_footswitch(number, port=port, channel=channel))
 
 
+@device_midi.command("tap")
+@click.argument("bpm", type=float)
+@click.option("--taps", default=4, show_default=True, help="More taps, steadier average.")
+@click.option("--port")
+@click.option("--channel", default=0, show_default=True)
+@handled
+def midi_tap_cmd(bpm: float, taps: int, port: str | None, channel: int) -> None:
+    """Set the tempo by tapping it, the way a foot would.
+
+    Delay and modulation times on a record are the song's tempo, and there is
+    no "set BPM" message - CC64 is a tap and the device averages what it gets.
+    """
+    from .core import devices
+
+    click.echo(devices.tap_tempo(bpm, taps=taps, port=port, channel=channel))
+
+
 @device_midi.command("block")
 @click.argument("slot", type=int)
 @click.option("--off", is_flag=True)
@@ -645,11 +662,19 @@ def tone3000() -> None:
 
 @tone3000.command("status")
 @handled
-def tone3000_status_cmd() -> None:
-    """Show whether TONE3000 is usable, and what is missing."""
+@click.option("--offline", is_flag=True, help="Do not ask the API who you are.")
+def tone3000_status_cmd(offline: bool) -> None:
+    """Show whether TONE3000 is usable, and what is missing.
+
+    Confirms the credentials against the API unless --offline, because a
+    token the server will not accept looks identical on disk to one it will.
+    """
     from .core import captures as core_captures
 
-    click.echo(core_captures.auth_status().render())
+    status = (
+        core_captures.auth_status() if offline else _run(core_captures.identify())
+    )
+    click.echo(status.render())
 
 
 @tone3000.command("login")
@@ -670,9 +695,11 @@ def tone3000_login(port: int, no_browser: bool, timeout: float) -> None:
         click.echo(f"  {url}\n")
         click.echo("Waiting for the redirect...")
 
-    status = core_captures.login(
+    core_captures.login(
         port=port, timeout_s=timeout, open_browser=not no_browser, on_url=show
     )
+    # Ask who that was, so "authenticated" reads as "authenticated as someone".
+    status = _run(core_captures.identify())
     click.echo(click.style("\n" + status.render(), fg="green"))
 
 

@@ -244,6 +244,45 @@ def set_block(
     return f"Block in slot {slot} {'on' if enabled else 'off'}."
 
 
+def tap_tempo(
+    bpm: float, *, taps: int = 4, port: str | None = None, channel: int = 0
+) -> str:
+    """Set the device's tempo by tapping it, the way a person would.
+
+    Delay and modulation times on a record are the song's tempo, and the Core
+    has no "set BPM to N" message - CC64 is a tap, and the device averages the
+    intervals. So this taps at the interval you want, which is the same thing
+    a foot does, and is why the result is close rather than exact.
+
+    Four taps is the usual minimum for a stable average; more is steadier and
+    takes longer. At 120 BPM, four taps is a second and a half.
+    """
+    import time
+
+    require_writable("send MIDI to the device")
+    if not 20 <= bpm <= 400:
+        raise Invalid(
+            f"{bpm} BPM is outside what a tap tempo can express",
+            hint="The Core's tap range is roughly 20-400 BPM.",
+        )
+    if taps < 2:
+        raise Invalid("a tap tempo needs at least two taps to have an interval")
+
+    interval = 60.0 / bpm
+    with _controller(port, channel) as midi:
+        for index in range(taps):
+            if index:
+                time.sleep(interval)
+            midi.tap_tempo()
+
+    return (
+        f"Tapped {taps} times at {bpm:.1f} BPM "
+        f"({interval * 1000:.0f} ms apart).\n"
+        "The device averages the intervals, so the result is close rather "
+        "than exact - check the tempo on screen if it matters."
+    )
+
+
 @dataclass
 class VerifyResult:
     """What a MIDI verification pass exercised."""

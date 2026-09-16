@@ -168,6 +168,16 @@ export function init() {
       $("#midi-out").textContent = result.rendered;
     });
 
+  $("#midi-tap").onclick = () =>
+    attempt(async () => {
+      const bpm = Number($("#midi-bpm").value);
+      if (!Number.isFinite(bpm) || bpm < 20 || bpm > 400) {
+        throw new Error("Enter a tempo between 20 and 400 BPM");
+      }
+      const { message } = await api.midiTap({ bpm, ...midiTarget() });
+      $("#midi-out").textContent = message;
+    });
+
   renderFootswitches();
   return refreshDrafts();
 }

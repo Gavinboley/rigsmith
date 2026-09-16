@@ -238,3 +238,56 @@ def test_activate_scene_requires_a_footswitch():
     controller = MidiController()
     with pytest.raises(ValueError, match="no footswitch"):
         controller.activate_scene(Scene(name="Lead"))
+
+
+# --------------------------------------------------------------------------
+# tap tempo
+# --------------------------------------------------------------------------
+
+
+def test_tap_tempo_sends_taps_at_the_right_interval(monkeypatch):
+    """There is no set-BPM message; the device averages what a foot does."""
+    import time
+
+    from rigsmith.core import devices
+    from rigsmith.core.errors import Invalid
+
+    sent: list[str] = []
+    slept: list[float] = []
+
+    class FakeController:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def tap_tempo(self):
+            sent.append("tap")
+
+    monkeypatch.setattr(devices, "_controller", lambda port, channel: FakeController())
+    monkeypatch.setattr(time, "sleep", slept.append)
+
+    message = devices.tap_tempo(120, taps=4)
+
+    assert len(sent) == 4
+    # Three gaps between four taps, each half a second at 120 BPM.
+    assert slept == pytest.approx([0.5, 0.5, 0.5])
+    assert "120.0 BPM" in message
+    assert "close rather than exact" in message
+
+
+def test_tap_tempo_refuses_a_tempo_no_tap_could_express():
+    from rigsmith.core import devices
+    from rigsmith.core.errors import Invalid
+
+    with pytest.raises(Invalid, match="outside what a tap tempo can express"):
+        devices.tap_tempo(2000)
+
+
+def test_tap_tempo_needs_an_interval_to_average():
+    from rigsmith.core import devices
+    from rigsmith.core.errors import Invalid
+
+    with pytest.raises(Invalid, match="at least two taps"):
+        devices.tap_tempo(120, taps=1)

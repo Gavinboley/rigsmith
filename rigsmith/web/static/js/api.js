@@ -101,6 +101,7 @@ export const api = {
   midiSelect: (body) => api.post("/api/device/midi/select", body),
   midiFootswitch: (body) => api.post("/api/device/midi/footswitch", body),
   midiBlock: (body) => api.post("/api/device/midi/block", body),
+  midiTap: (body) => api.post("/api/device/midi/tap", body),
   midiVerify: (body) => api.post("/api/device/midi/verify", body),
 
   scanCaptures: (directory) => api.get("/api/captures/scan", { directory }),

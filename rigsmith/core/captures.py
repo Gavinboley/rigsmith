@@ -163,7 +163,12 @@ class AuthStatus:
 
 
 def auth_status() -> AuthStatus:
-    """Report TONE3000 credentials without making a network call."""
+    """Report TONE3000 credentials without making a network call.
+
+    Deliberately offline: this runs on every ``doctor``, every page load, and
+    at the top of the Captures panel, and none of those should wait on - or
+    spend rate limit against - somebody else's API.
+    """
     from ..tone.tone3000 import load_tokens
 
     settings = get_settings()
@@ -173,6 +178,33 @@ def auth_status() -> AuthStatus:
         tokens=tokens is not None,
         expired=bool(tokens and tokens.expired),
     )
+
+
+async def identify() -> AuthStatus:
+    """Ask TONE3000 who these credentials belong to.
+
+    The network-using half of :func:`auth_status`. Worth one call right after
+    a login, so "authenticated" reads as "authenticated as someone", and so a
+    stale token in the workspace is caught by the server rather than by a
+    later search failing for reasons that look unrelated.
+    """
+    from ..tone.tone3000 import Tone3000Error
+
+    status = auth_status()
+    if not status.ready:
+        return status
+    try:
+        user = await _client().whoami()
+    except Tone3000Error:
+        # The credentials exist but the API will not accept them. That is an
+        # expired token in every practical case, and saying so is more use
+        # than reporting the HTTP status of a call the user did not make.
+        status.expired = True
+        return status
+    status.username = (
+        user.get("username") or user.get("name") or user.get("email") or None
+    )
+    return status
 
 
 def login(
@@ -364,6 +396,9 @@ class Downloaded:
     """Generation inferred from the file itself."""
     size: str | None = None
     loadable: bool | None = None
+    tone_title: str | None = None
+    licence: str | None = None
+    """Whoever made the capture chose this; it travels with the file."""
 
     @property
     def disagrees(self) -> bool:
@@ -392,6 +427,8 @@ class Downloaded:
             "size": self.size,
             "loadable": self.loadable,
             "disagrees": self.disagrees,
+            "tone_title": self.tone_title,
+            "licence": self.licence,
         }
 
 
@@ -428,6 +465,13 @@ async def download(
     destination.mkdir(parents=True, exist_ok=True)
 
     client = _client()
+    try:
+        tone = await client.get_tone(tone_id)
+    except Exception:
+        # Metadata is a nicety; the models are the point. A tone endpoint
+        # that is tier-gated or renamed must not block the download.
+        tone = None
+
     models = await client.list_models(
         tone_id, architecture=None if architecture == "any" else architecture
     )
@@ -451,6 +495,7 @@ async def download(
             ),
         )
 
+    licence = getattr(tone, "license", None)
     results: list[Downloaded] = []
     for index, model in enumerate(wanted[:limit], start=1):
         if progress:
@@ -474,6 +519,8 @@ async def download(
                 actual=parsed.generation.value,
                 size=parsed.size or model.size,
                 loadable=parsed.headrush_compatible,
+                tone_title=getattr(tone, "title", None),
+                licence=licence,
             )
         )
 
@@ -506,6 +553,14 @@ def render_download(results: list[Downloaded]) -> str:
             f"{len(disagreeing)} of these. Trust the file: the metadata is "
             "what somebody typed, the weights are what the model is."
         )
+    licences = {r.licence for r in results if r.licence}
+    if licences:
+        lines.append(
+            "\nLicence: "
+            + ", ".join(sorted(licences))
+            + ". Captures are somebody's work - check before redistributing one."
+        )
+
     unloadable = [r for r in results if r.loadable is False]
     if unloadable:
         lines.append(

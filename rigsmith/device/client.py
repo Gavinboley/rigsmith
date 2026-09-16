@@ -149,7 +149,7 @@ class DeviceClient:
             )
 
         spec = self.protocol.operation(operation)
-        url = self.protocol.base.rstrip("/") + spec.render_path(values)
+        url = self.protocol.url_for(operation, values)
         body = spec.render_body(values)
 
         try:
@@ -159,7 +159,9 @@ class DeviceClient:
         except httpx.HTTPError as exc:
             raise Unavailable(
                 f"{operation}: could not reach the device ({exc})",
-                hint=f"Tried {spec.method} {self.base_url}{url}",
+                # url is already absolute; prefixing base_url again produced
+                # a hint nobody could paste anywhere.
+                hint=f"Tried {spec.method} {url}",
             ) from exc
 
         if response.status_code == 404:

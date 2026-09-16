@@ -188,6 +188,11 @@ class MidiFootswitch(MidiBody):
     footswitch: int
 
 
+class MidiTap(MidiBody):
+    bpm: float
+    taps: int = 4
+
+
 class MidiBlock(MidiBody):
     slot: int
     enabled: bool
@@ -349,6 +354,14 @@ def midi_footswitch(body: MidiFootswitch) -> dict:
     """
     return {"message": devices.press_footswitch(
         body.footswitch, port=body.port, channel=body.channel
+    )}
+
+
+@router.post("/device/midi/tap")
+def midi_tap(body: MidiTap) -> dict:
+    """Set the tempo by tapping it, because there is no set-BPM message."""
+    return {"message": devices.tap_tempo(
+        body.bpm, taps=body.taps, port=body.port, channel=body.channel
     )}
 
 
@@ -587,10 +600,14 @@ def tone3000_login() -> dict:
     - should not be a dead end.
     """
     def run(progress):
-        return captures.login(
+        import asyncio
+
+        captures.login(
             open_browser=True,
             on_url=lambda url: progress.update(None, url),
-        ).to_dict()
+        )
+        # Ask who that was, so the panel can say more than "authenticated".
+        return asyncio.run(captures.identify()).to_dict()
 
     job = get_manager().submit("TONE3000 sign-in", run)
     return {"job_id": job.id, "name": job.name}

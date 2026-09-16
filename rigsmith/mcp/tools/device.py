@@ -116,6 +116,25 @@ def midi_press_footswitch(
 
 
 @tool
+def midi_tap_tempo(
+    bpm: float, taps: int = 4, port: str | None = None, channel: int = 0
+) -> str:
+    """Set the device's tempo by tapping it at a given BPM.
+
+    Delay and modulation times on a record are the song's tempo, so this is
+    worth setting whenever the recipe names one. There is no "set BPM"
+    message on this device - CC64 is a tap and the device averages the
+    intervals - so the result is close rather than exact.
+
+    Args:
+        bpm: Beats per minute, roughly 20-400.
+        taps: How many taps to send. Four is the usual minimum for a stable
+            average; more is steadier and takes proportionally longer.
+    """
+    return devices.tap_tempo(bpm, taps=taps, port=port, channel=channel)
+
+
+@tool
 def midi_set_block(
     slot: int, enabled: bool, port: str | None = None, channel: int = 0
 ) -> str:

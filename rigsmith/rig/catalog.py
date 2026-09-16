@@ -175,9 +175,6 @@ class Catalog:
             None,
         )
 
-    def by_category(self, category: BlockCategory) -> list[ModelSpec]:
-        return [m for m in self.models.values() if m.category is category]
-
     def search(
         self,
         query: str = "",
