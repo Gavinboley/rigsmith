@@ -164,6 +164,39 @@ def doctor() -> None:
     report = inspect_workspace()
     click.echo(f"  workspace holds {report.file_count} files")
 
+    # What is actually in there, because "which of my tones have I checked"
+    # is the question a person opens this tool with.
+    from .rig.catalog import get_catalog
+    from .core import recipes as core_recipes
+    from .core import rigs as core_rigs
+
+    catalog = get_catalog()
+    if catalog.is_verified:
+        click.echo(f"  catalog: {len(catalog.models)} models from {catalog.source}")
+    else:
+        click.echo(
+            "  catalog: unverified - model ids and parameter ranges are not "
+            "checked. Run: rigsmith catalog extract"
+        )
+
+    try:
+        drafts = core_rigs.list_drafts()
+        click.echo(f"  rigs: {len(drafts)} draft(s)")
+    except RigsmithError:
+        pass
+
+    try:
+        found = core_recipes.list_recipes()
+    except RigsmithError:
+        found = []
+    if found:
+        verified = sum(1 for _, recipe in found if recipe.verified)
+        click.echo(
+            f"  recipes: {len(found)}, {verified} verified by ear"
+            + ("" if verified == len(found) else
+               f", {len(found) - verified} still only reasoned about")
+        )
+
 
 @main.command()
 @handled

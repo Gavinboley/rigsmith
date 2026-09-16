@@ -293,3 +293,31 @@ def test_every_referenced_command_actually_exists():
         "these commands are named in code or docs but do not exist: "
         + ", ".join(f"'rigsmith {m}'" for m in missing)
     )
+
+
+def test_doctor_reports_what_is_in_the_workspace(tmp_path, monkeypatch):
+    """"Which of my tones have I actually checked" is the question people open
+    this with."""
+    from click.testing import CliRunner
+
+    from rigsmith import config
+    from rigsmith.cli import main
+    from rigsmith.core import recipes
+
+    monkeypatch.setenv("RIGSMITH_WORKSPACE", str(tmp_path))
+    config.set_settings(config.Settings())
+    try:
+        recipes.create("Checked")
+        recipes.record_measurement(
+            "checked", "jcm800", "stem.wav", kind="listen", won=True, trials=3
+        )
+        recipes.create("Only Reasoned About")
+
+        result = CliRunner().invoke(main, ["doctor"])
+        assert result.exit_code == 0
+        assert "recipes: 2, 1 verified by ear" in result.output
+        assert "1 still only reasoned about" in result.output
+        # An unverified catalog is a real limitation and has to be said.
+        assert "catalog: unverified" in result.output
+    finally:
+        config.set_settings(None)

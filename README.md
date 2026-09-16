@@ -11,7 +11,7 @@ pip install -e ".[all]"
 rigsmith ui
 ```
 
-> **Status: works without hardware; one thing needs it.** Rig authoring, validation, NAM analysis, tone matching, catalog extraction, USB backup, MIDI and the web UI are all done and covered by 465 tests. The Remote Editor's wire protocol still has to be captured against a powered-on Core before `write_rig` can write — everything else runs today. See [docs/PROTOCOL.md](docs/PROTOCOL.md).
+> **Status: works without hardware; one thing needs it.** Rig authoring, validation, NAM analysis, tone matching, catalog extraction, USB backup, MIDI and the web UI are all done and covered by 466 tests. The Remote Editor's wire protocol still has to be captured against a powered-on Core before `write_rig` can write — everything else runs today. See [docs/PROTOCOL.md](docs/PROTOCOL.md).
 
 ---
 
@@ -166,14 +166,14 @@ Ask for a tone. The agent researches the gear, finds an A2 capture, builds the r
 
 Each surface is a thin adapter: parse input, call core, format output. That rule exists because the first version broke it — orchestration lived inside the MCP tools, so anything not reachable from a tool was reachable from nowhere, and whole subsystems ended up built and unwired.
 
-Four transports to the device, tried in order:
+Transports to the device:
 
-| Layer | Mechanism | Role |
+| Layer | Mechanism | State |
 |---|---|---|
-| **A** | Native HTTP/WS client for the Remote Editor | Primary — needs the protocol capture |
-| **B** | Playwright driving the real editor UI | Fallback that cannot drift from what the device accepts |
-| **C** | USB mass storage | Backup/restore, `.nam` and IR delivery |
-| **D** | MIDI PC/CC | Rig and scene switching, and verification independent of whatever performed the write |
+| **A** | Native HTTP/WS client for the Remote Editor | Built and driven by a protocol map. Works against the simulator; needs a captured map to reach real hardware |
+| **B** | Playwright driving the real editor UI | **Designed, not built.** A fallback that cannot drift from what the device accepts — but it needs the same powered-on Core that capturing the protocol needs, so it unblocks nothing that A does not |
+| **C** | USB mass storage | Built. Backup/restore, `.nam` and IR delivery |
+| **D** | MIDI PC/CC | Built. Rig and scene switching, tap tempo, and verification independent of whatever performed the write |
 
 We never need to reverse-engineer the `.rig` binary format: the Remote Editor can create rigs, so the device writes its own files.
 
