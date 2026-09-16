@@ -27,6 +27,7 @@ absolute verdict.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from enum import Enum
 
@@ -383,3 +384,127 @@ def log_spectral_distance(
     a_db = 20 * np.log10(a_spectrum + EPSILON)
     b_db = 20 * np.log10(b_spectrum + EPSILON)
     return float(np.sqrt(np.mean((a_db - b_db) ** 2)))
+
+
+# --------------------------------------------------------------------------
+# where two signals differ
+# --------------------------------------------------------------------------
+
+#: Bands named the way guitarists talk about them, not the way a
+#: third-octave analyser does. The point is to be actionable: "too much fizz"
+#: leads somewhere, "energy elevated in band 27" does not.
+GUITAR_BANDS: tuple[tuple[str, float, float, str], ...] = (
+    ("sub", 20, 80, "rumble below the low E - usually the cab IR or a high-pass"),
+    ("low end", 80, 180, "weight and thump - amp bass, or cab choice"),
+    ("body", 180, 400, "the note's fundamental through most of the neck"),
+    ("mud", 400, 700, "boxiness; a little goes a long way"),
+    ("mids", 700, 1600, "where the guitar sits in a mix - amp mids"),
+    ("presence", 1600, 3200, "attack and cut - amp presence, mic position"),
+    ("bite", 3200, 6000, "pick definition and edge"),
+    ("fizz", 6000, 11000, "buzz on top of distortion - cab IR and mic more than amp"),
+    ("air", 11000, 18000, "openness; often mostly the recording"),
+)
+
+#: Below this a difference is not worth acting on. Roughly the point at which
+#: an A/B becomes hard rather than obvious.
+AUDIBLE_DB = 1.5
+
+
+@dataclass(frozen=True)
+class BandDifference:
+    """How one band of a candidate compares with the target."""
+
+    name: str
+    low: float
+    high: float
+    delta_db: float
+    """Positive means the candidate has more energy here than the target."""
+    meaning: str
+
+    @property
+    def audible(self) -> bool:
+        return abs(self.delta_db) >= AUDIBLE_DB
+
+    def describe(self) -> str:
+        direction = "too much" if self.delta_db > 0 else "not enough"
+        return (
+            f"{self.name:9} {self.delta_db:+5.1f} dB  {direction} "
+            f"({self.low:.0f}-{self.high:.0f} Hz) - {self.meaning}"
+        )
+
+
+def band_differences(
+    target: np.ndarray,
+    candidate: np.ndarray,
+    sample_rate: int,
+    *,
+    n_fft: int = 2048,
+) -> list[BandDifference]:
+    """Compare two signals band by band and say where they differ.
+
+    A composite score ranks; this says what to change. Both signals are
+    RMS-normalised first, so the answer is about tone rather than about
+    whichever was recorded louder.
+
+    It is a description of a measured difference, not a diagnosis. The
+    suggested causes are conventional, and conventional is not always right -
+    a bright candidate can be the mic position, the cab, the amp's presence
+    control, or the fact that the target is a finished mix with a de-esser
+    on it.
+    """
+    target = normalise_rms(to_mono(np.asarray(target, dtype=np.float64)))
+    candidate = normalise_rms(to_mono(np.asarray(candidate, dtype=np.float64)))
+
+    hop = n_fft // 4
+    target_mag = _stft_magnitude(target, n_fft, hop).mean(axis=0)
+    candidate_mag = _stft_magnitude(candidate, n_fft, hop).mean(axis=0)
+    freqs = np.fft.rfftfreq(n_fft, d=1.0 / sample_rate)
+
+    nyquist = sample_rate / 2
+    results: list[BandDifference] = []
+    for name, low, high, meaning in GUITAR_BANDS:
+        if low >= nyquist:
+            continue
+        mask = (freqs >= low) & (freqs < min(high, nyquist))
+        if not mask.any():
+            continue
+        target_energy = float(target_mag[mask].mean()) + 1e-12
+        candidate_energy = float(candidate_mag[mask].mean()) + 1e-12
+        results.append(
+            BandDifference(
+                name=name,
+                low=low,
+                high=min(high, nyquist),
+                delta_db=20 * math.log10(candidate_energy / target_energy),
+                meaning=meaning,
+            )
+        )
+    return results
+
+
+def render_band_differences(
+    differences: list[BandDifference], *, label: str = "candidate"
+) -> str:
+    """Say where a candidate differs from the target, loudest first."""
+    if not differences:
+        return "Nothing to compare."
+
+    audible = [d for d in differences if d.audible]
+    if not audible:
+        return (
+            f"{label} sits within {AUDIBLE_DB} dB of the target in every band. "
+            "Whatever is still wrong is not a broad tonal balance problem - "
+            "look at feel, dynamics, and note attack, which none of this "
+            "measures."
+        )
+
+    audible.sort(key=lambda d: abs(d.delta_db), reverse=True)
+    lines = [f"{label} against the target, biggest differences first:", ""]
+    lines.extend(f"  {d.describe()}" for d in audible)
+    lines.append(
+        "\nThese are measured differences with a conventional reading attached. "
+        "The reading can be wrong: a bright candidate might be the mic "
+        "position, the cab, the presence control, or a finished mix that had "
+        "treble taken off it. Change one thing and measure again."
+    )
+    return "\n".join(lines)

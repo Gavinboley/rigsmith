@@ -192,3 +192,39 @@ def score_candidates(
     )
     detail = "\n\n".join(s.render() for s in scores[:3])
     return f"{matching.render_ranking(scores)}\n\nTop candidates in detail:\n\n{detail}"
+
+
+@tool
+def explain_difference(
+    target_path: str,
+    candidate_path: str,
+    target_region: str | None = None,
+    candidate_region: str | None = None,
+) -> str:
+    """Say where a candidate differs from the target, band by band.
+
+    The natural follow-up to score_candidates. A composite says which
+    candidate is closest; this says what is still wrong with it, in bands
+    named the way an amp's controls are - low end, mids, presence, fizz - so
+    the answer points at something you can change.
+
+    It is a measured difference with a conventional reading attached, not a
+    diagnosis. A bright candidate might be the mic position, the cab, the
+    presence control, or a finished mix that had treble taken off it. Change
+    one thing and measure again.
+
+    Args:
+        target_path: The reference audio.
+        candidate_path: What to compare against it.
+        target_region: 'start:end' in seconds, to compare one passage.
+        candidate_region: The matching passage of the candidate.
+    """
+    from pathlib import Path
+
+    differences = matching.compare_bands(
+        target_path,
+        candidate_path,
+        target_region=target_region,
+        candidate_region=candidate_region,
+    )
+    return matching.render_bands(differences, label=Path(candidate_path).stem)

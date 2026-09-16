@@ -463,3 +463,42 @@ input:focus, select:focus { outline: 1px solid var(--amber-dim); border-color: v
 /* MIDI footswitches sit inline with their label, unlike the rig panel's
    full-width strip. */
 .footswitches.inline { display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* --------------------------------------------------------------- bands */
+
+/* A bar per band, centred on zero. A list of numbers is a table; this is a
+   shape, and the shape is the point - you can see "bright and thin" at a
+   glance without reading any of it. */
+.bands { display: grid; gap: 3px; margin-top: 10px; }
+.bands:empty { display: none; }
+
+.band {
+  display: grid;
+  grid-template-columns: 78px 1fr 62px;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+.band-name { color: var(--text-dim); font-family: var(--mono); }
+
+.band-track {
+  position: relative;
+  height: 14px;
+  background: var(--bg-sunken);
+  border-radius: 3px;
+  overflow: hidden;
+}
+/* The centre line is zero difference, so a bar's side says which way. */
+.band-track::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--line);
+}
+.band-fill { position: absolute; top: 2px; bottom: 2px; background: var(--blue); }
+.band-fill.hot { background: var(--amber); }
+.band-value { font-family: var(--mono); text-align: right; color: var(--text-dim); }
+.band.quiet { opacity: .45; }

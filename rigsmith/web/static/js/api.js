@@ -112,6 +112,7 @@ export const api = {
 
   matchDevices: () => api.get("/api/match/devices"),
   score: (body) => api.post("/api/match/score", body),
+  bands: (body) => api.post("/api/match/bands", body),
   spectrum: (path, region) =>
     api.get("/api/match/spectrum", {
       path,

@@ -973,6 +973,30 @@ def match_score(
     click.echo(matching.render_ranking(scores))
 
 
+@match.command("explain")
+@click.argument("target", type=click.Path(exists=True, path_type=Path))
+@click.argument("candidate", type=click.Path(exists=True, path_type=Path))
+@click.option("--region", metavar="START:END", help="Compare this span of the target.")
+@click.option("--candidate-region", metavar="START:END")
+@handled
+def match_explain(target, candidate, region, candidate_region) -> None:
+    """Say where a candidate differs from the target, band by band.
+
+    The natural follow-up to `match score`. A composite says which candidate
+    is closest; this says what is still wrong with it, in the terms an amp's
+    controls are labelled in.
+    """
+    from .core import matching
+
+    differences = matching.compare_bands(
+        target,
+        candidate,
+        target_region=region,
+        candidate_region=candidate_region,
+    )
+    click.echo(matching.render_bands(differences, label=candidate.stem))
+
+
 @match.group("ab")
 def match_ab() -> None:
     """Blind A/B listening - the arbiter."""

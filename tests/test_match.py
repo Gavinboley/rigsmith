@@ -413,3 +413,79 @@ def test_the_download_summary_calls_out_both_problems():
     assert "disagree" in text
     assert "will not load on the Core" in text
     assert "offline rendering" in text
+
+
+# --------------------------------------------------------------------------
+# where two signals differ, as opposed to by how much
+# --------------------------------------------------------------------------
+
+
+def test_band_differences_name_the_band_that_actually_moved():
+    """A composite ranks. This has to say what to change."""
+    from rigsmith.match.metrics import band_differences
+
+    scipy_signal = pytest.importorskip("scipy.signal")
+
+    t = np.arange(4 * SR) / SR
+    rng = np.random.default_rng(3)
+    clean = (
+        np.sin(2 * np.pi * 196 * t)
+        + 0.4 * np.sin(2 * np.pi * 392 * t)
+        + 0.02 * rng.standard_normal(4 * SR)
+    )
+    target = np.tanh(clean * 3)
+
+    coefficients = scipy_signal.butter(2, 4000 / (SR / 2), btype="high")
+    brighter = target + 1.5 * scipy_signal.lfilter(*coefficients, target)
+
+    by_name = {d.name: d for d in band_differences(target, brighter, SR)}
+
+    # The lift is above 4 kHz, so that is where the report must point.
+    assert by_name["fizz"].delta_db > 3
+    assert by_name["bite"].delta_db > 1.5
+    # And it must not blame the low end for a treble problem.
+    assert abs(by_name["low end"].delta_db) < 1.5
+    assert not by_name["low end"].audible
+
+
+def test_a_signal_against_itself_reports_no_difference():
+    from rigsmith.match.metrics import band_differences, render_band_differences
+
+    t = np.arange(2 * SR) / SR
+    signal = np.tanh(np.sin(2 * np.pi * 196 * t) * 3)
+
+    differences = band_differences(signal, signal, SR)
+    assert all(abs(d.delta_db) < 0.01 for d in differences)
+    assert not any(d.audible for d in differences)
+
+    text = render_band_differences(differences)
+    assert "within 1.5 dB" in text
+    # And it must not imply the job is done.
+    assert "feel, dynamics, and note attack" in text
+
+
+def test_level_alone_is_not_a_tonal_difference():
+    """Both sides are RMS-normalised, or every quiet take reads as 'thin'."""
+    from rigsmith.match.metrics import band_differences
+
+    t = np.arange(2 * SR) / SR
+    signal = np.tanh(np.sin(2 * np.pi * 196 * t) * 3)
+
+    differences = band_differences(signal, signal * 0.2, SR)
+    assert all(abs(d.delta_db) < 0.01 for d in differences)
+
+
+def test_the_report_leads_with_the_biggest_difference():
+    from rigsmith.match.metrics import BandDifference, render_band_differences
+
+    text = render_band_differences([
+        BandDifference("low end", 80, 180, -2.0, "weight"),
+        BandDifference("fizz", 6000, 11000, 9.0, "buzz"),
+        BandDifference("mids", 700, 1600, 0.2, "where it sits"),
+    ], label="candidate-a")
+
+    lines = [line for line in text.splitlines() if line.strip().startswith(("fizz", "low", "mids"))]
+    assert lines[0].strip().startswith("fizz")
+    assert lines[1].strip().startswith("low end")
+    # Under the audible threshold, so not worth acting on and not listed.
+    assert not any(line.strip().startswith("mids") for line in lines)

@@ -143,6 +143,13 @@ class ScoreBody(BaseModel):
     candidate_region: list[float] | None = None
 
 
+class BandsBody(BaseModel):
+    target_path: str
+    candidate_path: str
+    target_region: list[float] | None = None
+    candidate_region: list[float] | None = None
+
+
 class DownloadCapture(BaseModel):
     tone_id: str
     architecture: str = "2"
@@ -934,6 +941,33 @@ def match_reamp(body: ReampBody) -> dict:
     rendered = matching.reamp(body.di_path, label=body.label)
     _allow_audio(rendered.path)
     return {**rendered.to_dict(), "url": _audio_url(rendered.path)}
+
+
+@router.post("/match/bands")
+def match_bands(body: BandsBody) -> dict:
+    """Where a candidate differs from the target, in the terms knobs are in."""
+    _allow_audio(body.target_path, body.candidate_path)
+    differences = matching.compare_bands(
+        body.target_path,
+        body.candidate_path,
+        target_region=body.target_region,
+        candidate_region=body.candidate_region,
+    )
+    label = Path(body.candidate_path).stem
+    return {
+        "bands": [
+            {
+                "name": d.name,
+                "low": d.low,
+                "high": d.high,
+                "delta_db": d.delta_db,
+                "audible": d.audible,
+                "meaning": d.meaning,
+            }
+            for d in differences
+        ],
+        "rendered": matching.render_bands(differences, label=label),
+    }
 
 
 @router.get("/match/spectrum")

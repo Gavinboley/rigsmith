@@ -789,3 +789,32 @@ def test_a_score_measurement_without_a_score_is_400(client):
     )
     assert response.status_code == 400
     assert "composite" in response.json()["error"]
+
+
+def test_band_comparison_through_the_api(client, outside_file):
+    response = client.post(
+        "/api/match/bands",
+        json={
+            "target_path": str(outside_file),
+            "candidate_path": str(outside_file),
+            "target_region": [0.5, 2.0],
+            "candidate_region": [0.5, 2.0],
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+
+    names = [band["name"] for band in body["bands"]]
+    assert "presence" in names and "fizz" in names
+    # A file against itself differs nowhere.
+    assert not any(band["audible"] for band in body["bands"])
+    assert "within 1.5 dB" in body["rendered"]
+
+
+def test_band_comparison_makes_its_files_servable(client, outside_file):
+    """So the waveform beside the bands can be drawn without asking again."""
+    client.post(
+        "/api/match/bands",
+        json={"target_path": str(outside_file), "candidate_path": str(outside_file)},
+    )
+    assert client.get("/api/audio", params={"path": str(outside_file)}).status_code == 200

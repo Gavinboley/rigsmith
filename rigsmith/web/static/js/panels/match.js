@@ -356,6 +356,71 @@ function rankingItem(entry, index, path) {
   return node;
 }
 
+/* A ranking says which candidate is closest. This says what is still wrong
+ * with it, in the terms an amp's controls are labelled in - which is the
+ * difference between a number and something you can act on.
+ *
+ * Drawn as bars either side of a centre line rather than a table of numbers,
+ * because the shape reads at a glance: bright and thin looks like bright and
+ * thin before you have read a single figure. */
+
+const DB_SCALE = 12; // dB at which a bar fills its half of the track
+
+async function drawBands(candidatePath) {
+  const host = clear($("#bands"));
+  const target = $("#target-path").value.trim();
+  if (!target || !candidatePath) return;
+
+  const result = await api
+    .bands({
+      target_path: target,
+      candidate_path: candidatePath,
+      target_region: regionFor("target"),
+      candidate_region: regionsAreLocked()
+        ? regionFor("target")
+        : regionFor("candidate"),
+    })
+    .catch(() => null);
+  if (!result) return;
+
+  for (const band of result.bands) {
+    const share = Math.min(1, Math.abs(band.delta_db) / DB_SCALE) * 50;
+    const fill = el("span", {
+      class: `band-fill${band.audible ? " hot" : ""}`,
+      style:
+        band.delta_db >= 0
+          ? `left:50%;width:${share}%`
+          : `right:50%;width:${share}%`,
+    });
+    host.append(
+      el(
+        "div",
+        { class: `band${band.audible ? "" : " quiet"}`, title: band.meaning },
+        el("span", { class: "band-name", text: band.name }),
+        el("span", { class: "band-track" }, fill),
+        el("span", {
+          class: "band-value",
+          text: `${band.delta_db >= 0 ? "+" : ""}${band.delta_db.toFixed(1)} dB`,
+        })
+      )
+    );
+  }
+
+  const audible = result.bands.filter((band) => band.audible);
+  host.append(
+    el("div", {
+      class: "hint",
+      text: audible.length
+        ? "Right of centre is too much, left is not enough. A measured " +
+          "difference with a conventional reading attached - hover a band " +
+          "for what usually causes it. Change one thing and measure again."
+        : "Within a decibel and a half everywhere. Whatever is still wrong " +
+          "is not tonal balance - look at feel and attack, which none of " +
+          "this measures.",
+    })
+  );
+}
+
 async function showCandidate(path) {
   await openInto("candidate", path);
   $("#candidate-wave-hint").textContent = regionsAreLocked()
@@ -364,6 +429,7 @@ async function showCandidate(path) {
     : "Drag to pick the matching passage here. It rarely sits at the same " +
       "time code as it does on the record.";
   if (regionsAreLocked()) waves.candidate.setRegion(regionFor("target"));
+  await drawBands(path);
 }
 
 function modeNote() {

@@ -312,3 +312,38 @@ def test_defaults_are_omitted_from_the_written_form():
     assert "eq" not in written
     assert "doubling" not in written
     assert "input_gain_db" not in written
+
+
+def test_rendered_audio_is_not_clipped_on_the_way_to_disk(tmp_path):
+    """soundfile's WAV default is PCM_16, which clips past +/-1.0.
+
+    Every candidate this tool measures has been through save_audio, and
+    clipping adds precisely the harmonic content the metrics look for - so a
+    candidate that merely rendered hot would read as brighter and more
+    distorted than it is, and the artefact would look like a tone difference.
+    """
+    pytest.importorskip("soundfile")
+    import soundfile as sf
+
+    from rigsmith.match.render_offline import load_audio, save_audio
+
+    hot = np.array([0.5, 1.8, -1.8, 0.0], dtype=np.float32)
+    path = save_audio(tmp_path / "hot.wav", hot, 48000)
+
+    assert sf.info(str(path)).subtype == "FLOAT"
+    restored, rate = load_audio(path)
+    assert rate == 48000
+    assert restored == pytest.approx(hot, abs=1e-6)
+
+
+def test_a_caller_can_still_ask_for_sixteen_bit(tmp_path):
+    """For anything that leaves this tool and has to be widely readable."""
+    pytest.importorskip("soundfile")
+    import soundfile as sf
+
+    from rigsmith.match.render_offline import save_audio
+
+    path = save_audio(
+        tmp_path / "share.wav", np.zeros(8, dtype=np.float32), 48000, subtype="PCM_16"
+    )
+    assert sf.info(str(path)).subtype == "PCM_16"

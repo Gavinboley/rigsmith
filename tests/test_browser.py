@@ -682,3 +682,41 @@ def test_a_measured_result_goes_back_onto_the_recipe(browser, server, tmp_path):
         assert "metric" in measured
         # A metric result is a ranking; it must not claim the recipe is settled.
         assert page.inner_text("#recipe-verified") == "unverified"
+
+
+def test_the_panel_says_what_is_wrong_not_just_how_wrong(browser, server, tmp_path):
+    """A ranking is a number. The bands are something you can act on."""
+    sf = pytest.importorskip("soundfile")
+    pytest.importorskip("scipy")
+    import numpy as np
+    from scipy.signal import butter, lfilter
+
+    rate = 48000
+    t = np.arange(3 * rate) / rate
+    dark = np.tanh(np.sin(2 * np.pi * 196 * t) * 3)
+    bright = dark + 1.5 * lfilter(*butter(2, 4000 / (rate / 2), btype="high"), dark)
+
+    target = tmp_path / "dark.wav"
+    candidate = tmp_path / "bright.wav"
+    # Float WAVs, so the test measures the signals it wrote rather than what
+    # PCM_16 clipped them into.
+    sf.write(str(target), dark.astype("float32"), rate, subtype="FLOAT")
+    sf.write(str(candidate), bright.astype("float32"), rate, subtype="FLOAT")
+
+    with page_at(browser, server) as page:
+        page.click("#tabs .tab[data-panel='match']")
+        page.fill("#target-path", str(target))
+        page.fill("#candidate-paths", str(candidate))
+        page.click("#score-btn")
+
+        page.wait_for_selector("#bands .band", timeout=30000)
+        rows = page.locator("#bands .band")
+        assert rows.count() >= 6, "every band should be shown, quiet ones dimmed"
+
+        # The treble lift must be the thing it points at.
+        fizz = page.locator("#bands .band", has_text="fizz")
+        assert "+" in fizz.inner_text(), fizz.inner_text()
+        assert "hot" in fizz.locator(".band-fill").get_attribute("class")
+
+        low = page.locator("#bands .band", has_text="low end")
+        assert "quiet" in (low.get_attribute("class") or "")

@@ -129,6 +129,32 @@ A region shorter than 0.25 s is refused outright: at a 2048-sample window
 there is almost nothing left to average, and a number computed from two
 frames looks as authoritative as one computed from two thousand.
 
+## What is wrong, not just how wrong
+
+A composite ranks. It cannot tell you what to change, and "0.031" is not an
+instruction. So `rigsmith match explain` compares the two signals band by
+band, in bands named the way an amp's controls are:
+
+```
+bright-capture against the target, biggest differences first:
+
+  fizz       +5.9 dB  too much (6000-11000 Hz) - buzz on top of distortion
+  presence   +2.4 dB  too much (1600-3200 Hz) - attack and cut
+  low end    -1.8 dB  not enough (80-180 Hz) - weight and thump
+```
+
+Both signals are RMS-normalised first, so the answer is about tone rather
+than about whichever was recorded louder. Differences under 1.5 dB are not
+listed: roughly the point below which an A/B stops being obvious.
+
+The readings attached to each band are conventional, and conventional is not
+always right. A bright candidate might be the mic position, the cab, the
+amp's presence control, or the fact that the target is a finished mix with
+treble taken off it. Change one thing and measure again.
+
+When everything sits inside 1.5 dB, it says so - and says that what is still
+wrong is feel, dynamics and attack, which none of this measures.
+
 ## Practical workflow
 
 ```

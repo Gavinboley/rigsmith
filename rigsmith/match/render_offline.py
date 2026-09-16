@@ -71,8 +71,22 @@ def load_audio(path: str | Path, *, mono: bool = True) -> tuple[np.ndarray, int]
     return np.asarray(data, dtype=np.float64), int(sample_rate)
 
 
-def save_audio(path: str | Path, audio: np.ndarray, sample_rate: int) -> Path:
-    """Write audio to a file. Requires ``soundfile``."""
+def save_audio(
+    path: str | Path,
+    audio: np.ndarray,
+    sample_rate: int,
+    *,
+    subtype: str | None = None,
+) -> Path:
+    """Write audio to a file. Requires ``soundfile``.
+
+    Defaults to 32-bit float for WAV rather than soundfile's PCM_16, because
+    everything written here is a working file that gets measured later. PCM_16
+    clips anything past +/-1.0, and clipping adds exactly the harmonic content
+    the tone metrics are looking for - so a candidate that merely rendered hot
+    would read as brighter and more distorted than it is, and the artefact
+    would look like a tone difference.
+    """
     try:
         import soundfile as sf
     except ImportError as exc:
@@ -83,7 +97,11 @@ def save_audio(path: str | Path, audio: np.ndarray, sample_rate: int) -> Path:
 
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    sf.write(str(path), np.asarray(audio, dtype=np.float32), sample_rate)
+    if subtype is None and path.suffix.lower() in (".wav", ".wave", ".aiff", ".aif"):
+        subtype = "FLOAT"
+    sf.write(
+        str(path), np.asarray(audio, dtype=np.float32), sample_rate, subtype=subtype
+    )
     return path
 
 

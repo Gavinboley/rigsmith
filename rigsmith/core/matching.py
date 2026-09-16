@@ -425,6 +425,46 @@ def score(
     return rank_candidates(target, loaded, sample_rate, mode=comparison)
 
 
+def compare_bands(
+    target_path: str | Path,
+    candidate_path: str | Path,
+    *,
+    target_region=None,
+    candidate_region=None,
+):
+    """Say where a candidate differs from the target, band by band.
+
+    The natural next question after a ranking. A composite tells you which
+    candidate is closest; this tells you what is still wrong with it, in the
+    terms an amp's controls are labelled in.
+    """
+    from ..match.metrics import band_differences
+    from ..match.render_offline import load_audio, resample
+
+    target_region = Region.parse(target_region)
+    candidate_region = Region.parse(candidate_region)
+
+    target, sample_rate = load_audio(target_path)
+    if target_region:
+        target = target_region.slice(target, sample_rate, label="the target")
+
+    candidate, rate = load_audio(candidate_path)
+    if rate != sample_rate:
+        candidate = resample(candidate, rate, sample_rate)
+    if candidate_region:
+        candidate = candidate_region.slice(
+            candidate, sample_rate, label=Path(candidate_path).name
+        )
+
+    return band_differences(target, candidate, sample_rate)
+
+
+def render_bands(differences, *, label: str = "candidate") -> str:
+    from ..match.metrics import render_band_differences
+
+    return render_band_differences(differences, label=label)
+
+
 def render_ranking(scores, *, top: int = 5) -> str:
     from ..match.score import render_ranking as _render
 
