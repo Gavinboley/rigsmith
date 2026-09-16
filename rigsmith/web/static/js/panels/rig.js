@@ -8,6 +8,7 @@
 
 import { api } from "../api.js";
 import { $, $$, attempt, clear, el, pct, prompt, toast } from "../ui.js";
+import { onArrive, goTo } from "../nav.js";
 
 const SLOTS = 14;
 const FOOTSWITCHES = 5;
@@ -394,6 +395,9 @@ async function newDraft() {
 /* -------------------------------------------------------------------- init */
 
 export function init() {
+  $("#test-btn").onclick = () =>
+    goTo("match", { rigName: current?.rig?.name || null });
+
   $("#new-draft").onclick = newDraft;
   $("#new-draft-empty").onclick = newDraft;
 
@@ -462,3 +466,9 @@ export function init() {
 }
 
 export const onShow = () => refreshDrafts(current?.draft_id ?? null);
+
+// Arriving from a compiled recipe: open the rig it just produced, rather
+// than whatever was last selected.
+onArrive("rig", ({ draftId }) => {
+  if (draftId) attempt(() => refreshDrafts(draftId));
+});

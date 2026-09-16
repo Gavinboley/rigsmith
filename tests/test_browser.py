@@ -574,3 +574,61 @@ def test_the_device_panel_sends_midi_rather_than_describing_it(browser, server):
         page.click("#midi-select")
         page.wait_for_selector(".toast", timeout=10000)
         assert "0-127" in page.inner_text(".toasts")
+
+
+def test_the_panels_hand_work_to_each_other(browser, server):
+    """Six tabs is a set of tools; a thread between them is one tool.
+
+    Compiling a recipe produces a rig, and the rig it produced is the one
+    that should open - not whatever was last selected.
+    """
+    with page_at(browser, server) as page:
+        page.evaluate(
+            """async () => {
+                await fetch('/api/recipes', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({title: 'Cherub Rock'}),
+                });
+                for (const gear of [
+                    {role: 'fuzz', name: 'Big Muff', category: 'effect'},
+                    {role: 'amp', name: 'Marshall JMP', category: 'nam'},
+                ]) {
+                    await fetch('/api/recipes/cherub-rock/gear', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify(gear),
+                    });
+                }
+                // A second rig, so "the one it compiled" is not the only one.
+                await fetch('/api/drafts', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({name: 'Something Else'}),
+                });
+            }"""
+        )
+        page.reload(wait_until="networkidle")
+        page.click("#tabs .tab[data-panel='recipes']")
+        page.wait_for_selector("#recipe-gear .item")
+
+        # An unresolved amp offers to go and look for a capture.
+        page.click("#recipe-gear button:has-text('find a capture')")
+        page.wait_for_selector("#panels .panel[data-panel='captures']", state="visible")
+        assert page.input_value("#t3k-query") == "Marshall JMP"
+
+        page.click("#tabs .tab[data-panel='recipes']")
+        page.click("#compile-recipe")
+        page.click("#compile-out button:has-text('Open in the rig builder')")
+
+        page.wait_for_selector("#panels .panel[data-panel='rig']", state="visible")
+        page.wait_for_function(
+            "() => document.querySelector('#rig-name')?.textContent === 'Cherub Rock'",
+            timeout=10000,
+        )
+        assert "Big Muff" in page.inner_text("#board")
+
+        # And the rig hands off to the thing that measures it.
+        page.click("#test-btn")
+        page.wait_for_selector("#panels .panel[data-panel='match']", state="visible")
+        assert "Cherub Rock" in page.inner_text("#mode-note")

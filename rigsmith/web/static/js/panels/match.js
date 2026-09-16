@@ -12,6 +12,7 @@ import { api } from "../api.js";
 import { $, attempt, clear, el, jobRow, toast } from "../ui.js";
 import { createWave, describeRegion } from "../wave.js";
 import { attachPicker } from "../picker.js";
+import { onArrive } from "../nav.js";
 
 const CROSSFADE_S = 0.008;
 
@@ -674,6 +675,16 @@ export function init() {
 }
 
 export const onShow = refreshSessions;
+
+// Arriving from the rig builder: say which rig is being tested, so a
+// ranking saved later is not one of several anonymous ones.
+onArrive("match", ({ rigName }) => {
+  if (!rigName) return;
+  const note = $("#mode-note");
+  if (note && !note.textContent.includes(rigName)) {
+    note.textContent = `Testing "${rigName}".  ` + note.textContent;
+  }
+});
 
 export function onHide() {
   stopPlayback();

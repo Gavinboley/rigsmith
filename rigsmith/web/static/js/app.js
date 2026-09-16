@@ -122,6 +122,14 @@ async function boot() {
     tab.onclick = () => show(tab.dataset.panel);
   }
 
+  // A panel handing work to the next one switches the tab as part of the
+  // handover, so the thread through the work is not something the user has
+  // to reconstruct from the tab bar. The destination's own onArrive listener
+  // runs after this, once its panel is visible.
+  document.addEventListener("rigsmith:navigate", (event) => {
+    show(event.detail.panel);
+  });
+
   await Promise.allSettled(
     Object.values(PANELS).map((panel) => panel.init?.())
   );

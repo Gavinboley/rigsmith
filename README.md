@@ -4,14 +4,14 @@
 
 Three ways in, all over the same core: a **web UI**, a **CLI**, and an **MCP server** so an AI agent can do the slow parts for you.
 
-The web UI has six panels: **Research** (the recipe, with every claim's source and confidence), **Rig** (a 14-slot pedalboard you drag), **Captures**, **Match** (waveforms and blind A/B), **Device**, and **Workspace**.
+The web UI has six panels: **Research** (the recipe, with every claim's source and confidence), **Rig** (a 14-slot pedalboard you drag), **Captures**, **Match** (waveforms and blind A/B), **Device**, and **Workspace**. They hand work to each other: an unresolved amp goes looking for a capture, a compiled recipe opens as a rig, a rig goes off to be measured.
 
 ```bash
 pip install -e ".[all]"
 rigsmith ui
 ```
 
-> **Status: works without hardware; one thing needs it.** Rig authoring, validation, NAM analysis, tone matching, catalog extraction, USB backup, MIDI and the web UI are all done and covered by 446 tests. The Remote Editor's wire protocol still has to be captured against a powered-on Core before `write_rig` can write — everything else runs today. See [docs/PROTOCOL.md](docs/PROTOCOL.md).
+> **Status: works without hardware; one thing needs it.** Rig authoring, validation, NAM analysis, tone matching, catalog extraction, USB backup, MIDI and the web UI are all done and covered by 447 tests. The Remote Editor's wire protocol still has to be captured against a powered-on Core before `write_rig` can write — everything else runs today. See [docs/PROTOCOL.md](docs/PROTOCOL.md).
 
 ---
 

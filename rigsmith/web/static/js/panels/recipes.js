@@ -8,6 +8,7 @@
 
 import { api } from "../api.js";
 import { $, attempt, clear, el, prompt } from "../ui.js";
+import { crossLink, goTo } from "../nav.js";
 
 const CONFIDENCE = [
   { value: "stated", label: "stated - someone who was there said so" },
@@ -61,6 +62,16 @@ function gearItem(choice) {
         onclick: () => resolveGear(choice),
       })
     );
+    // An unresolved amp is usually a capture you have not found yet, so the
+    // panel offers to go and look rather than leaving you to remember which
+    // tab that was.
+    if (["amp", "nam", "clone"].includes(choice.category)) {
+      node.append(
+        crossLink("find a capture", "captures", { query: gear || choice.name }, {
+          title: "Search TONE3000 for this, in the Captures panel",
+        })
+      );
+    }
   }
 
   if (!choice.sources?.length) {
@@ -310,9 +321,17 @@ export function init() {
       const result = await api.post(
         `/api/recipes/${current.recipe_id}/compile`
       );
-      clear($("#compile-out")).append(
-        el("pre", { class: "out", text: result.rendered })
-      );
+      const out = clear($("#compile-out"));
+      out.append(el("pre", { class: "out", text: result.rendered }));
+      if (result.draft_id) {
+        out.append(
+          el("button", {
+            class: "btn primary",
+            text: "Open in the rig builder",
+            onclick: () => goTo("rig", { draftId: result.draft_id }),
+          })
+        );
+      }
     });
 
   $("#delete-recipe").onclick = async () => {

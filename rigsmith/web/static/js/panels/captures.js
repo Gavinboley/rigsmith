@@ -3,6 +3,7 @@
 import { api } from "../api.js";
 import { $, attempt, clear, el, jobRow } from "../ui.js";
 import { attachPicker } from "../picker.js";
+import { onArrive } from "../nav.js";
 
 function compatibilityTag(capture) {
   if (capture.headrush_compatible === true) {
@@ -130,10 +131,14 @@ async function showDownload(jobId) {
   }
 }
 
+/** The last known auth status, so nothing fires a request that cannot work. */
+let authed = false;
+
 async function refreshAuth() {
   const status = await attempt(() => api.tone3000Status());
   const host = clear($("#t3k-status"));
   if (!status) return;
+  authed = Boolean(status.ready);
 
   if (status.ready) {
     host.className = "notice";
@@ -272,3 +277,14 @@ export function init() {
 }
 
 export const onShow = refreshAuth;
+
+// Arriving from an unresolved piece of gear in a recipe: run its search
+// straight away, because the reason for coming here was to find that thing.
+onArrive("captures", ({ query }) => {
+  if (!query) return;
+  $("#t3k-query").value = query;
+  // Run it only if the search can actually work. Firing a request that is
+  // going to 503 replaces a useful "sign in first" with a failure that reads
+  // like the search itself broke.
+  if (authed) $("#t3k-search").click();
+});
