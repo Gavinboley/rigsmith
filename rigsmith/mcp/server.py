@@ -35,7 +35,7 @@ from ..rig.model import (
     SignalPath,
 )
 from ..rig.validate import validate_rig as run_validation
-from .session import get_store
+from ..core.drafts import get_store
 
 INSTRUCTIONS = """\
 rigsmith drives a HeadRush Core amp modeler over the local network so you can

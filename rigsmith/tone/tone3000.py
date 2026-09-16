@@ -35,6 +35,7 @@ from typing import Any, Iterable
 from urllib.parse import urlencode
 
 import httpx
+from ..core.errors import RigsmithError, Unavailable
 
 BASE_URL = "https://www.tone3000.com"
 API = "/api/v1"
@@ -53,16 +54,24 @@ FORMATS = ("nam", "ir", "aida-x", "aa-snapshot", "proteus")
 SORTS = ("best-match", "newest", "oldest", "trending", "downloads-all-time")
 
 
-class Tone3000Error(RuntimeError):
+class Tone3000Error(RigsmithError):
     """An API call failed."""
 
 
 class Tone3000AuthError(Tone3000Error):
     """Authentication is missing, expired, or insufficient for this endpoint."""
 
+    @property
+    def http_status(self) -> int:
+        return 401
+
 
 class Tone3000TierError(Tone3000Error):
     """The endpoint requires a tier this account does not have."""
+
+    @property
+    def http_status(self) -> int:
+        return 402
 
 
 @dataclass

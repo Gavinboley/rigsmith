@@ -25,6 +25,7 @@ from dataclasses import dataclass
 from typing import Iterable
 
 from ..rig.model import FOOTSWITCH_COUNT, MAX_SLOTS
+from ..core.errors import Unavailable
 
 #: Control Change numbers, from the device's MIDI implementation.
 CC_EXPRESSION_PEDAL = 1
@@ -51,7 +52,7 @@ ON_VALUE = 127
 OFF_VALUE = 0
 
 
-class MidiUnavailable(RuntimeError):
+class MidiUnavailable(Unavailable):
     """No MIDI backend, or no matching port."""
 
 

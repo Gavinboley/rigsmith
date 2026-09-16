@@ -22,9 +22,10 @@ from pathlib import Path
 import numpy as np
 
 from .metrics import normalise_rms, to_mono
+from ..core.errors import Unavailable
 
 
-class RenderUnavailable(RuntimeError):
+class RenderUnavailable(Unavailable):
     """A required optional dependency is missing."""
 
 

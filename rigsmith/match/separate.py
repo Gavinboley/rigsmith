@@ -19,6 +19,7 @@ import subprocess
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
+from ..core.errors import Unavailable
 
 #: The six-stem model. The four-stem default has no guitar stem.
 DEFAULT_MODEL = "htdemucs_6s"
@@ -27,7 +28,7 @@ DEFAULT_MODEL = "htdemucs_6s"
 SIX_STEMS = ("vocals", "drums", "bass", "guitar", "piano", "other")
 
 
-class SeparationUnavailable(RuntimeError):
+class SeparationUnavailable(Unavailable):
     """Demucs is not installed or not runnable."""
 
 

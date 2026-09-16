@@ -11,6 +11,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
+from .core.errors import ReadOnly
 
 DEFAULT_WORKSPACE = Path.home() / ".rigsmith"
 
@@ -102,7 +103,7 @@ class Settings:
         return self.workspace
 
 
-class ReadOnlyError(RuntimeError):
+class ReadOnlyError(ReadOnly):
     """Raised when a write is attempted while rigsmith is in read-only mode."""
 
 

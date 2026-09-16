@@ -395,7 +395,7 @@ def rig() -> None:
 @rig.command("list")
 def rig_list() -> None:
     """List drafts in progress."""
-    from .mcp.session import get_store
+    from .core.drafts import get_store
 
     drafts = get_store().list_drafts()
     if not drafts:
@@ -412,7 +412,7 @@ def rig_list() -> None:
 @click.argument("draft_id")
 def rig_show(draft_id: str) -> None:
     """Print a draft in full."""
-    from .mcp.session import get_store
+    from .core.drafts import get_store
 
     try:
         draft = get_store().get(draft_id)
@@ -427,7 +427,7 @@ def rig_show(draft_id: str) -> None:
 @click.argument("draft_id")
 def rig_validate(draft_id: str) -> None:
     """Check a draft for problems."""
-    from .mcp.session import get_store
+    from .core.drafts import get_store
     from .rig.validate import validate_rig
 
     try:

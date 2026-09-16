@@ -27,6 +27,7 @@ import shutil
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
+from ..core.errors import Unavailable
 
 #: Volume label the device presents in USB Transfer mode.
 VOLUME_LABEL = "HeadRush"
@@ -55,7 +56,7 @@ BACKUP_FOLDERS = (
 IDENTIFYING_FOLDERS = ("Rigs", "Blocks")
 
 
-class DeviceStorageError(RuntimeError):
+class DeviceStorageError(Unavailable):
     """The device storage is not mounted, or does not look right."""
 
 

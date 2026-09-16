@@ -20,7 +20,7 @@ def server(tmp_path, monkeypatch):
     monkeypatch.delenv("RIGSMITH_READONLY", raising=False)
 
     from rigsmith import config
-    from rigsmith.mcp import session
+    from rigsmith.core import drafts as session
 
     config.set_settings(config.Settings())
     session.set_store(session.DraftStore(tmp_path / "drafts"))
@@ -185,7 +185,7 @@ async def test_drafts_survive_a_new_store(server, tmp_path):
         {"draft_id": "persist", "category": "amp", "model_id": "Plexi"},
     )
 
-    from rigsmith.mcp import session
+    from rigsmith.core import drafts as session
 
     session.set_store(session.DraftStore(tmp_path / "drafts"))
 
@@ -210,7 +210,7 @@ async def test_scene_slots_follow_blocks_through_a_move(server):
 
     await call(server, "move_block", {"draft_id": "reorder", "from_slot": 4, "to_slot": 1})
 
-    from rigsmith.mcp.session import get_store
+    from rigsmith.core.drafts import get_store
 
     rig = get_store().get("reorder").rig
     slots = {b.model_id: b.slot for b in rig.blocks}
@@ -288,7 +288,7 @@ async def test_configure_scene_merges_instead_of_replacing(server):
         {"draft_id": "merge", "name": "Lead", "on_slots": [3]},
     )
 
-    from rigsmith.mcp.session import get_store
+    from rigsmith.core.drafts import get_store
     from rigsmith.rig.model import SceneBlockState
 
     scene = get_store().get("merge").rig.scenes[0]
@@ -317,7 +317,7 @@ async def test_configure_scene_no_change_slots_removes_a_slot(server):
         {"draft_id": "drop", "name": "S", "no_change_slots": [1]},
     )
 
-    from rigsmith.mcp.session import get_store
+    from rigsmith.core.drafts import get_store
 
     scene = get_store().get("drop").rig.scenes[0]
     assert 1 not in scene.states
@@ -345,7 +345,7 @@ async def test_configure_scene_reset_clears_first(server):
         {"draft_id": "reset", "name": "S", "on_slots": [5], "reset": True},
     )
 
-    from rigsmith.mcp.session import get_store
+    from rigsmith.core.drafts import get_store
     from rigsmith.rig.model import SceneBlockState
 
     scene = get_store().get("reset").rig.scenes[0]

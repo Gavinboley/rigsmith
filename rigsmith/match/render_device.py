@@ -29,6 +29,7 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from .metrics import to_mono
+from ..core.errors import Unavailable
 
 #: Input channel layout of the Core's USB interface, 1-based as the manual
 #: numbers them.
@@ -40,7 +41,7 @@ DRY_MIC_CHANNEL = 6
 DEFAULT_SAMPLE_RATE = 48000
 
 
-class AudioUnavailable(RuntimeError):
+class AudioUnavailable(Unavailable):
     """The audio backend or the device is not available."""
 
 
