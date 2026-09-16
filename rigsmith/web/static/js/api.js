@@ -107,6 +107,7 @@ export const api = {
   tone3000Status: () => api.get("/api/tone3000/status"),
   tone3000Login: () => api.post("/api/tone3000/login"),
   tone3000Search: (params) => api.get("/api/tone3000/search", params),
+  tone3000Download: (body) => api.post("/api/tone3000/download", body),
 
   matchDevices: () => api.get("/api/match/devices"),
   score: (body) => api.post("/api/match/score", body),

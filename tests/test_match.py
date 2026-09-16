@@ -369,3 +369,47 @@ def test_a_clip_that_cannot_be_copied_stays_in_the_test(tmp_path, monkeypatch):
         assert session.blinded[leaks[0]] == "gone"
     finally:
         config.set_settings(None)
+
+
+# --------------------------------------------------------------------------
+# downloaded captures report what they actually are
+# --------------------------------------------------------------------------
+
+
+def test_a_download_reports_the_file_disagreeing_with_its_metadata():
+    """The architecture field is what somebody typed; the weights are the fact."""
+    from rigsmith.core.captures import Downloaded
+
+    honest = Downloaded(
+        model_id="1", path=Path("a.nam"), claimed="A2", actual="A2", size="full",
+        loadable=True,
+    )
+    lying = Downloaded(
+        model_id="2", path=Path("b.nam"), claimed="A2", actual="A1", size="standard",
+        loadable=True,
+    )
+    unknown = Downloaded(
+        model_id="3", path=Path("c.nam"), claimed="A2", actual="unknown", size=None,
+        loadable=None,
+    )
+
+    assert not honest.disagrees
+    assert lying.disagrees
+    # An unreadable generation is not evidence of a disagreement.
+    assert not unknown.disagrees
+    assert "the API called it A2" in lying.describe()
+    assert "loadability unknown" in unknown.describe()
+
+
+def test_the_download_summary_calls_out_both_problems():
+    from rigsmith.core.captures import Downloaded, render_download
+
+    text = render_download([
+        Downloaded(model_id="1", path=Path("b.nam"), claimed="A2", actual="A1",
+                   size="standard", loadable=True),
+        Downloaded(model_id="2", path=Path("c.nam"), claimed="A1", actual="A1",
+                   size="xl", loadable=False),
+    ])
+    assert "disagree" in text
+    assert "will not load on the Core" in text
+    assert "offline rendering" in text

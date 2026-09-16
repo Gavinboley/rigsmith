@@ -17,7 +17,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from ..config import get_settings
+from ..config import get_settings, require_writable
 from .errors import Invalid, NotFound, Unavailable
 
 
@@ -344,4 +344,172 @@ def render_search(tones, query: str = "") -> str:
         "\nInspect a downloaded .nam before committing to it - the API's "
         "architecture field and the file's own contents can disagree."
     )
+    return "\n".join(lines)
+
+
+# --------------------------------------------------------------------------
+# download
+# --------------------------------------------------------------------------
+
+
+@dataclass
+class Downloaded:
+    """One capture that made it to disk, and what it actually turned out to be."""
+
+    model_id: str
+    path: Path
+    claimed: str
+    """Generation as the API described it."""
+    actual: str
+    """Generation inferred from the file itself."""
+    size: str | None = None
+    loadable: bool | None = None
+
+    @property
+    def disagrees(self) -> bool:
+        """The API said one thing and the file says another."""
+        return self.actual != "unknown" and self.claimed != "unknown" and (
+            self.actual != self.claimed
+        )
+
+    def describe(self) -> str:
+        line = f"{self.path.name}  {self.actual} {self.size or '?'}"
+        if self.disagrees:
+            line += f"  (the API called it {self.claimed})"
+        if self.loadable is False:
+            line += "  WILL NOT LOAD on the Core"
+        elif self.loadable is None:
+            line += "  loadability unknown"
+        return line
+
+    def to_dict(self) -> dict:
+        return {
+            "model_id": self.model_id,
+            "path": str(self.path),
+            "name": self.path.name,
+            "claimed": self.claimed,
+            "actual": self.actual,
+            "size": self.size,
+            "loadable": self.loadable,
+            "disagrees": self.disagrees,
+        }
+
+
+async def download(
+    tone_id: str,
+    *,
+    architecture: str = "2",
+    out_dir: str | Path | None = None,
+    limit: int = 4,
+    loadable_only: bool = True,
+    progress=None,
+) -> list[Downloaded]:
+    """Download a tone's models, then check each one against its own contents.
+
+    Search tells you what TONE3000 believes about a capture. This downloads it
+    and reads the file, because those two can disagree - the API's
+    architecture field is metadata someone entered, and the weights are the
+    fact. Every result carries both, and says so when they differ.
+
+    Args:
+        tone_id: The tone to fetch, as returned by :func:`search`.
+        architecture: ``2``, ``1``, or ``any``.
+        out_dir: Where to put the files. Defaults to the workspace's nam/.
+        limit: Cap on how many models to pull from one tone.
+        loadable_only: Skip sizes the Core cannot run. Turn it off to keep a
+            capture for offline rendering, which has no such limit.
+    """
+    from ..tone.tone3000 import Tone3000Error
+
+    require_writable("download captures")
+    settings = get_settings()
+    settings.ensure_workspace()
+    destination = Path(out_dir) if out_dir else settings.nam_dir
+    destination.mkdir(parents=True, exist_ok=True)
+
+    client = _client()
+    models = await client.list_models(
+        tone_id, architecture=None if architecture == "any" else architecture
+    )
+    if not models:
+        raise NotFound(
+            f"tone {tone_id} has no models for architecture '{architecture}'",
+            hint="Try architecture='any' to see everything it offers.",
+        )
+
+    wanted = [
+        model
+        for model in models
+        if not loadable_only or model.headrush_compatible is not False
+    ]
+    if not wanted:
+        raise Invalid(
+            f"none of tone {tone_id}'s {len(models)} model(s) will load on the Core",
+            hint=(
+                "The Core runs A2 Full/Lite and A1 Standard/Lite/Nano/Feather. "
+                "Pass loadable_only=False to keep one for offline rendering anyway."
+            ),
+        )
+
+    results: list[Downloaded] = []
+    for index, model in enumerate(wanted[:limit], start=1):
+        if progress:
+            progress.check()
+            progress.update(
+                (index - 1) / min(len(wanted), limit),
+                f"downloading {model.describe()} ({index}/{min(len(wanted), limit)})",
+            )
+        name = _safe_filename(model, tone_id)
+        try:
+            path = await client.download_model(model, destination / name)
+        except Tone3000Error as exc:
+            raise Unavailable(f"could not download {model.describe()}: {exc}") from exc
+
+        parsed = inspect(path)
+        results.append(
+            Downloaded(
+                model_id=model.id,
+                path=path,
+                claimed=model.generation,
+                actual=parsed.generation.value,
+                size=parsed.size or model.size,
+                loadable=parsed.headrush_compatible,
+            )
+        )
+
+    if progress:
+        progress.update(1.0, f"{len(results)} capture(s) downloaded")
+    return results
+
+
+def _safe_filename(model, tone_id: str) -> str:
+    """A filename that survives every filesystem and still says what it is."""
+    import re
+
+    stem = model.name or f"tone{tone_id}-{model.id}"
+    stem = re.sub(r"[^A-Za-z0-9._ -]+", "-", stem).strip(" .-") or f"model-{model.id}"
+    suffix = f"-{model.size}" if model.size else ""
+    return f"{stem}{suffix}.nam"[:120]
+
+
+def render_download(results: list[Downloaded]) -> str:
+    if not results:
+        return "Nothing downloaded."
+    lines = [f"{len(results)} capture(s) downloaded:"]
+    lines.extend(f"  {r.describe()}" for r in results)
+
+    disagreeing = [r for r in results if r.disagrees]
+    if disagreeing:
+        lines.append(
+            "\nThe API's architecture field and the file's own contents "
+            "disagree for "
+            f"{len(disagreeing)} of these. Trust the file: the metadata is "
+            "what somebody typed, the weights are what the model is."
+        )
+    unloadable = [r for r in results if r.loadable is False]
+    if unloadable:
+        lines.append(
+            f"\n{len(unloadable)} will not load on the Core. They are still "
+            "usable for offline rendering, which has no size limit."
+        )
     return "\n".join(lines)

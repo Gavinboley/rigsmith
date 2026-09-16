@@ -82,6 +82,11 @@ class Settings:
         return self.workspace / "audio"
 
     @property
+    def nam_dir(self) -> Path:
+        """NAM captures downloaded from TONE3000, before they reach the device."""
+        return self.workspace / "nam"
+
+    @property
     def research_dir(self) -> Path:
         """Cached tone research and compiled recipes."""
         return self.workspace / "research"
@@ -97,6 +102,7 @@ class Settings:
             self.captures_dir,
             self.firmware_dir,
             self.audio_dir,
+            self.nam_dir,
             self.research_dir,
         ):
             path.mkdir(parents=True, exist_ok=True)

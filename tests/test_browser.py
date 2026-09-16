@@ -319,13 +319,31 @@ def test_dragging_a_block_reorders_the_chain(browser, server):
         page.mouse.move(
             end["x"] + end["width"] / 2, end["y"] + end["height"] - 4, steps=8
         )
+        # Sortable decides the drop index from the last position it saw, and
+        # the list is reflowing underneath; one more move at rest lets it
+        # settle before the button comes up.
+        page.wait_for_timeout(100)
+        page.mouse.move(
+            end["x"] + end["width"] / 2, end["y"] + end["height"] - 4, steps=2
+        )
         page.mouse.up()
 
+        # Wait for the settled state, not the first change. Sortable moves the
+        # element in the DOM immediately; the slot numbers only become
+        # contiguous again once the server has answered and the board has
+        # re-rendered, so that is the thing to wait on.
         page.wait_for_function(
-            "() => Array.from("
-            "document.querySelectorAll('#board .slot[data-slot] .slot-name')"
-            ").map(n => n.textContent).join() !== 'fuzz,amp,delay'",
-            timeout=10000,
+            """() => {
+                const slots = Array.from(
+                    document.querySelectorAll('#board .slot:not(.empty)')
+                );
+                const numbers = slots.map((n) => n.dataset.slot).join();
+                const names = slots
+                    .map((n) => n.querySelector('.slot-name').textContent)
+                    .join();
+                return numbers === '1,2,3' && names !== 'fuzz,amp,delay';
+            }""",
+            timeout=15000,
         )
 
         # Where exactly it lands depends on Sortable's hit-testing against a

@@ -720,3 +720,32 @@ def test_midi_verify_needs_a_real_draft(client):
         "/api/device/midi/verify", json={"draft_id": "ghost"}
     )
     assert response.status_code in (404, 503)
+
+
+# --------------------------------------------------------------------------
+# downloading captures - the step between finding one and using one
+# --------------------------------------------------------------------------
+
+
+def test_download_starts_a_job_and_reports_a_missing_login(client):
+    response = client.post("/api/tone3000/download", json={"tone_id": "123"})
+    assert response.status_code == 200
+    job_id = response.json()["job_id"]
+
+    for _ in range(100):
+        job = client.get(f"/api/jobs/{job_id}").json()
+        if job["finished"]:
+            break
+        time.sleep(0.05)
+    assert job["finished"]
+    # No credentials here, so it fails with the reason rather than hanging.
+    assert job["state"] == "failed"
+    assert "tone3000" in (job["error"] or "").lower()
+
+
+def test_the_nam_directory_is_protected_from_pruning(client):
+    """A downloaded capture is what a rig points at, and re-fetching it needs
+    the account that got it."""
+    areas = {area["name"]: area for area in client.get("/api/workspace").json()["areas"]}
+    assert "nam" in areas
+    assert areas["nam"]["prunable"] is False

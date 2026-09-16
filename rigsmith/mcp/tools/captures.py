@@ -194,3 +194,46 @@ def rank_captures(
         "before choosing - search_offline does that in one step."
     )
     return "\n".join(lines)
+
+
+@tool
+async def download_capture(
+    tone_id: str,
+    architecture: Literal["1", "2", "any"] = "2",
+    limit: int = 4,
+    any_size: bool = False,
+    install_to_device: bool = False,
+) -> str:
+    """Download a tone's captures and verify each against its own contents.
+
+    This is the step between finding a capture and using one. search_captures
+    reports what TONE3000 believes; this downloads the file and reads it,
+    because the two can disagree - the architecture field is metadata someone
+    entered, and the weights are the fact. Every result reports both and says
+    when they differ.
+
+    Args:
+        tone_id: From search_captures, the number after '#'.
+        architecture: '2' for A2, '1' for A1, 'any' for everything.
+        limit: Cap on how many models to pull from one tone.
+        any_size: Keep sizes the Core cannot run. They are still usable for
+            offline rendering, which has no size limit.
+        install_to_device: Copy them onto the device over USB afterwards.
+            Needs the Core in Menu > USB Transfer, and a Sync on the device
+            after ejecting.
+    """
+    from ...core import devices
+
+    results = await captures.download(
+        tone_id, architecture=architecture, limit=limit, loadable_only=not any_size
+    )
+    lines = [captures.render_download(results)]
+
+    if install_to_device:
+        lines.append("")
+        for result in results:
+            if result.loadable is False:
+                lines.append(f"  skipped {result.path.name} - the Core will not load it")
+            else:
+                lines.append("  " + devices.install_capture(result.path))
+    return "\n".join(lines)

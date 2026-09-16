@@ -131,6 +131,14 @@ class ScoreBody(BaseModel):
     candidate_region: list[float] | None = None
 
 
+class DownloadCapture(BaseModel):
+    tone_id: str
+    architecture: str = "2"
+    limit: int = 4
+    any_size: bool = False
+    install_to_device: bool = False
+
+
 class OpenAudio(BaseModel):
     path: str
 
@@ -585,6 +593,44 @@ def tone3000_login() -> dict:
         ).to_dict()
 
     job = get_manager().submit("TONE3000 sign-in", run)
+    return {"job_id": job.id, "name": job.name}
+
+
+@router.post("/tone3000/download")
+def tone3000_download(body: DownloadCapture) -> dict:
+    """Download a tone's captures as a job, and check each against its file.
+
+    A job because a handful of models is tens of megabytes over somebody
+    else's rate limit, and because the page should show it happening.
+    """
+    import asyncio
+
+    def run(progress):
+        results = asyncio.run(
+            captures.download(
+                body.tone_id,
+                architecture=body.architecture,
+                limit=body.limit,
+                loadable_only=not body.any_size,
+                progress=progress,
+            )
+        )
+        installed = []
+        if body.install_to_device:
+            for result in results:
+                if result.loadable is False:
+                    installed.append(
+                        f"skipped {result.path.name} - the Core will not load it"
+                    )
+                else:
+                    installed.append(devices.install_capture(result.path))
+        return {
+            "downloaded": [r.to_dict() for r in results],
+            "installed": installed,
+            "rendered": captures.render_download(results),
+        }
+
+    job = get_manager().submit(f"download tone {body.tone_id}", run)
     return {"job_id": job.id, "name": job.name}
 
 

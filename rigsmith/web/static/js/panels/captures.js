@@ -1,7 +1,7 @@
 /* Captures panel: a local .nam library, and TONE3000 search. */
 
 import { api } from "../api.js";
-import { $, attempt, clear, el } from "../ui.js";
+import { $, attempt, clear, el, jobRow } from "../ui.js";
 import { attachPicker } from "../picker.js";
 
 function compatibilityTag(capture) {
@@ -57,10 +57,77 @@ function toneItem(tone) {
     tone.makes?.length ? el("span", { class: "meta", text: tone.makes.join(", ") }) : null,
     el("span", { class: "spacer" }),
     el("span", { class: "meta", text: `${tone.downloads || 0} downloads` }),
+    el("button", {
+      class: "btn small",
+      text: "Download",
+      title:
+        "Fetch the captures and read each file - the API's architecture " +
+        "field and the weights can disagree.",
+      onclick: () => attempt(() => startDownload(tone)),
+    }),
     tone.url
       ? el("a", { class: "tag", href: tone.url, target: "_blank", text: "open" })
       : null
   );
+}
+
+/* Downloading is tens of megabytes over somebody else's rate limit, so it is
+ * a job and this watches it. */
+
+let downloadJob = null;
+
+async function startDownload(tone) {
+  const { job_id } = await api.tone3000Download({
+    tone_id: String(tone.id),
+    architecture: $("#t3k-arch").value,
+  });
+  downloadJob = job_id;
+  clear($("#t3k-download")).append(
+    el("div", { class: "hint", text: `Downloading "${tone.title}"...` })
+  );
+}
+
+async function showDownload(jobId) {
+  const { result } = await api.job(jobId);
+  const host = clear($("#t3k-download"));
+  if (!result?.downloaded) return;
+
+  for (const item of result.downloaded) {
+    host.append(
+      el(
+        "div",
+        { class: "item" },
+        el("span", {
+          class: `tag ${item.actual === "A2" ? "a2" : "a1"}`,
+          text: item.actual,
+        }),
+        el("span", { class: "title", text: item.name }),
+        item.size ? el("span", { class: "meta", text: item.size }) : null,
+        el("span", { class: "spacer" }),
+        // The file disagreeing with its own metadata is the thing worth
+        // seeing here, so it gets a tag rather than a footnote.
+        item.disagrees
+          ? el("span", {
+              class: "tag warn",
+              text: `API said ${item.claimed}`,
+              title:
+                "The architecture field is what somebody typed; the weights " +
+                "are what the model is. Trust the file.",
+            })
+          : null,
+        item.loadable === false
+          ? el("span", {
+              class: "tag bad",
+              text: "won't load",
+              title: "Still usable for offline rendering, which has no size limit.",
+            })
+          : null
+      )
+    );
+  }
+  for (const line of result.installed || []) {
+    host.append(el("div", { class: "hint", text: line }));
+  }
 }
 
 async function refreshAuth() {
@@ -112,7 +179,7 @@ async function startLogin() {
   if (host) host.textContent = "Waiting for you to authorise in the other tab...";
 }
 
-export function onJobs(jobs) {
+function onLoginJobs(jobs) {
   if (!loginJob) return;
   const job = jobs.find((candidate) => candidate.id === loginJob);
   if (!job) return;
@@ -137,6 +204,22 @@ export function onJobs(jobs) {
     }
     refreshAuth();
   }
+}
+
+export function onJobs(jobs) {
+  if (!downloadJob) return;
+  const job = jobs.find((candidate) => candidate.id === downloadJob);
+  if (job) {
+    clear($("#t3k-download")).append(
+      jobRow(job, { onCancel: () => attempt(() => api.cancelJob(job.id)) })
+    );
+    if (job.finished) {
+      const id = downloadJob;
+      downloadJob = null;
+      if (job.state === "succeeded") attempt(() => showDownload(id));
+    }
+  }
+  onLoginJobs(jobs);
 }
 
 export function init() {

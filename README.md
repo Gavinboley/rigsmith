@@ -11,7 +11,7 @@ pip install -e ".[all]"
 rigsmith ui
 ```
 
-> **Status: works without hardware; one thing needs it.** Rig authoring, validation, NAM analysis, tone matching, catalog extraction, USB backup, MIDI and the web UI are all done and covered by 437 tests. The Remote Editor's wire protocol still has to be captured against a powered-on Core before `write_rig` can write — everything else runs today. See [docs/PROTOCOL.md](docs/PROTOCOL.md).
+> **Status: works without hardware; one thing needs it.** Rig authoring, validation, NAM analysis, tone matching, catalog extraction, USB backup, MIDI and the web UI are all done and covered by 441 tests. The Remote Editor's wire protocol still has to be captured against a powered-on Core before `write_rig` can write — everything else runs today. See [docs/PROTOCOL.md](docs/PROTOCOL.md).
 
 ---
 
@@ -124,6 +124,9 @@ rigsmith rig preview  cherub-rock
 ### Match it against the record
 
 ```bash
+rigsmith tone3000 search "JCM800" --architecture 2
+rigsmith tone3000 download 4821 --install         # fetch, verify, copy to the device
+
 rigsmith match isolate song.wav                   # guitar stem via Demucs
 rigsmith match capture-di --seconds 20            # play the riff once
 rigsmith match search di.wav stem.wav ./captures  # render every capture, rank them
@@ -151,7 +154,7 @@ Ask for a tone. The agent researches the gear, finds an A2 capture, builds the r
     +---------------+---------------+
     |               |               |
   cli.py       mcp/tools/*      web/api.py
-  (click)       (61 tools)       (FastAPI)
+  (click)       (62 tools)       (FastAPI)
 ```
 
 Each surface is a thin adapter: parse input, call core, format output. That rule exists because the first version broke it — orchestration lived inside the MCP tools, so anything not reachable from a tool was reachable from nowhere, and whole subsystems ended up built and unwired.

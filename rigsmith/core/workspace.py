@@ -29,6 +29,9 @@ AREAS: dict[str, tuple[str, bool]] = {
     "captures": ("archived Remote Editor bundles and protocol inventories", True),
     "firmware": ("downloaded firmware images and unpacked trees", True),
     "audio": ("DI captures, rendered candidates, separated stems, A/B sessions", True),
+    # Not prunable: a downloaded capture is the thing a rig points at, and
+    # re-downloading needs the account that fetched it in the first place.
+    "nam": ("NAM captures downloaded from TONE3000", False),
     "research": ("cached tone research and compiled recipes", True),
     "drafts": ("rigs being worked on", False),
     "exports": ("rigs exported to JSON", True),

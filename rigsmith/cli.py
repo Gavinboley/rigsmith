@@ -697,6 +697,48 @@ def tone3000_search(query, make, architecture, sizes, calibrated, limit) -> None
     click.echo(core_captures.render_search(tones, query))
 
 
+@tone3000.command("download")
+@click.argument("tone_id")
+@click.option("--architecture", default="2", type=click.Choice(["1", "2", "any"]), show_default=True)
+@click.option("--out", type=click.Path(path_type=Path), help="Where to put the files.")
+@click.option("--limit", default=4, show_default=True, help="Cap on models from one tone.")
+@click.option(
+    "--any-size",
+    is_flag=True,
+    help="Keep sizes the Core cannot run - still usable for offline rendering.",
+)
+@click.option("--install", is_flag=True, help="Copy them to the device over USB afterwards.")
+@handled
+def tone3000_download(tone_id, architecture, out, limit, any_size, install) -> None:
+    """Download a tone's captures, then check each against its own contents.
+
+    Search tells you what TONE3000 believes about a capture. This reads the
+    file, because those two can disagree - the architecture field is metadata
+    somebody typed, and the weights are the fact.
+    """
+    from .core import captures as core_captures
+    from .core import devices as core_devices
+
+    results = _run(
+        core_captures.download(
+            tone_id,
+            architecture=architecture,
+            out_dir=out,
+            limit=limit,
+            loadable_only=not any_size,
+        )
+    )
+    click.echo(core_captures.render_download(results))
+
+    if install:
+        click.echo("")
+        for result in results:
+            if result.loadable is False:
+                click.echo(f"  skipped {result.path.name} - the Core will not load it")
+                continue
+            click.echo("  " + core_devices.install_capture(result.path))
+
+
 # ==========================================================================
 # tone matching
 # ==========================================================================
