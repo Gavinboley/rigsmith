@@ -19,7 +19,19 @@ DOCS = ROOT / "docs"
 
 
 def test_readme_test_count_is_accurate(request):
-    """The README states a number; it has to be the real one."""
+    """The README states a number; it has to be the real one.
+
+    Only meaningful on a full run - ``testscollected`` counts what *this*
+    invocation collected, so running a single file would otherwise report a
+    mismatch that says nothing about the README.
+    """
+    targets = [str(arg) for arg in request.config.args]
+    whole_suite = all(
+        Path(target).resolve() in (ROOT, ROOT / "tests") for target in targets
+    )
+    if not whole_suite:
+        pytest.skip("partial run - the collected count is not the suite total")
+
     claimed = re.search(r"covered by ([\d,]+) tests", README.read_text(encoding="utf-8"))
     assert claimed, "the README should state how many tests there are"
 
