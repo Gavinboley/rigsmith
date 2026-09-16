@@ -45,6 +45,17 @@ DEFAULT_SAMPLE_RATE = 48000
 A1_STANDARD_RECEPTIVE_FIELD = 4100
 A2_RECEPTIVE_FIELD = 6350
 
+#: How far a receptive field may sit from a reference and still be taken as
+#: evidence for it.
+#:
+#: Deliberately tight. Both references are figures for *standard*
+#: configurations, so being near one is already weak evidence and being far
+#: from both is none at all. At 10% the two bands are roughly 3690-4510 and
+#: 5715-6985, leaving a wide middle where the honest answer is "cannot tell" -
+#: which matters, because this figure decides whether a capture is reported as
+#: loadable on the Core.
+RECEPTIVE_FIELD_TOLERANCE = 0.10
+
 #: Architectures the HeadRush Core accepts, per HeadRush's own Cloud page.
 HEADRUSH_SUPPORTED = {
     ("A2", "full"),
@@ -53,6 +64,13 @@ HEADRUSH_SUPPORTED = {
     ("A1", "lite"),
     ("A1", "nano"),
     ("A1", "feather"),
+}
+
+#: The size tiers each generation actually comes in. Used to stop a word in
+#: a model's name being read as a size the model could not have.
+SIZES_BY_GENERATION = {
+    "A1": {"standard", "lite", "feather", "nano"},
+    "A2": {"full", "lite"},
 }
 
 #: Tone descriptors used in NAM metadata.
@@ -214,12 +232,37 @@ class NamModel:
         }
 
 
+def _layer_values(config: dict, key: str) -> list[str]:
+    """Collect ``key`` from a WaveNet config, top level and per layer.
+
+    A real ``.nam`` puts ``activation`` and ``gated`` inside each entry of
+    ``config.layers``, not at the top. Reading only the top level meant the
+    defining architectural difference between the generations was never
+    actually consulted, and every real file fell through to the receptive
+    field - a much weaker signal.
+    """
+    found: list[str] = []
+    top = config.get(key)
+    if top is not None:
+        found.append(str(top))
+
+    layers = config.get("layers_array") or config.get("layers")
+    if isinstance(layers, list):
+        for layer in layers:
+            if isinstance(layer, dict) and layer.get(key) is not None:
+                found.append(str(layer[key]))
+    return found
+
+
 def _detect_generation(model: NamModel) -> tuple[Generation, list[str]]:
     """Work out the architecture generation, recording the evidence.
 
-    Explicit statements beat inference; inference from the activation beats
-    inference from the receptive field. When nothing supports a conclusion,
-    the answer is UNKNOWN.
+    Explicit statements beat inference; the activation function beats the
+    receptive field. When nothing supports a conclusion - including when the
+    receptive field sits between the two references rather than near one of
+    them - the answer is UNKNOWN. That matters because the generation decides
+    whether a capture is reported as loadable, and a coin flip presented as a
+    finding is worse than an admitted gap.
     """
     evidence: list[str] = []
 
@@ -239,48 +282,73 @@ def _detect_generation(model: NamModel) -> tuple[Generation, list[str]]:
         if token.startswith("1"):
             return Generation.A1, [f"explicit {key}={raw}"]
 
-    # 2. The activation function is the defining architectural difference.
-    activation = str(
-        model.config.get("activation")
-        or model.config.get("activation_fn")
-        or ""
-    ).lower()
-    if activation:
-        if "leaky" in activation or "lrelu" in activation:
-            evidence.append(f"activation={activation} (A2 uses LeakyReLU)")
-            return Generation.A2, evidence
-        if "gated" in activation or "tanh" in activation or "sigmoid" in activation:
-            evidence.append(f"activation={activation} (A1 uses a gated activation)")
-            return Generation.A1, evidence
+    # 2. The activation function is the defining architectural difference:
+    #    A2 uses LeakyReLU where A1 uses Tanh, gated or otherwise.
+    activations = [
+        value.lower()
+        for value in (
+            _layer_values(model.config, "activation")
+            + _layer_values(model.config, "activation_fn")
+        )
+    ]
+    if activations:
+        leaky = [a for a in activations if "leaky" in a or "lrelu" in a]
+        gated = [a for a in activations if "tanh" in a or "sigmoid" in a or "gated" in a]
+        if leaky and not gated:
+            return Generation.A2, [f"activation={leaky[0]} (A2 uses LeakyReLU)"]
+        if gated and not leaky:
+            return Generation.A1, [f"activation={gated[0]} (A1 uses Tanh)"]
+        if leaky and gated:
+            # A file claiming both is not something to guess about.
+            evidence.append(
+                f"layers disagree on activation ({', '.join(sorted(set(activations)))})"
+            )
+            return Generation.UNKNOWN, evidence
 
-    if model.config.get("gated") is True:
-        return Generation.A1, ["config.gated=true"]
-    if model.config.get("gated") is False:
-        return Generation.A2, ["config.gated=false"]
+    # `gated` is deliberately not consulted. It distinguishes variants within
+    # A1 - the standard WaveNet config sets gated=false on every layer - so
+    # reading it as a generation signal reported ordinary A1 captures as A2.
 
-    # 3. Receptive field, as weak corroboration only.
+    # 3. Receptive field, and only when it is actually near a reference.
     rf = model.receptive_field
     if rf is not None:
-        midpoint = (A1_STANDARD_RECEPTIVE_FIELD + A2_RECEPTIVE_FIELD) / 2
-        if rf >= midpoint:
-            return Generation.A2, [
-                f"receptive field {rf} samples is near the A2 figure "
-                f"(~{A2_RECEPTIVE_FIELD}) - inferred, not stated"
-            ]
-        return Generation.A1, [
-            f"receptive field {rf} samples is near the A1-Standard figure "
-            f"(~{A1_STANDARD_RECEPTIVE_FIELD}) - inferred, not stated"
-        ]
+        for generation, reference, label in (
+            (Generation.A2, A2_RECEPTIVE_FIELD, "A2"),
+            (Generation.A1, A1_STANDARD_RECEPTIVE_FIELD, "A1-Standard"),
+        ):
+            if abs(rf - reference) <= reference * RECEPTIVE_FIELD_TOLERANCE:
+                return generation, [
+                    f"receptive field {rf} samples is within "
+                    f"{RECEPTIVE_FIELD_TOLERANCE:.0%} of the {label} figure "
+                    f"(~{reference}) - inferred, not stated"
+                ]
+        evidence.append(
+            f"receptive field {rf} samples is not near either reference "
+            f"(A1 ~{A1_STANDARD_RECEPTIVE_FIELD}, A2 ~{A2_RECEPTIVE_FIELD}), "
+            "so it says nothing about the generation"
+        )
 
     architecture = (model.architecture or "").lower()
     if architecture and architecture not in {"wavenet", "lstm", "convnet"}:
         return Generation.CUSTOM, [f"unrecognised architecture '{model.architecture}'"]
 
-    return Generation.UNKNOWN, ["no architecture-generation evidence in the file"]
+    evidence.append("no architecture-generation evidence in the file")
+    return Generation.UNKNOWN, evidence
 
 
 def _detect_size(model: NamModel) -> tuple[str | None, list[str]]:
-    """Work out the size tier (standard/lite/feather/nano/full)."""
+    """Work out the size tier (standard/lite/feather/nano/full).
+
+    A stated size is taken at face value. A size read out of the model's name
+    has to be plausible for the generation as well, because names are full of
+    words that look like size tiers and are not: "Full Stack" is a cabinet,
+    "Lite Drive" is a pedal. Getting this wrong is not harmless - the size
+    and the generation together decide whether a capture is reported as
+    loadable, so a cab name could make a perfectly good A1 capture read as
+    one the Core will refuse.
+    """
+    import re
+
     for source, key in (
         (model.metadata, "size"),
         (model.config, "size"),
@@ -288,12 +356,29 @@ def _detect_size(model: NamModel) -> tuple[str | None, list[str]]:
     ):
         raw = source.get(key)
         if raw:
-            return str(raw).strip().lower(), [f"explicit {key}={raw}"]
+            size = str(raw).strip().lower()
+            evidence = [f"explicit {key}={raw}"]
+            known = SIZES_BY_GENERATION.get(model.generation.value)
+            if known and size not in known:
+                evidence.append(
+                    f"'{size}' is not a size {model.generation.value} comes in "
+                    f"({', '.join(sorted(known))}) - the file may be mislabelled"
+                )
+            return size, evidence
 
     name = (model.name or "").lower()
+    plausible = SIZES_BY_GENERATION.get(model.generation.value)
     for token in ("feather", "nano", "lite", "standard", "full"):
-        if token in name:
-            return token, [f"'{token}' appears in the model name - inferred"]
+        # A whole word, so "Fullerton" and "Nanoverb" do not count.
+        if not re.search(r"\b" + token + r"\b", name):
+            continue
+        if plausible is not None and token not in plausible:
+            return None, [
+                f"'{token}' appears in the model name, but {model.generation.value} "
+                f"has no such size - reading it as one would be a guess about "
+                "the name, not about the model"
+            ]
+        return token, [f"'{token}' appears in the model name - inferred"]
 
     return None, ["no size tier stated"]
 
