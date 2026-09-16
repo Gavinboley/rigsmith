@@ -39,6 +39,30 @@ from .metrics import (
 ESR_GOOD = 0.04
 ESR_BROKEN = 0.10
 
+#: Scales the composite divides each metric by before weighting it.
+#:
+#: Without these the weights are fiction. The metrics live on wildly
+#: different scales - ESR is interesting between 0 and 0.1, the spectral
+#: profile distance runs past 20 on pathological input - so a nominal "0.5
+#: ESR, 0.2 spectral" blend was, measured on a realistic aligned pair,
+#: actually 1% ESR and 64% spectral. Each metric is now clamped to the range
+#: over which it discriminates and divided by it, so every term contributes
+#: at most its weight and the composite lands in 0..1.
+#:
+#: The ESR scale is 2.5x the community's "broken" figure: that puts the
+#: entire good-to-broken range inside the term rather than squashing it into
+#: the first 2% of it.
+ESR_SCALE = 0.25
+STFT_SCALE = 5.0
+SPECTRAL_SCALE = 3.0
+MFCC_SCALE = 1.5
+LOG_SPECTRAL_SCALE = 40.0
+
+
+def _scaled(value: float, scale: float) -> float:
+    """A metric as a 0..1 share of the range it is informative over."""
+    return min(max(value, 0.0), scale) / scale
+
 
 @dataclass
 class CandidateScore:
@@ -152,12 +176,13 @@ def score_candidate(
     )
 
     if mode is ComparisonMode.ALIGNED:
-        # ESR is the metric this domain trusts, so it dominates.
+        # ESR is the metric this domain trusts, so it dominates - which it
+        # only actually does because every term is scaled first.
         score.composite = (
-            0.5 * min(score.metric("esr").value, 2.0)
-            + 0.2 * min(score.metric("multi_res_stft").value, 5.0) / 5.0
-            + 0.2 * summary_distance
-            + 0.1 * score.metric("mfcc_distribution").value
+            0.5 * _scaled(score.metric("esr").value, ESR_SCALE)
+            + 0.2 * _scaled(score.metric("multi_res_stft").value, STFT_SCALE)
+            + 0.2 * _scaled(summary_distance, SPECTRAL_SCALE)
+            + 0.1 * _scaled(score.metric("mfcc_distribution").value, MFCC_SCALE)
         )
         score.notes.append(
             "Aligned comparison: ESR and multi-resolution STFT are meaningful "
@@ -165,9 +190,11 @@ def score_candidate(
         )
     else:
         score.composite = (
-            0.45 * summary_distance
-            + 0.35 * score.metric("mfcc_distribution").value
-            + 0.20 * min(score.metric("log_spectral_db").value, 40.0) / 40.0
+            0.45 * _scaled(summary_distance, SPECTRAL_SCALE)
+            + 0.35 * _scaled(score.metric("mfcc_distribution").value, MFCC_SCALE)
+            + 0.20 * _scaled(
+                score.metric("log_spectral_db").value, LOG_SPECTRAL_SCALE
+            )
         )
         score.notes.append(
             "Distribution comparison: this is a RANKING among candidates, not "

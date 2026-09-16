@@ -53,6 +53,28 @@ In this mode the sample-wise metrics are **not computed at all**. Not computed a
 
 The output of distribution mode is a **ranking**. The ordering is informative; the absolute numbers are not. Every rendered ranking says so.
 
+## The composite, and why its weights are scaled
+
+Each mode blends several metrics into one number for ranking. Aligned mode
+weights ESR at 0.5 because ESR is what this domain argues in; distribution
+mode weights the spectral profile at 0.45.
+
+Those weights are only real if the metrics are on the same scale, and they
+are not. ESR is interesting between 0 and 0.1. The spectral profile distance
+runs past 20 on pathological input. Measured on a realistic aligned pair, the
+nominal "0.5 ESR" blend was **1% ESR and 64% spectral profile** - aligned mode
+was a distribution score wearing a different hat.
+
+So every term is clamped to the range over which it discriminates and divided
+by it before weighting. ESR's range is 0.25, which is 2.5x the community's
+"broken" figure, so the whole good-to-broken span sits inside the term rather
+than in the first 2% of it. Each term now contributes at most its weight, the
+composite lands in 0 to 1, and one wild candidate can no longer swamp the
+blend.
+
+The composite is still a ranking and not an absolute. Two candidates scored
+against different targets, or in different modes, are not comparable.
+
 ## The three layers
 
 ### Layer 1 — offline simulation
