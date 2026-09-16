@@ -254,3 +254,123 @@ async def test_inspect_capture_reads_a_nam_file(server, tmp_path):
     out = await call(server, "inspect_capture", {"path": str(path)})
     assert "A2" in out
     assert "loadable on the Core: yes" in out
+
+
+# --------------------------------------------------------------------------
+# configure_scene merge semantics (regression)
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_configure_scene_merges_instead_of_replacing(server):
+    """It used to rebuild the scene from only the current call's arguments.
+
+    Adding one on-slot silently wiped every previously configured slot and
+    the footswitch assignment - which the draft workflow actively invites,
+    since it encourages building a scene up over several calls.
+    """
+    await call(server, "create_rig", {"name": "Merge"})
+    for i in range(5):
+        await call(
+            server,
+            "add_block",
+            {"draft_id": "merge", "category": "effect", "model_id": f"p{i}"},
+        )
+
+    await call(
+        server,
+        "configure_scene",
+        {"draft_id": "merge", "name": "Lead", "on_slots": [1, 2], "footswitch": 3},
+    )
+    await call(
+        server,
+        "configure_scene",
+        {"draft_id": "merge", "name": "Lead", "on_slots": [3]},
+    )
+
+    from rigsmith.mcp.session import get_store
+    from rigsmith.rig.model import SceneBlockState
+
+    scene = get_store().get("merge").rig.scenes[0]
+    on = sorted(s for s, v in scene.states.items() if v is SceneBlockState.ON)
+    assert on == [1, 2, 3], "earlier slots must survive a later call"
+    assert scene.footswitch == 3, "footswitch must survive when not re-passed"
+
+
+@pytest.mark.asyncio
+async def test_configure_scene_no_change_slots_removes_a_slot(server):
+    await call(server, "create_rig", {"name": "Drop"})
+    for i in range(4):
+        await call(
+            server,
+            "add_block",
+            {"draft_id": "drop", "category": "effect", "model_id": f"p{i}"},
+        )
+    await call(
+        server,
+        "configure_scene",
+        {"draft_id": "drop", "name": "S", "on_slots": [1, 2], "presets": {"1": "x"}},
+    )
+    await call(
+        server,
+        "configure_scene",
+        {"draft_id": "drop", "name": "S", "no_change_slots": [1]},
+    )
+
+    from rigsmith.mcp.session import get_store
+
+    scene = get_store().get("drop").rig.scenes[0]
+    assert 1 not in scene.states
+    assert 1 not in scene.presets
+    assert 2 in scene.states
+
+
+@pytest.mark.asyncio
+async def test_configure_scene_reset_clears_first(server):
+    await call(server, "create_rig", {"name": "Reset"})
+    for i in range(5):
+        await call(
+            server,
+            "add_block",
+            {"draft_id": "reset", "category": "effect", "model_id": f"p{i}"},
+        )
+    await call(
+        server,
+        "configure_scene",
+        {"draft_id": "reset", "name": "S", "on_slots": [1, 2], "footswitch": 2},
+    )
+    await call(
+        server,
+        "configure_scene",
+        {"draft_id": "reset", "name": "S", "on_slots": [5], "reset": True},
+    )
+
+    from rigsmith.mcp.session import get_store
+    from rigsmith.rig.model import SceneBlockState
+
+    scene = get_store().get("reset").rig.scenes[0]
+    assert sorted(scene.states) == [5]
+    assert scene.states[5] is SceneBlockState.ON
+    assert scene.footswitch is None
+
+
+@pytest.mark.asyncio
+async def test_configure_scene_reports_the_whole_scene_not_just_the_delta(server):
+    """The agent needs to see resulting state, not the arguments it passed."""
+    await call(server, "create_rig", {"name": "Report"})
+    for i in range(4):
+        await call(
+            server,
+            "add_block",
+            {"draft_id": "report", "category": "effect", "model_id": f"p{i}"},
+        )
+    await call(
+        server,
+        "configure_scene",
+        {"draft_id": "report", "name": "S", "on_slots": [1], "footswitch": 1},
+    )
+    out = await call(
+        server, "configure_scene", {"draft_id": "report", "name": "S", "on_slots": [2]}
+    )
+    assert "[1, 2]" in out
+    assert "footswitch=1" in out

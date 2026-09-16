@@ -550,54 +550,78 @@ def configure_scene(
     name: str,
     on_slots: list[int] | None = None,
     off_slots: list[int] | None = None,
+    no_change_slots: list[int] | None = None,
     footswitch: int | None = None,
     presets: dict[str, str] | None = None,
-    replace: bool = True,
+    reset: bool = False,
 ) -> str:
     """Create or update a Scene - HeadRush's snapshot.
 
-    A scene turns blocks on or off with one footswitch press. Any slot you do
-    not list is left alone (No Change), which is how you build a scene that
-    only touches what it cares about.
+    A scene turns blocks on or off with one footswitch press. Any slot the
+    scene does not mention is left alone (No Change), which is how you build a
+    scene that only touches what it cares about.
+
+    **Updates merge.** Calling this again for an existing scene adjusts only
+    what you name: slots you don't mention keep their setting, and the
+    footswitch is unchanged unless you pass a new one. That makes it safe to
+    build a scene up over several calls. Pass ``reset=True`` to clear the
+    scene and start from just these arguments, or list a slot in
+    ``no_change_slots`` to drop it from the scene.
 
     A single footswitch toggles between at most two scenes.
 
     Args:
         draft_id: From create_rig.
         name: Scene name, e.g. 'Clean verse'.
-        on_slots: Slots to switch on.
-        off_slots: Slots to switch off.
-        footswitch: 1-5, the switch that activates it.
+        on_slots: Slots this scene switches on.
+        off_slots: Slots this scene switches off.
+        no_change_slots: Slots to remove from the scene, leaving them as the
+            player left them.
+        footswitch: 1-5, the switch that activates it. Omit to keep the
+            current assignment.
         presets: {slot: preset_name} to recall when the scene activates.
-        replace: Overwrite an existing scene of the same name.
+        reset: Discard the scene's existing configuration first.
     """
     draft = _draft(draft_id)
-    states: dict[int, SceneBlockState] = {}
-    for slot in on_slots or []:
-        states[int(slot)] = SceneBlockState.ON
-    for slot in off_slots or []:
-        states[int(slot)] = SceneBlockState.OFF
-
-    scene = Scene(
-        name=name,
-        states=states,
-        presets={int(k): v for k, v in (presets or {}).items()},
-        footswitch=footswitch,
-    )
-
     existing = draft.rig.scene_named(name)
-    if existing is not None:
-        if not replace:
-            raise ToolError(f"scene '{name}' already exists; pass replace=True")
-        draft.rig.scenes[draft.rig.scenes.index(existing)] = scene
-    else:
+
+    if existing is None:
+        scene = Scene(name=name)
         draft.rig.scenes.append(scene)
+        created = True
+    else:
+        scene = existing
+        created = False
+        if reset:
+            scene.states = {}
+            scene.presets = {}
+            scene.footswitch = None
+
+    for slot in on_slots or []:
+        scene.states[int(slot)] = SceneBlockState.ON
+    for slot in off_slots or []:
+        scene.states[int(slot)] = SceneBlockState.OFF
+    for slot in no_change_slots or []:
+        scene.states.pop(int(slot), None)
+        scene.presets.pop(int(slot), None)
+    for slot, preset in (presets or {}).items():
+        scene.presets[int(slot)] = preset
+    if footswitch is not None:
+        scene.footswitch = footswitch
+
     get_store().save(draft)
 
+    on = sorted(s for s, v in scene.states.items() if v is SceneBlockState.ON)
+    off = sorted(s for s, v in scene.states.items() if v is SceneBlockState.OFF)
+    lines = [
+        f"Scene '{scene.name}' {'created' if created else 'updated'}: "
+        f"on={on or '-'} off={off or '-'} "
+        f"footswitch={scene.footswitch or 'unassigned'}"
+    ]
+    if scene.presets:
+        lines.append(f"  recalls presets for slots {sorted(scene.presets)}")
+
     result = run_validation(draft.rig)
-    lines = [f"Scene '{name}' set: on={sorted(on_slots or [])} off={sorted(off_slots or [])}"]
-    if footswitch:
-        lines.append(f"  footswitch {footswitch}")
     lines.extend(str(f) for f in result.findings if f.severity == "error")
     return "\n".join(lines)
 
@@ -1054,7 +1078,13 @@ def reamp_di(di_path: str, name: str = "candidate") -> str:
     path = save_audio(
         settings.audio_dir / f"{name}-reamped.wav", capture.wet, capture.sample_rate
     )
-    return f"{capture.describe()}\nsaved: {path}"
+    lines = [capture.describe(), f"saved: {path}"]
+    if not capture.safe_for_aligned_scoring:
+        lines.append(
+            "\nScore this capture with mode='distribution' only. Aligned mode "
+            "needs measured latency, and this capture has none."
+        )
+    return "\n".join(lines)
 
 
 @mcp.tool()

@@ -281,12 +281,21 @@ class Rig:
         return block
 
     def move_block(self, from_slot: int, to_slot: int) -> Block:
-        """Move a block, shifting the intervening blocks to close the gap.
+        """Move a block to ``to_slot``, disturbing as little else as possible.
 
-        Scenes reference blocks by slot number, so re-laying the chain would
-        silently repoint every scene at the wrong block. The old-to-new slot
-        mapping is therefore applied to all scene state and preset entries as
-        part of the move.
+        The block lands in exactly the slot asked for. Empty slots are
+        meaningful on a 14-slot chain - a gap is a deliberate space, not
+        untidiness to be compacted away - so only blocks that genuinely
+        collide are displaced:
+
+        * If ``to_slot`` is free, nothing else moves at all.
+        * If it is occupied, the run of blocks between ``to_slot`` and the
+          nearest gap shifts by one to open it up. Blocks beyond that gap, and
+          blocks outside the range entirely, keep the slots they had.
+
+        Scenes address blocks by slot, so the old-to-new mapping is applied to
+        every scene's states and presets as part of the move - otherwise
+        reordering would silently repoint scenes at the wrong blocks.
         """
         block = self.block_at(from_slot)
         if block is None:
@@ -297,28 +306,30 @@ class Rig:
             return block
 
         previous = {id(b): b.slot for b in self.blocks}
+        # The moving block vacates its own slot, so it never blocks its own move.
+        others = {b.slot: b for b in self.blocks if b is not block}
 
-        ordered = sorted(self.blocks, key=lambda b: b.slot)
-        ordered.remove(block)
-        # Re-lay the remaining blocks, inserting at the requested position.
-        target = max(1, min(to_slot, MAX_SLOTS))
-        rebuilt: list[Block] = []
-        slot = 1
-        inserted = False
-        for existing in ordered:
-            if not inserted and slot >= target:
-                block.slot = slot
-                rebuilt.append(block)
-                slot += 1
-                inserted = True
-            existing.slot = slot
-            rebuilt.append(existing)
-            slot += 1
-        if not inserted:
-            block.slot = min(slot, MAX_SLOTS)
-            rebuilt.append(block)
+        if to_slot not in others:
+            block.slot = to_slot
 
-        self.blocks = sorted(rebuilt, key=lambda b: b.slot)
+        elif from_slot < to_slot:
+            # Shifting right. The nearest gap below to_slot absorbs the shift,
+            # and from_slot is itself now free so one always exists. Every slot
+            # between that gap and to_slot is occupied - that is what "nearest"
+            # means - which makes shifting them one at a time safe.
+            gap = max(s for s in range(from_slot, to_slot) if s not in others)
+            for slot in range(gap + 1, to_slot + 1):
+                others[slot].slot = slot - 1
+            block.slot = to_slot
+
+        else:
+            # Shifting left, mirrored.
+            gap = min(s for s in range(to_slot + 1, from_slot + 1) if s not in others)
+            for slot in range(gap - 1, to_slot - 1, -1):
+                others[slot].slot = slot + 1
+            block.slot = to_slot
+
+        self.blocks.sort(key=lambda b: b.slot)
 
         remap = {previous[id(b)]: b.slot for b in self.blocks}
         if any(old != new for old, new in remap.items()):

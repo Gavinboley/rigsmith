@@ -136,16 +136,35 @@ class Capture:
     dry: np.ndarray | None
     sample_rate: int
     latency_samples: int = 0
+    latency_measured: bool = True
+    """False when round-trip latency could not be measured.
+
+    An uncompensated offset of a few milliseconds is enough to make ESR
+    report a perfect match as a catastrophic one, so a capture with this
+    unset must not be scored in aligned mode. See docs/TONE_MATCHING.md.
+    """
     notes: list[str] = field(default_factory=list)
 
     @property
     def duration(self) -> float:
         return len(self.wet) / self.sample_rate
 
+    @property
+    def safe_for_aligned_scoring(self) -> bool:
+        """Whether sample-wise metrics can be trusted against this capture."""
+        return self.latency_measured
+
     def describe(self) -> str:
         lines = [f"{self.duration:.2f}s @ {self.sample_rate} Hz"]
         lines.append("dry DI captured" if self.dry is not None else "no dry DI captured")
-        if self.latency_samples:
+        if not self.latency_measured:
+            lines.append(
+                "LATENCY NOT MEASURED - do not score this capture in aligned "
+                "mode. A few milliseconds of uncompensated offset makes ESR "
+                "report a perfect match as a catastrophic one. Use "
+                "distribution mode, or fix the audio device and re-record."
+            )
+        elif self.latency_samples:
             lines.append(
                 f"round-trip latency {self.latency_samples} samples "
                 f"({1000 * self.latency_samples / self.sample_rate:.1f} ms), compensated"
@@ -268,11 +287,24 @@ def reamp(
     device = device or find_headrush_device()
     di = to_mono(np.asarray(di, dtype=np.float64))
 
+    # Latency is measured, not assumed. If measurement fails we record that
+    # loudly rather than quietly falling back to zero - a silent zero is
+    # indistinguishable from a real measurement downstream, and would let
+    # aligned scoring report contaminated numbers with full confidence.
+    # Only an audio-subsystem failure is tolerated here; anything else is a
+    # bug in measure_latency and is allowed to propagate.
+    latency_measured = True
     if latency_samples is None:
         try:
             latency_samples = measure_latency(device, sample_rate=sample_rate)
-        except Exception:
+        except AudioUnavailable as exc:
             latency_samples = 0
+            latency_measured = False
+            latency_error = str(exc).splitlines()[0]
+        else:
+            latency_error = None
+    else:
+        latency_error = None
 
     tail = int(tail_s * sample_rate)
     padded = np.concatenate([di, np.zeros(tail + latency_samples)])
@@ -301,7 +333,13 @@ def reamp(
         dry=di,
         sample_rate=sample_rate,
         latency_samples=latency_samples,
+        latency_measured=latency_measured,
     )
+    if latency_error:
+        capture.notes.append(
+            f"round-trip latency could not be measured ({latency_error}); "
+            "the capture is NOT time-aligned"
+        )
     if float(np.max(np.abs(wet))) < 1e-4:
         capture.notes.append(
             "the returned signal is silent - check the Core's USB audio input "
