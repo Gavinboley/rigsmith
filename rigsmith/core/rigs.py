@@ -31,7 +31,7 @@ from ..rig.model import (
     SignalPath,
 )
 from ..rig.validate import ValidationResult
-from ..rig.validate import validate_rig as _validate_rig
+from ..rig.validate import validate_rig as _validate_base
 from .drafts import Draft, get_store
 from .errors import Conflict, Invalid, NotFound, Unavailable
 
@@ -149,6 +149,33 @@ class WriteResult:
 # --------------------------------------------------------------------------
 # helpers
 # --------------------------------------------------------------------------
+
+
+def _capture_lookup():
+    """Find NAM blocks' captures among the ones already downloaded.
+
+    A capture's own metadata answers questions the rig cannot - whether a cab
+    is baked in, most of all. Captures that are not on disk simply are not
+    found, and the checks that depend on them stay open questions.
+    """
+    from ..tone.nam import find_capture
+
+    directory = get_settings().nam_dir
+    cache: dict[str, Any] = {}
+
+    def lookup(model_id: str):
+        if model_id not in cache:
+            try:
+                cache[model_id] = find_capture(model_id, directory)
+            except OSError:
+                cache[model_id] = None
+        return cache[model_id]
+
+    return lookup
+
+
+def _validate_rig(rig: Rig, catalog: Catalog | None = None) -> ValidationResult:
+    return _validate_base(rig, catalog, capture_lookup=_capture_lookup())
 
 
 def _get(draft_id: str) -> Draft:

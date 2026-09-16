@@ -101,6 +101,20 @@ Source separation via Demucs `htdemucs_6s` — the only widely available open mo
 
 A separated stem is **not a DI and not ground truth**. It still carries the record's amp, cabinet, microphone, room, and mix processing — compression, EQ, saturation, bus glue — plus separation artefacts. It is a timbral reference for ranking, and `rigsmith` labels it as such everywhere it appears.
 
+## The cab you did not mean to add twice
+
+Most captures on TONE3000 are of a whole miked rig, not an amp. Putting a
+cabinet IR after one of those sends the signal through two speakers, and the
+result is boxy and dull in a way that is very hard to trace - it sounds like a
+bad capture rather than a wiring mistake.
+
+A `.nam` file often says which it is, in `metadata.gear_type`. When the
+capture named by a NAM block is on disk, rigsmith reads it and says plainly
+which of the two mistakes you are making, or confirms that a missing IR is
+correct. When the file does not say, or the capture is not downloaded, it
+says that instead of guessing - because "remove that IR" is bad advice for a
+capture that genuinely needs one.
+
 ## Choosing the passage
 
 A track is not one tone. The clean intro, the rhythm verse, and the solo are

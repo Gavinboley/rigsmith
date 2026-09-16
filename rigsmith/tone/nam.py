@@ -498,3 +498,58 @@ def rank_for_target(
 
     scored.sort(key=lambda item: -item[1])
     return scored
+
+
+#: ``gear_type`` values that mean the capture already contains a speaker.
+#: Putting an IR after one of these cabs the signal twice, which is the more
+#: common of the two cab mistakes and the hardest to diagnose by ear.
+GEAR_TYPES_WITH_CAB = {"full_rig", "full rig", "fullrig", "amp_cab", "cab", "combo"}
+
+#: ``gear_type`` values that mean the capture is the amp alone.
+GEAR_TYPES_WITHOUT_CAB = {"amp", "amp_head", "head", "preamp", "pedal", "outboard"}
+
+
+def includes_cab(model: NamModel) -> bool | None:
+    """Does this capture already contain a speaker?
+
+    ``None`` when the file does not say. That is the common case and it is
+    not a failure - it is why the cab advice for a capture has to be phrased
+    as a question rather than a fault.
+    """
+    gear = (model.gear_type or "").strip().lower().replace("-", "_")
+    if not gear:
+        return None
+    if gear in GEAR_TYPES_WITH_CAB:
+        return True
+    if gear in GEAR_TYPES_WITHOUT_CAB:
+        return False
+    return None
+
+
+def find_capture(model_id: str, directory: str | Path) -> NamModel | None:
+    """Find a downloaded capture by the id a rig refers to it by.
+
+    Exact matches only - on the file's stem or its stated name. Fuzzy
+    matching would let a rig quietly validate against the wrong capture,
+    which is worse than not finding one.
+    """
+    directory = Path(directory)
+    if not directory.is_dir() or not model_id:
+        return None
+
+    wanted = model_id.strip().lower()
+    for path in sorted(directory.rglob("*.nam")):
+        if path.stem.strip().lower() == wanted:
+            try:
+                return parse_nam(path)
+            except (ValueError, OSError):
+                return None
+
+    for path in sorted(directory.rglob("*.nam")):
+        try:
+            model = parse_nam(path)
+        except (ValueError, OSError):
+            continue
+        if (model.name or "").strip().lower() == wanted:
+            return model
+    return None

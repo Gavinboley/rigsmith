@@ -299,10 +299,30 @@ def _validate_scenes(rig: Rig, result: ValidationResult) -> None:
         result.add("error", f"duplicate scene name '{name}'")
 
 
-def validate_rig(rig: Rig, catalog: Catalog | None = None) -> ValidationResult:
+def _capture_includes_cab(model) -> bool | None:
+    """Whether a looked-up capture already contains a speaker."""
+    if model is None:
+        return None
+    from ..tone.nam import includes_cab
+
+    return includes_cab(model)
+
+
+def validate_rig(
+    rig: Rig,
+    catalog: Catalog | None = None,
+    *,
+    capture_lookup=None,
+) -> ValidationResult:
     """Check a rig and return every finding.
 
     Never raises for rig content - the caller decides what to do with errors.
+
+    Args:
+        capture_lookup: ``model_id -> NamModel | None``. When a NAM block's
+            capture can be found on disk, its own metadata answers questions
+            the rig alone cannot - chiefly whether a cab is already baked in.
+            Left out, those checks stay phrased as open questions.
     """
     catalog = catalog or get_catalog()
     result = ValidationResult()
@@ -360,14 +380,59 @@ def validate_rig(rig: Rig, catalog: Catalog | None = None) -> ValidationResult:
                 slot=modelled[0].slot,
             )
         if captures and not modelled:
-            result.add(
-                "info",
-                "no cab or IR after the capture. Whether that is wrong depends "
-                "on what was captured: an amp-only capture wants one, and a "
-                "full-rig capture already has the cab and mic baked in, where "
-                "adding an IR would cab it twice",
-                slot=captures[0].slot,
-            )
+            block = captures[0]
+            found = capture_lookup(block.model_id) if capture_lookup else None
+            answer = _capture_includes_cab(found)
+            if answer is False:
+                result.add(
+                    "warning",
+                    f"'{block.model_id}' is a capture of the amp alone "
+                    "(gear_type says so), and nothing after it provides a "
+                    "speaker - it will sound harsh into a full-range output",
+                    slot=block.slot,
+                )
+            elif answer is True:
+                # Correct as it stands, and worth saying so: the missing IR
+                # here is the right choice, not an omission to go and fix.
+                result.add(
+                    "info",
+                    f"'{block.model_id}' captured the whole rig including the "
+                    "cab, so no IR is needed after it - adding one would cab "
+                    "the signal twice",
+                    slot=block.slot,
+                )
+            else:
+                result.add(
+                    "info",
+                    "no cab or IR after the capture. Whether that is wrong "
+                    "depends on what was captured: an amp-only capture wants "
+                    "one, and a full-rig capture already has the cab and mic "
+                    "baked in, where adding an IR would cab it twice",
+                    slot=block.slot,
+                )
+
+    # The opposite mistake: a capture that already contains a cab, with an IR
+    # after it. Only reported when the file says so, because guessing here
+    # would have people removing an IR a capture genuinely needs.
+    if capture_lookup:
+        for block in rig.blocks_by_category(BlockCategory.NAM):
+            if _capture_includes_cab(capture_lookup(block.model_id)) is not True:
+                continue
+            following = [
+                b
+                for b in rig.blocks
+                if b.slot > block.slot
+                and b.category in {BlockCategory.CAB, BlockCategory.IR}
+            ]
+            if following:
+                result.add(
+                    "warning",
+                    f"'{block.model_id}' captured the whole rig including the "
+                    f"cab, and slot {following[0].slot} adds another one - the "
+                    "signal goes through two speakers, which is the usual "
+                    "cause of a recreation sounding boxy and dull",
+                    slot=block.slot,
+                )
 
     for source in rig.tone_sources:
         later_speaker = any(
