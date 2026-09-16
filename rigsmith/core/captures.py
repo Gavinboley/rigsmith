@@ -13,6 +13,7 @@ than crawling.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -172,6 +173,118 @@ def auth_status() -> AuthStatus:
         tokens=tokens is not None,
         expired=bool(tokens and tokens.expired),
     )
+
+
+def login(
+    *,
+    port: int = 0,
+    timeout_s: float = 300.0,
+    open_browser: bool = True,
+    on_url: "Callable[[str], None] | None" = None,
+) -> AuthStatus:
+    """Complete the TONE3000 OAuth flow and save the tokens.
+
+    Runs a one-shot loopback listener to catch the redirect, so nothing has to
+    be pasted by hand. Binds to 127.0.0.1 on an ephemeral port by default.
+
+    Args:
+        port: Callback port. 0 lets the OS choose a free one.
+        timeout_s: How long to wait for the user to authorise.
+        open_browser: Launch a browser at the authorize URL.
+        on_url: Called with the URL, so a surface can display it rather than
+            (or as well as) opening a browser.
+
+    Raises:
+        Unavailable: if no client id is configured, or the flow times out.
+    """
+    import http.server
+    import threading
+    import urllib.parse
+    import webbrowser
+
+    from ..tone.tone3000 import Tone3000Client, generate_pkce, save_tokens
+
+    settings = get_settings()
+    if not settings.tone3000_client_id:
+        raise Unavailable(
+            "no TONE3000 client id configured",
+            hint=(
+                "Register an application at https://www.tone3000.com/api and "
+                "set TONE3000_CLIENT_ID to its publishable client id."
+            ),
+        )
+
+    verifier, challenge = generate_pkce()
+    received: dict[str, str] = {}
+    done = threading.Event()
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):  # noqa: N802 - stdlib naming
+            query = urllib.parse.urlparse(self.path).query
+            params = urllib.parse.parse_qs(query)
+            received.update({k: v[0] for k, v in params.items()})
+
+            body = (
+                b"<html><body style='font-family:system-ui;padding:3rem'>"
+                b"<h2>rigsmith</h2><p>Authorisation received. "
+                b"You can close this tab and return to the terminal.</p>"
+                b"</body></html>"
+                if "code" in received
+                else b"<html><body style='font-family:system-ui;padding:3rem'>"
+                b"<h2>rigsmith</h2><p>No authorisation code was returned.</p>"
+                b"</body></html>"
+            )
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            done.set()
+
+        def log_message(self, *args):  # keep the console clean
+            pass
+
+    server = http.server.HTTPServer(("127.0.0.1", port), Handler)
+    actual_port = server.server_address[1]
+    redirect_uri = f"http://127.0.0.1:{actual_port}/callback"
+
+    client = Tone3000Client(client_id=settings.tone3000_client_id)
+    url, state = client.authorize_url(redirect_uri, challenge=challenge)
+
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        if on_url:
+            on_url(url)
+        if open_browser:
+            webbrowser.open(url)
+        if not done.wait(timeout_s):
+            raise Unavailable(
+                f"timed out after {timeout_s:.0f}s waiting for authorisation",
+                hint="Run the login again, or open the URL manually.",
+            )
+    finally:
+        server.shutdown()
+        server.server_close()
+
+    if received.get("state") and received["state"] != state:
+        raise Unavailable(
+            "the authorisation response did not match this request",
+            hint="Start the login again; do not reuse an old browser tab.",
+        )
+    if "code" not in received:
+        detail = received.get("error_description") or received.get("error") or "no code"
+        raise Unavailable(f"authorisation failed: {detail}")
+
+    import asyncio
+
+    tokens = asyncio.run(
+        client.exchange_code(
+            received["code"], verifier=verifier, redirect_uri=redirect_uri
+        )
+    )
+    save_tokens(settings.credentials_path, tokens)
+    return auth_status()
 
 
 def _client():

@@ -1,12 +1,17 @@
-"""Command line interface for rigsmith.
+"""Command line interface.
 
-Mirrors the MCP tool surface so anything an agent can do, a human can do too -
-and so the protocol work can be driven before the MCP server exists.
+A thin adapter over :mod:`rigsmith.core`: parse arguments, call core, print
+the result. No orchestration lives here.
+
+It mirrors the MCP tool surface, which it previously only claimed to - the
+entire rig-authoring and tone-matching paths were agent-only, so a human
+could not build a rig or run a single comparison without an MCP client.
 """
 
 from __future__ import annotations
 
 import asyncio
+import functools
 import json
 import sys
 from pathlib import Path
@@ -15,18 +20,34 @@ import click
 
 from . import __version__
 from .config import Settings, get_settings, set_settings
+from .core.errors import RigsmithError
 
 
 def _run(coro):
     return asyncio.run(coro)
 
 
-def _echo_device(info, index: int | None = None) -> None:
-    prefix = f"  [{index}] " if index is not None else "  "
-    mark = click.style("OK", fg="green") if info.confirmed else click.style("??", fg="yellow")
-    click.echo(f"{prefix}{mark} {info.describe()}")
-    if info.evidence:
-        click.echo(f"       matched: {', '.join(info.evidence)}")
+def handled(func):
+    """Turn a core error into a styled message and the right exit code."""
+
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except RigsmithError as exc:
+            click.echo(click.style(exc.message, fg="red"), err=True)
+            if exc.hint:
+                click.echo(exc.hint, err=True)
+            sys.exit(exc.exit_code)
+
+    return wrapper
+
+
+def _emit(text: str, *, as_json: bool = False, payload=None) -> None:
+    if as_json and payload is not None:
+        click.echo(json.dumps(payload, indent=2, default=str))
+    else:
+        click.echo(text)
 
 
 @click.group(context_settings={"help_option_names": ["-h", "--help"]})
@@ -35,7 +56,7 @@ def _echo_device(info, index: int | None = None) -> None:
 @click.option("--workspace", type=click.Path(path_type=Path), help="Override the rigsmith workspace directory.")
 @click.option("--readonly", is_flag=True, help="Disable every write for this invocation.")
 def main(device_host: str | None, workspace: Path | None, readonly: bool) -> None:
-    """AI tone authoring for the HeadRush Core.
+    """Build and test HeadRush Core guitar tones.
 
     Nothing here modifies or reflashes device firmware. Writes to the device
     go through the same interfaces the official Remote Editor uses, and are
@@ -51,249 +72,853 @@ def main(device_host: str | None, workspace: Path | None, readonly: bool) -> Non
     set_settings(settings)
 
 
-# --------------------------------------------------------------------------
-# discovery
-# --------------------------------------------------------------------------
+# ==========================================================================
+# top level
+# ==========================================================================
 
 
 @main.command()
 @click.option("--no-sweep", is_flag=True, help="Skip the subnet sweep fallback.")
 @click.option("--timeout", default=2.0, show_default=True, help="Per-host HTTP timeout, seconds.")
-@click.option("--zeroconf-timeout", default=4.0, show_default=True, help="How long to browse mDNS.")
 @click.option("--json", "as_json", is_flag=True, help="Emit JSON instead of text.")
-def discover(no_sweep: bool, timeout: float, zeroconf_timeout: float, as_json: bool) -> None:
-    """Find the HeadRush on the local network.
-
-    Tries the documented .local hostname first, then mDNS service browsing,
-    then a sweep of the local subnet.
-    """
+@handled
+def discover(no_sweep: bool, timeout: float, as_json: bool) -> None:
+    """Find the HeadRush on the local network."""
     from dataclasses import asdict
 
-    from .device.discovery import discover as run_discover
+    from .core import devices
 
-    devices = _run(
-        run_discover(
-            include_sweep=not no_sweep,
-            timeout=timeout,
-            zeroconf_timeout=zeroconf_timeout,
-        )
-    )
-
+    found = _run(devices.discover(include_sweep=not no_sweep, timeout=timeout))
     if as_json:
-        click.echo(json.dumps([asdict(d) for d in devices], indent=2))
+        click.echo(json.dumps([asdict(d) for d in found], indent=2))
         return
-
-    if not devices:
-        click.echo(click.style("No devices answered.", fg="red"))
-        click.echo(
-            "\nChecklist:\n"
-            "  1. Core powered on and on the same Wi-Fi network as this machine\n"
-            "  2. Global Settings > Wi-Fi > HeadRush Remote = On\n"
-            "  3. Same band - a 2.4G/5G split or guest VLAN will hide it\n"
-            "  4. No VPN active on this machine\n"
-            "  5. Still stuck? Double-tap 'HeadRush Remote' on the device to\n"
-            "     read its IP, then rerun with:  rigsmith --device <ip> discover"
-        )
+    click.echo(devices.render_discovery(found))
+    if not found:
         sys.exit(1)
-
-    confirmed = [d for d in devices if d.confirmed]
-    click.echo(f"Found {len(devices)} responding host(s), {len(confirmed)} confirmed HeadRush:\n")
-    for i, info in enumerate(devices):
-        _echo_device(info, i)
-
-    if not confirmed:
-        click.echo(
-            "\n"
-            + click.style("Note: ", fg="yellow")
-            + "hosts answered HTTP but none fingerprinted as HeadRush.\n"
-            "      If one of the above is the Core, rerun with --device <host>."
-        )
-
-
-# --------------------------------------------------------------------------
-# protocol
-# --------------------------------------------------------------------------
 
 
 @main.command()
 @click.option("--dump-app", is_flag=True, help="Archive the served bundle alongside the inventory.")
-@click.option("--out", type=click.Path(path_type=Path), help="Output directory (default: workspace captures).")
+@click.option("--out", type=click.Path(path_type=Path), help="Output directory.")
 @click.option("--max-assets", default=200, show_default=True, help="Cap on files fetched.")
-@click.option("--timeout", default=15.0, show_default=True, help="HTTP timeout, seconds.")
-def probe(dump_app: bool, out: Path | None, max_assets: int, timeout: float) -> None:
-    """Fetch the Remote Editor bundle and extract its API surface.
+@handled
+def probe(dump_app: bool, out: Path | None, max_assets: int) -> None:
+    """Fetch the Remote Editor bundle and extract its API surface."""
+    from .core import devices
 
-    This is read-only: it requests the same files a browser would when you
-    open the editor, then mines them for endpoints, WebSocket URLs, and
-    message types.
-    """
-    from datetime import datetime
-
-    from .device.discovery import find_device
-    from .protocol.capture import capture
-
-    settings = get_settings()
-    device = _run(find_device())
-    if device is None:
-        click.echo(click.style("No device found. Run 'rigsmith discover' first.", fg="red"))
-        sys.exit(1)
-
-    click.echo(f"Probing {device.base_url} ...")
-
-    if out is None:
-        settings.ensure_workspace()
-        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-        out = settings.captures_dir / stamp
-
-    inventory = _run(
-        capture(
-            device.base_url,
-            out_dir=out,
-            max_assets=max_assets,
-            timeout=timeout,
-            save_assets=dump_app,
-        )
+    result = _run(
+        devices.probe(max_assets=max_assets, save_assets=dump_app, out_dir=out)
     )
-
-    click.echo(f"\n{inventory.summary()}")
-    if inventory.device_title:
-        click.echo(f"title:    {inventory.device_title}")
-    if inventory.firmware:
-        click.echo(f"firmware: {inventory.firmware}")
-
-    if inventory.endpoints:
-        click.echo("\nEndpoints (strongest evidence first):")
-        for ep in inventory.endpoints[:40]:
-            methods = ",".join(ep.methods) or "-"
-            click.echo(f"  {ep.evidence:8} {methods:16} {ep.path}")
-        if len(inventory.endpoints) > 40:
-            click.echo(f"  ... {len(inventory.endpoints) - 40} more in inventory.json")
-
-    if inventory.websockets:
-        click.echo("\nWebSockets:")
-        for url in inventory.websockets:
-            click.echo(f"  {url}")
-
-    if inventory.message_types:
-        preview = ", ".join(inventory.message_types[:25])
-        click.echo(f"\nMessage types: {preview}")
-
-    for note in inventory.notes:
-        click.echo("\n" + click.style("note: ", fg="yellow") + note)
-
-    click.echo(f"\nWritten to {out}")
+    click.echo(result.render())
 
 
 @main.command()
+@handled
 def doctor() -> None:
     """Report what rigsmith can and cannot do in this environment."""
-    settings = get_settings()
+    from .core import captures
+    from .core.workspace import inspect as inspect_workspace
+    from .device.discovery import local_subnets, resolve_hostnames
 
+    settings = get_settings()
     click.echo(f"rigsmith {__version__}")
     click.echo(f"workspace: {settings.workspace}")
     click.echo(f"read-only: {settings.readonly}")
     click.echo("")
 
-    checks: list[tuple[str, str, str]] = []
-
-    def probe_import(label: str, module: str, why: str) -> None:
+    checks = [
+        ("httpx (device HTTP)", "httpx", "required - pip install httpx"),
+        ("websockets (device WS)", "websockets", "required - pip install websockets"),
+        ("zeroconf (mDNS discovery)", "zeroconf", "pip install zeroconf - without it, discovery falls back to hostname + sweep"),
+        ("mcp (agent tools)", "mcp", "pip install 'rigsmith[mcp]' to expose tools to an agent"),
+        ("fastapi (web UI)", "fastapi", "pip install 'rigsmith[ui]' for the browser interface"),
+        ("mido (MIDI)", "mido", "pip install 'rigsmith[midi]' for rig/scene switching and verification"),
+        ("sounddevice (hardware reamp)", "sounddevice", "pip install 'rigsmith[audio]' for hardware-in-the-loop testing"),
+        ("soundfile (audio I/O)", "soundfile", "pip install 'rigsmith[audio]'"),
+        ("scipy (IR convolution)", "scipy", "pip install 'rigsmith[match]' for offline rendering"),
+        ("demucs (guitar isolation)", "demucs", "pip install 'rigsmith[separation]' to pull a guitar stem out of a record"),
+        ("neural-amp-modeler (offline NAM)", "nam", "pip install neural-amp-modeler to render captures without hardware"),
+    ]
+    for label, module, why in checks:
         try:
             __import__(module)
-            checks.append(("ok", label, ""))
+            click.echo(click.style("  ok  ", fg="green") + label)
         except ImportError:
-            checks.append(("missing", label, why))
-
-    probe_import("httpx (device HTTP)", "httpx", "required - pip install httpx")
-    probe_import("websockets (device WS)", "websockets", "required - pip install websockets")
-    probe_import("zeroconf (mDNS discovery)", "zeroconf", "pip install zeroconf - without it, discovery falls back to hostname + sweep")
-    probe_import("mcp (MCP server)", "mcp", "pip install 'rigsmith[mcp]' to expose tools to an agent")
-    probe_import("mido (MIDI verification)", "mido", "pip install 'rigsmith[midi]' for rig/scene switching and write verification")
-    probe_import("sounddevice (hardware reamp)", "sounddevice", "pip install 'rigsmith[audio]' for hardware-in-the-loop tone testing")
-    probe_import("soundfile (audio I/O)", "soundfile", "pip install 'rigsmith[audio]'")
-    probe_import("scipy (IR convolution)", "scipy", "pip install 'rigsmith[match]' for offline rendering")
-    probe_import("playwright (editor fallback)", "playwright", "pip install 'rigsmith[browser]' for the browser-driven fallback transport")
-
-    for state, label, why in checks:
-        mark = click.style("  ok  ", fg="green") if state == "ok" else click.style(" --   ", fg="yellow")
-        click.echo(f"{mark} {label}")
-        if why:
+            click.echo(click.style("  --  ", fg="yellow") + label)
             click.echo(f"        {why}")
 
     click.echo("")
-    from .device.discovery import local_subnets, resolve_hostnames
+    click.echo(captures.auth_status().render())
 
+    click.echo("")
     hostnames = resolve_hostnames()
     if hostnames:
         for name, addr in hostnames:
             click.echo(f"  mDNS: {name} -> {addr}")
     else:
         click.echo("  mDNS: no HeadRush .local hostname resolves right now")
-    click.echo(f"  subnets to sweep: {', '.join(str(n) for n in local_subnets()) or 'none detected'}")
+    subnets = ", ".join(str(n) for n in local_subnets()) or "none detected"
+    click.echo(f"  subnets to sweep: {subnets}")
+
+    report = inspect_workspace()
+    click.echo(f"  workspace holds {report.file_count} files")
 
 
-# --------------------------------------------------------------------------
-# device storage
-# --------------------------------------------------------------------------
+@main.command()
+@handled
+def serve() -> None:
+    """Run the MCP server over stdio.
+
+    Register it with Claude Code:
+
+      claude mcp add rigsmith -- rigsmith serve
+    """
+    from .mcp.server import main as run_server
+
+    run_server()
+
+
+@main.command()
+@click.option("--host", default="127.0.0.1", show_default=True, help="Bind address. Loopback only by default.")
+@click.option("--port", default=0, show_default=True, help="0 picks a free port automatically.")
+@click.option("--no-browser", is_flag=True, help="Do not open a browser tab.")
+@handled
+def ui(host: str, port: int, no_browser: bool) -> None:
+    """Launch the local web interface."""
+    from .web.server import run_ui
+
+    run_ui(host=host, port=port, open_browser=not no_browser)
+
+
+# ==========================================================================
+# rig authoring
+# ==========================================================================
+
+
+@main.group()
+def rig() -> None:
+    """Build and edit rigs."""
+
+
+@rig.command("new")
+@click.argument("name")
+@click.option("--path", "signal_path", default="straight", show_default=True,
+              type=click.Choice(["straight", "middle_split_3_4_3", "middle_split_5_3_3", "middle_split_7_2_3"]))
+@click.option("--notes", help="What tone you are chasing.")
+@handled
+def rig_new(name: str, signal_path: str, notes: str | None) -> None:
+    """Start a new rig draft."""
+    from .core import rigs
+
+    result = rigs.create(name, signal_path=signal_path, notes=notes)
+    click.echo(result.summary)
+    click.echo(f"\nAdd blocks with:  rigsmith rig add {result.draft.draft_id} nam 'Amp name'")
+
+
+@rig.command("list")
+@handled
+def rig_list() -> None:
+    """List drafts in progress."""
+    from .core import rigs
+
+    drafts = rigs.list_drafts()
+    if not drafts:
+        click.echo("No drafts. Create one with:  rigsmith rig new \"My Rig\"")
+        return
+    for draft in drafts:
+        click.echo(
+            f"  {draft.draft_id:24} '{draft.rig.name}'  "
+            f"{len(draft.rig.blocks)}/14 blocks, {len(draft.rig.scenes)} scenes"
+        )
+
+
+@rig.command("show")
+@click.argument("draft_id")
+@click.option("--json", "as_json", is_flag=True)
+@handled
+def rig_show(draft_id: str, as_json: bool) -> None:
+    """Print a draft in full."""
+    from .core import rigs
+    from .rig.codec import rig_to_dict
+
+    draft = rigs.get(draft_id)
+    if as_json:
+        click.echo(json.dumps(rig_to_dict(draft.rig), indent=2))
+        return
+    click.echo(draft.rig.describe())
+    click.echo(f"\nchain: {draft.rig.signal_chain()}")
+
+
+@rig.command("add")
+@click.argument("draft_id")
+@click.argument("category", type=click.Choice(["amp", "cab", "ir", "clone", "nam", "effect"]))
+@click.argument("model_id")
+@click.option("--slot", type=int, help="1-14. Omit to append.")
+@click.option("--param", "params", multiple=True, metavar="KEY=VALUE", help="Repeatable.")
+@handled
+def rig_add(draft_id: str, category: str, model_id: str, slot: int | None, params: tuple[str, ...]) -> None:
+    """Add a block to the chain."""
+    from .core import rigs
+
+    parsed = {}
+    for item in params:
+        if "=" not in item:
+            raise click.BadParameter(f"--param must be KEY=VALUE, got '{item}'")
+        key, _, value = item.partition("=")
+        try:
+            parsed[key] = json.loads(value)
+        except json.JSONDecodeError:
+            parsed[key] = value
+
+    click.echo(rigs.add_block(draft_id, category, model_id, slot=slot, params=parsed).render())
+
+
+@rig.command("rm")
+@click.argument("draft_id")
+@click.argument("slot", type=int)
+@handled
+def rig_rm(draft_id: str, slot: int) -> None:
+    """Remove the block in a slot."""
+    from .core import rigs
+
+    click.echo(rigs.remove_block(draft_id, slot).render())
+
+
+@rig.command("move")
+@click.argument("draft_id")
+@click.argument("from_slot", type=int)
+@click.argument("to_slot", type=int)
+@handled
+def rig_move(draft_id: str, from_slot: int, to_slot: int) -> None:
+    """Move a block to a different slot."""
+    from .core import rigs
+
+    click.echo(rigs.move_block(draft_id, from_slot, to_slot).render())
+
+
+@rig.command("set")
+@click.argument("draft_id")
+@click.argument("slot", type=int)
+@click.argument("name")
+@click.argument("value")
+@handled
+def rig_set(draft_id: str, slot: int, name: str, value: str) -> None:
+    """Set one parameter on one block."""
+    from .core import rigs
+
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError:
+        parsed = value
+    click.echo(rigs.set_param(draft_id, slot, name, parsed).render(chain=False))
+
+
+@rig.command("toggle")
+@click.argument("draft_id")
+@click.argument("slot", type=int)
+@click.option("--off", is_flag=True, help="Bypass instead of enable.")
+@handled
+def rig_toggle(draft_id: str, slot: int, off: bool) -> None:
+    """Enable or bypass a block in the rig's base state."""
+    from .core import rigs
+
+    click.echo(rigs.toggle_block(draft_id, slot, not off).render())
+
+
+@rig.command("doubling")
+@click.argument("draft_id")
+@click.argument("slot", type=int)
+@click.argument("mode", type=click.Choice(["none", "stereo", "switch"]))
+@click.option("--with", "second", help="Second model for the doubled slot.")
+@handled
+def rig_doubling(draft_id: str, slot: int, mode: str, second: str | None) -> None:
+    """Configure 2X doubling on an amp/cab/IR/clone/NAM slot."""
+    from .core import rigs
+
+    click.echo(rigs.set_doubling(draft_id, slot, mode, second).render(chain=False))
+
+
+@rig.command("scene")
+@click.argument("draft_id")
+@click.argument("name")
+@click.option("--on", "on_slots", multiple=True, type=int, help="Slots to switch on. Repeatable.")
+@click.option("--off", "off_slots", multiple=True, type=int, help="Slots to switch off. Repeatable.")
+@click.option("--clear", "no_change_slots", multiple=True, type=int, help="Slots to drop from the scene.")
+@click.option("--fs", "footswitch", type=int, help="Footswitch 1-5.")
+@click.option("--reset", is_flag=True, help="Discard the scene's existing configuration first.")
+@handled
+def rig_scene(draft_id, name, on_slots, off_slots, no_change_slots, footswitch, reset) -> None:
+    """Create or update a scene. Updates merge unless --reset is given."""
+    from .core import rigs
+
+    click.echo(
+        rigs.configure_scene(
+            draft_id, name,
+            on_slots=list(on_slots), off_slots=list(off_slots),
+            no_change_slots=list(no_change_slots),
+            footswitch=footswitch, reset=reset,
+        ).render(chain=False)
+    )
+
+
+@rig.command("rm-scene")
+@click.argument("draft_id")
+@click.argument("name")
+@handled
+def rig_rm_scene(draft_id: str, name: str) -> None:
+    """Remove a scene."""
+    from .core import rigs
+
+    click.echo(rigs.delete_scene(draft_id, name).render(chain=False))
+
+
+@rig.command("validate")
+@click.argument("draft_id")
+@handled
+def rig_validate(draft_id: str) -> None:
+    """Check a draft for problems."""
+    from .core import rigs
+
+    result = rigs.validate(draft_id)
+    header = click.style("VALID", fg="green") if result.ok else click.style(
+        f"INVALID - {len(result.errors)} error(s)", fg="red"
+    )
+    click.echo(header)
+    click.echo(result.report())
+    if not result.ok:
+        sys.exit(1)
+
+
+@rig.command("preview")
+@click.argument("draft_id")
+@handled
+def rig_preview(draft_id: str) -> None:
+    """Show what writing this draft would change on the device."""
+    from .core import rigs
+
+    difference = rigs.preview(draft_id)
+    result = rigs.validate(draft_id)
+    click.echo(difference.render())
+    click.echo(f"\nsummary: {difference.summary()}")
+    click.echo(f"est. CPU: ~{result.estimated_cpu:.0%}")
+    if not result.ok:
+        click.echo(click.style(f"\nBLOCKED: {len(result.errors)} error(s)", fg="red"))
+        for finding in result.errors:
+            click.echo(f"  {finding}")
+
+
+@rig.command("export")
+@click.argument("draft_id")
+@click.option("--out", type=click.Path(path_type=Path), help="Destination file.")
+@handled
+def rig_export(draft_id: str, out: Path | None) -> None:
+    """Write a draft to a JSON file."""
+    from .core import rigs
+
+    click.echo(f"Exported to {rigs.export(draft_id, out)}")
+
+
+@rig.command("write")
+@click.argument("draft_id")
+@click.option("--yes", is_flag=True, help="Skip the confirmation prompt.")
+@handled
+def rig_write(draft_id: str, yes: bool) -> None:
+    """Write a draft to the device, after a backup and a diff."""
+    from .core import rigs
+
+    preview = rigs.write(draft_id, confirm=False)
+    click.echo(preview.render())
+    if not preview.validation.ok:
+        sys.exit(1)
+    if not yes and not click.confirm("\nWrite this to the device?", default=False):
+        click.echo("Not written.")
+        return
+    click.echo("")
+    click.echo(rigs.write(draft_id, confirm=True).render())
+
+
+@rig.command("delete")
+@click.argument("draft_id")
+@click.option("--yes", is_flag=True)
+@handled
+def rig_delete(draft_id: str, yes: bool) -> None:
+    """Discard a draft."""
+    from .core import rigs
+
+    if not yes and not click.confirm(f"Delete draft '{draft_id}'?", default=False):
+        return
+    click.echo(rigs.delete(draft_id))
+
+
+@rig.command("duplicate")
+@click.argument("draft_id")
+@click.option("--name", help="Name for the copy.")
+@handled
+def rig_duplicate(draft_id: str, name: str | None) -> None:
+    """Fork a draft so a variant can be tried."""
+    from .core import rigs
+
+    click.echo(rigs.duplicate(draft_id, name).summary)
+
+
+# ==========================================================================
+# device
+# ==========================================================================
 
 
 @main.group()
 def device() -> None:
-    """Device storage: backup, restore, and file transfer over USB."""
+    """Device storage, backup, and MIDI control."""
 
 
 @device.command("status")
-@click.option("--path", type=click.Path(path_type=Path), help="Explicit mount path.")
+@click.option("--path", type=click.Path(path_type=Path))
+@handled
 def device_status(path: Path | None) -> None:
-    """Show whether the device's USB storage is mounted, and what is on it."""
-    from .device.usbmsc import DeviceStorageError, find_device_volume
+    """Show whether the device's USB storage is mounted."""
+    from .core import devices
 
-    try:
-        click.echo(find_device_volume(path).describe())
-    except DeviceStorageError as exc:
-        click.echo(click.style(str(exc), fg="yellow"))
-        sys.exit(1)
+    click.echo(devices.storage_status(path).describe())
 
 
 @device.command("backup")
 @click.option("--path", type=click.Path(path_type=Path), help="Explicit mount path.")
-@click.option("--to", "destination", type=click.Path(path_type=Path), help="Backup directory.")
+@click.option("--to", "destination", type=click.Path(path_type=Path))
+@handled
 def device_backup(path: Path | None, destination: Path | None) -> None:
-    """Copy everything off the device into a timestamped local backup.
+    """Copy everything off the device into a timestamped backup."""
+    from .core import devices
 
-    Reads only; the device is not modified.
-    """
-    from .device.usbmsc import DeviceStorageError, find_device_volume, timestamped_backup
-
-    settings = get_settings()
-    settings.ensure_workspace()
-    try:
-        volume = find_device_volume(path)
-        result = timestamped_backup(destination or settings.backups_dir, volume)
-    except DeviceStorageError as exc:
-        click.echo(click.style(str(exc), fg="yellow"))
-        sys.exit(1)
-    click.echo(result.describe())
+    click.echo(devices.backup(path, destination).describe())
 
 
 @device.command("install-nam")
 @click.argument("nam_file", type=click.Path(exists=True, path_type=Path))
-@click.option("--path", type=click.Path(path_type=Path), help="Explicit mount path.")
-@click.option("--overwrite", is_flag=True, help="Replace an existing file of the same name.")
+@click.option("--path", type=click.Path(path_type=Path))
+@click.option("--overwrite", is_flag=True)
+@handled
 def device_install_nam(nam_file: Path, path: Path | None, overwrite: bool) -> None:
     """Copy a NAM capture onto the device over USB."""
-    from .device.usbmsc import DeviceStorageError, find_device_volume, install_nam
+    from .core import devices
 
-    try:
-        volume = find_device_volume(path)
-        click.echo(install_nam(nam_file, volume, overwrite=overwrite))
-    except DeviceStorageError as exc:
-        click.echo(click.style(str(exc), fg="red"))
+    click.echo(devices.install_capture(nam_file, device_path=path, overwrite=overwrite))
+
+
+@device.group("midi")
+def device_midi() -> None:
+    """Control and verify the device over MIDI."""
+
+
+@device_midi.command("ports")
+@handled
+def midi_ports_cmd() -> None:
+    """List MIDI ports."""
+    from .core import devices
+
+    click.echo(devices.render_midi_ports())
+
+
+@device_midi.command("select")
+@click.argument("program", type=int)
+@click.option("--port")
+@click.option("--channel", default=0, show_default=True)
+@handled
+def midi_select_cmd(program: int, port: str | None, channel: int) -> None:
+    """Load a rig by MIDI Program Change."""
+    from .core import devices
+
+    click.echo(devices.select_rig(program, port=port, channel=channel))
+
+
+@device_midi.command("footswitch")
+@click.argument("number", type=int)
+@click.option("--port")
+@click.option("--channel", default=0, show_default=True)
+@handled
+def midi_fs_cmd(number: int, port: str | None, channel: int) -> None:
+    """Press a footswitch (1-5) - also how scenes are activated."""
+    from .core import devices
+
+    click.echo(devices.press_footswitch(number, port=port, channel=channel))
+
+
+@device_midi.command("block")
+@click.argument("slot", type=int)
+@click.option("--off", is_flag=True)
+@click.option("--port")
+@click.option("--channel", default=0, show_default=True)
+@handled
+def midi_block_cmd(slot: int, off: bool, port: str | None, channel: int) -> None:
+    """Turn a block on or off over MIDI."""
+    from .core import devices
+
+    click.echo(devices.set_block(slot, not off, port=port, channel=channel))
+
+
+@device_midi.command("verify")
+@click.argument("draft_id")
+@click.option("--program", type=int, help="Select this rig first.")
+@click.option("--port")
+@handled
+def midi_verify_cmd(draft_id: str, program: int | None, port: str | None) -> None:
+    """Drive a draft's rig over MIDI to confirm the device responds."""
+    from .core import devices
+
+    click.echo(devices.verify_rig(draft_id, program=program, port=port).render())
+
+
+# ==========================================================================
+# NAM captures and TONE3000
+# ==========================================================================
+
+
+@main.group()
+def nam() -> None:
+    """Inspect Neural Amp Modeler captures."""
+
+
+@nam.command("inspect")
+@click.argument("capture", type=click.Path(exists=True, path_type=Path))
+@handled
+def nam_inspect(capture: Path) -> None:
+    """Report a capture's architecture, size, calibration, and compatibility."""
+    from .core import captures as core_captures
+
+    click.echo(core_captures.render_inspection(core_captures.inspect(capture)))
+
+
+@nam.command("scan")
+@click.argument("directory", type=click.Path(exists=True, file_okay=False, path_type=Path))
+@handled
+def nam_scan(directory: Path) -> None:
+    """Summarise every capture in a directory."""
+    from .core import captures as core_captures
+
+    click.echo(core_captures.render_scan(core_captures.scan(directory), directory))
+
+
+@nam.command("rank")
+@click.argument("directory", type=click.Path(exists=True, file_okay=False, path_type=Path))
+@click.option("--make", help="e.g. Marshall")
+@click.option("--model", "gear_model", help="e.g. JCM800")
+@click.option("--tone", "tone_type", help="clean, crunch, overdrive, hi_gain, fuzz")
+@handled
+def nam_rank(directory: Path, make: str | None, gear_model: str | None, tone_type: str | None) -> None:
+    """Rank a local capture library against a tone target."""
+    from .core import captures as core_captures
+
+    ranked = core_captures.rank_local(
+        directory, gear_make=make, gear_model=gear_model, tone_type=tone_type
+    )
+    if not ranked:
+        click.echo(f"No usable captures under {directory}.")
+        return
+    for model, score, reasons in ranked[:15]:
+        click.echo(f"  {score:5.1f}  {model.name or '(unnamed)'}")
+        for reason in reasons:
+            click.echo(f"         - {reason}")
+
+
+@main.group()
+def tone3000() -> None:
+    """Authenticate with and search TONE3000."""
+
+
+@tone3000.command("status")
+@handled
+def tone3000_status_cmd() -> None:
+    """Show whether TONE3000 is usable, and what is missing."""
+    from .core import captures as core_captures
+
+    click.echo(core_captures.auth_status().render())
+
+
+@tone3000.command("login")
+@click.option("--port", default=0, show_default=True, help="Callback port. 0 picks a free one.")
+@click.option("--no-browser", is_flag=True, help="Print the URL instead of opening a browser.")
+@click.option("--timeout", default=300.0, show_default=True, help="Seconds to wait.")
+@handled
+def tone3000_login(port: int, no_browser: bool, timeout: float) -> None:
+    """Log in to TONE3000 via OAuth.
+
+    Opens a browser and catches the redirect on a loopback listener, so
+    nothing has to be pasted by hand. Requires TONE3000_CLIENT_ID.
+    """
+    from .core import captures as core_captures
+
+    def show(url: str) -> None:
+        click.echo("Open this URL to authorise rigsmith:\n")
+        click.echo(f"  {url}\n")
+        click.echo("Waiting for the redirect...")
+
+    status = core_captures.login(
+        port=port, timeout_s=timeout, open_browser=not no_browser, on_url=show
+    )
+    click.echo(click.style("\n" + status.render(), fg="green"))
+
+
+@tone3000.command("search")
+@click.argument("query", default="")
+@click.option("--make", help="Manufacturer filter.")
+@click.option("--architecture", default="2", type=click.Choice(["1", "2", "any"]), show_default=True)
+@click.option("--size", "sizes", multiple=True, help="e.g. lite. Repeatable.")
+@click.option("--calibrated", is_flag=True, help="Only captures with dBu levels.")
+@click.option("--limit", default=15, show_default=True)
+@handled
+def tone3000_search(query, make, architecture, sizes, calibrated, limit) -> None:
+    """Search TONE3000 for NAM captures."""
+    from .core import captures as core_captures
+
+    tones = _run(
+        core_captures.search(
+            query, make=make, architecture=architecture,
+            sizes=list(sizes) or None, calibrated=calibrated, limit=limit,
+        )
+    )
+    click.echo(core_captures.render_search(tones, query))
+
+
+# ==========================================================================
+# tone matching
+# ==========================================================================
+
+
+@main.group()
+def match() -> None:
+    """Test a rig against the source recording."""
+
+
+@match.command("devices")
+@handled
+def match_devices() -> None:
+    """List audio interfaces, flagging the HeadRush."""
+    from .core import matching
+
+    click.echo(matching.render_audio_devices())
+
+
+@match.command("isolate")
+@click.argument("audio", type=click.Path(exists=True, path_type=Path))
+@click.option("--out", type=click.Path(path_type=Path))
+@handled
+def match_isolate(audio: Path, out: Path | None) -> None:
+    """Separate a guitar stem from a mixed recording (slow)."""
+    from .core import matching
+
+    with click.progressbar(length=100, label="separating") as bar:
+        state = {"last": 0}
+
+        class Reporter:
+            def update(self, fraction=None, message=""):
+                if fraction is not None:
+                    step = int(fraction * 100) - state["last"]
+                    if step > 0:
+                        bar.update(step)
+                        state["last"] += step
+
+            def log(self, message):
+                pass
+
+            @property
+            def cancelled(self):
+                return False
+
+            def check(self):
+                pass
+
+        result = matching.isolate_guitar(audio, out_dir=out, progress=Reporter())
+    click.echo(result.describe())
+
+
+@match.command("capture-di")
+@click.option("--seconds", default=15.0, show_default=True)
+@click.option("--name", default="take", show_default=True)
+@handled
+def match_capture_di(seconds: float, name: str) -> None:
+    """Record one performance: the wet tone and the dry DI together."""
+    from .core import matching
+
+    click.echo(f"Recording {seconds:.0f}s - play now.")
+    capture, paths = matching.capture_di(seconds, name=name)
+    click.echo(capture.describe())
+    for kind, path in paths.items():
+        click.echo(f"{kind}: {path}")
+
+
+@match.command("reamp")
+@click.argument("di", type=click.Path(exists=True, path_type=Path))
+@click.option("--name", default="candidate", show_default=True)
+@handled
+def match_reamp(di: Path, name: str) -> None:
+    """Play a DI through the Core's loaded rig and record the result."""
+    from .core import matching
+
+    click.echo(matching.reamp(di, label=name).render())
+
+
+@match.command("render")
+@click.argument("di", type=click.Path(exists=True, path_type=Path))
+@click.option("--nam", "nam_path", type=click.Path(exists=True, path_type=Path))
+@click.option("--ir", "ir_path", type=click.Path(exists=True, path_type=Path))
+@click.option("--truncate", type=int, help="Shorten the IR, e.g. 1024.")
+@click.option("--name", default="candidate", show_default=True)
+@handled
+def match_render(di, nam_path, ir_path, truncate, name) -> None:
+    """Render a DI through a capture and IR offline, no hardware."""
+    from .core import matching
+
+    click.echo(
+        matching.render_offline(
+            di, nam_path=nam_path, ir_path=ir_path, ir_truncate=truncate, label=name
+        ).render()
+    )
+
+
+@match.command("search")
+@click.argument("di", type=click.Path(exists=True, path_type=Path))
+@click.argument("target", type=click.Path(exists=True, path_type=Path))
+@click.argument("captures_dir", type=click.Path(exists=True, file_okay=False, path_type=Path))
+@click.option("--ir", "ir_path", type=click.Path(exists=True, path_type=Path))
+@click.option("--mode", default="distribution", type=click.Choice(["aligned", "distribution"]), show_default=True)
+@handled
+def match_search(di, target, captures_dir, ir_path, mode) -> None:
+    """Render a DI through every capture in a directory and rank them.
+
+    The whole offline loop in one command, with no hardware needed.
+    """
+    from .core import matching
+
+    found = {p.stem: p for p in sorted(Path(captures_dir).glob("*.nam"))}
+    if not found:
+        click.echo(f"No .nam files under {captures_dir}.")
         sys.exit(1)
 
+    click.echo(f"Rendering {len(found)} candidate(s)...")
+    with click.progressbar(length=100, label="rendering") as bar:
+        state = {"last": 0}
 
-# --------------------------------------------------------------------------
-# firmware
-# --------------------------------------------------------------------------
+        class Reporter:
+            def update(self, fraction=None, message=""):
+                if fraction is not None:
+                    step = int(fraction * 100) - state["last"]
+                    if step > 0:
+                        bar.update(step)
+                        state["last"] += step
+
+            def log(self, message):
+                pass
+
+            @property
+            def cancelled(self):
+                return False
+
+            def check(self):
+                pass
+
+        result = matching.run_offline_search(
+            di, target, found, ir_path=ir_path, mode=mode, progress=Reporter()
+        )
+    click.echo("")
+    click.echo(result.render())
+
+
+@match.command("score")
+@click.argument("target", type=click.Path(exists=True, path_type=Path))
+@click.argument("candidates", nargs=-1, required=True, type=click.Path(exists=True, path_type=Path))
+@click.option("--mode", default="distribution", type=click.Choice(["aligned", "distribution"]), show_default=True)
+@handled
+def match_score(target: Path, candidates: tuple[Path, ...], mode: str) -> None:
+    """Score rendered candidates against a target and rank them."""
+    from .core import matching
+
+    scores = matching.score(target, {p.stem: p for p in candidates}, mode=mode)
+    click.echo(matching.render_ranking(scores))
+
+
+@match.group("ab")
+def match_ab() -> None:
+    """Blind A/B listening - the arbiter."""
+
+
+@match_ab.command("start")
+@click.argument("session_id")
+@click.argument("target_label")
+@click.argument("candidates", nargs=-1, required=True, type=click.Path(exists=True, path_type=Path))
+@click.option("--pairs", type=int, help="Cap the number of trials.")
+@handled
+def ab_start(session_id, target_label, candidates, pairs) -> None:
+    """Start a blind listening test over candidate renders."""
+    from .core import matching
+
+    session = matching.create_ab(
+        session_id, target_label, {p.stem: str(p) for p in candidates}, pairs=pairs
+    )
+    click.echo(f"Created '{session_id}' with {len(session.trials)} trial(s).\n")
+    click.echo(session.render_next())
+
+
+@match_ab.command("list")
+@handled
+def ab_list() -> None:
+    """List listening sessions."""
+    from .core import matching
+
+    sessions = matching.list_ab_sessions()
+    if not sessions:
+        click.echo("No A/B sessions.")
+        return
+    for session_id in sessions:
+        session = matching.load_ab(session_id)
+        state = "complete" if session.complete else "in progress"
+        click.echo(
+            f"  {session_id:24} {session.answered_count}/{len(session.trials)} "
+            f"trials, {state}"
+        )
+
+
+@match_ab.command("next")
+@click.argument("session_id")
+@handled
+def ab_next(session_id: str) -> None:
+    """Show the next unanswered trial."""
+    from .core import matching
+
+    click.echo(matching.load_ab(session_id).render_next())
+
+
+@match_ab.command("answer")
+@click.argument("session_id")
+@click.argument("trial_id", type=int)
+@click.argument("verdict", type=click.Choice(["left", "right", "tie"]))
+@click.option("--confidence", type=click.IntRange(1, 5))
+@click.option("--comment")
+@handled
+def ab_answer(session_id, trial_id, verdict, confidence, comment) -> None:
+    """Record a verdict for one trial."""
+    from .core import matching
+
+    session = matching.answer_ab(
+        session_id, trial_id, verdict, confidence=confidence, comment=comment
+    )
+    if session.complete:
+        click.echo(session.render_standings())
+    else:
+        click.echo(session.render_next())
+
+
+@match_ab.command("results")
+@click.argument("session_id")
+@handled
+def ab_results_cmd(session_id: str) -> None:
+    """Unblind a session and show the standings."""
+    from .core import matching
+
+    click.echo(matching.load_ab(session_id).render_standings())
+
+
+# ==========================================================================
+# firmware, workspace, jobs
+# ==========================================================================
 
 
 @main.group()
@@ -307,15 +932,15 @@ def firmware() -> None:
 
 @firmware.command("analyse")
 @click.argument("image", type=click.Path(exists=True, path_type=Path))
-@click.option("--unpack-to", type=click.Path(path_type=Path), help="Extract here, when the container allows it.")
-@click.option("--strings", "mine", is_flag=True, help="Also mine extracted files for catalog strings.")
+@click.option("--unpack-to", type=click.Path(path_type=Path))
+@click.option("--strings", "mine", is_flag=True, help="Mine extracted files for catalog strings.")
+@handled
 def firmware_analyse(image: Path, unpack_to: Path | None, mine: bool) -> None:
-    """Identify an image's container, unpack it, and classify what is inside."""
+    """Identify a firmware image's container and classify what is inside."""
     from .protocol.firmware import analyse_firmware, mine_catalog_strings
 
     report = analyse_firmware(image, unpack_to=unpack_to)
     click.echo(report.render())
-
     if mine and report.files:
         click.echo("\nCatalog string leads:")
         for hint, values in mine_catalog_strings(report.files).items():
@@ -324,144 +949,147 @@ def firmware_analyse(image: Path, unpack_to: Path | None, mine: bool) -> None:
                 click.echo(f"    {value[:100]}")
 
 
-# --------------------------------------------------------------------------
-# NAM captures
-# --------------------------------------------------------------------------
-
-
 @main.group()
-def nam() -> None:
-    """Inspect Neural Amp Modeler captures."""
+def protocol() -> None:
+    """Capture the device's undocumented Remote Editor protocol."""
 
 
-@nam.command("inspect")
-@click.argument("capture", type=click.Path(exists=True, path_type=Path))
-def nam_inspect(capture: Path) -> None:
-    """Report a capture's architecture, size, calibration, and compatibility."""
-    from .tone.nam import parse_nam
+@protocol.command("record")
+@click.option("--upstream", help="Device base URL. Discovered if omitted.")
+@click.option("--port", default=0, show_default=True, help="0 picks a free port.")
+@click.option("--out", type=click.Path(path_type=Path), help="Where to write the log.")
+@click.option("--no-browser", is_flag=True)
+@handled
+def protocol_record(upstream: str | None, port: int, out: Path | None, no_browser: bool) -> None:
+    """Proxy the Remote Editor and log every request it makes.
 
-    try:
-        model = parse_nam(capture)
-    except ValueError as exc:
-        click.echo(click.style(str(exc), fg="red"))
-        sys.exit(1)
-
-    click.echo(model.describe())
-    click.echo(f"\ngeneration: {model.generation.value}")
-    for item in model.generation_evidence:
-        click.echo(f"  - {item}")
-    click.echo(f"size: {model.size or 'unknown'}")
-    for item in model.size_evidence:
-        click.echo(f"  - {item}")
-
-    verdict = {
-        True: click.style("yes", fg="green"),
-        False: click.style("NO - the Core does not accept this combination", fg="red"),
-        None: click.style("cannot tell - generation or size unknown", fg="yellow"),
-    }[model.headrush_compatible]
-    click.echo(f"loadable on the Core: {verdict}")
-
-
-@nam.command("scan")
-@click.argument("directory", type=click.Path(exists=True, file_okay=False, path_type=Path))
-def nam_scan(directory: Path) -> None:
-    """Summarise every capture in a directory."""
-    from .tone.nam import scan_directory
-
-    models = scan_directory(directory)
-    if not models:
-        click.echo(f"No readable .nam files under {directory}.")
-        return
-
-    click.echo(f"{len(models)} capture(s):")
-    for model in models:
-        click.echo(f"  {model.describe()}")
-
-    a2 = sum(1 for m in models if m.generation.value == "A2")
-    unknown = sum(1 for m in models if m.generation.value == "unknown")
-    click.echo(f"\nA2: {a2}   A1: {len(models) - a2 - unknown}   undetermined: {unknown}")
-
-
-# --------------------------------------------------------------------------
-# rigs
-# --------------------------------------------------------------------------
-
-
-@main.group()
-def rig() -> None:
-    """Work with rig drafts."""
-
-
-@rig.command("list")
-def rig_list() -> None:
-    """List drafts in progress."""
-    from .core.drafts import get_store
-
-    drafts = get_store().list_drafts()
-    if not drafts:
-        click.echo("No drafts. Create one with the MCP server or 'rigsmith rig new'.")
-        return
-    for draft in drafts:
-        click.echo(
-            f"  {draft.draft_id:24} '{draft.rig.name}'  "
-            f"{len(draft.rig.blocks)}/14 blocks, {len(draft.rig.scenes)} scenes"
-        )
-
-
-@rig.command("show")
-@click.argument("draft_id")
-def rig_show(draft_id: str) -> None:
-    """Print a draft in full."""
-    from .core.drafts import get_store
-
-    try:
-        draft = get_store().get(draft_id)
-    except KeyError as exc:
-        click.echo(click.style(str(exc), fg="red"))
-        sys.exit(1)
-    click.echo(draft.rig.describe())
-    click.echo(f"\nchain: {draft.rig.signal_chain()}")
-
-
-@rig.command("validate")
-@click.argument("draft_id")
-def rig_validate(draft_id: str) -> None:
-    """Check a draft for problems."""
-    from .core.drafts import get_store
-    from .rig.validate import validate_rig
-
-    try:
-        draft = get_store().get(draft_id)
-    except KeyError as exc:
-        click.echo(click.style(str(exc), fg="red"))
-        sys.exit(1)
-
-    result = validate_rig(draft.rig)
-    header = click.style("VALID", fg="green") if result.ok else click.style(
-        f"INVALID - {len(result.errors)} error(s)", fg="red"
-    )
-    click.echo(header)
-    click.echo(result.report())
-    if not result.ok:
-        sys.exit(1)
-
-
-# --------------------------------------------------------------------------
-# MCP server
-# --------------------------------------------------------------------------
-
-
-@main.command()
-def serve() -> None:
-    """Run the MCP server over stdio.
-
-    Register it with Claude Code:
-
-      claude mcp add rigsmith -- python -m rigsmith.mcp.server
+    Open the printed address instead of the device's own, use the editor
+    normally, then stop with Ctrl-C. Doing one action at a time makes it
+    obvious which calls that action produces.
     """
-    from .mcp.server import main as run_server
+    from .core import devices
+    from .protocol.recorder import record
 
-    run_server()
+    if not upstream:
+        upstream = _run(devices.find()).base_url
+
+    click.echo(f"Proxying {upstream}")
+
+    def ready(url: str) -> None:
+        click.echo(f"\nOpen {url} and use the editor as normal.")
+        click.echo("Press Ctrl-C when you have captured enough.\n")
+
+    recording = record(
+        upstream, port=port, out_dir=out, open_browser=not no_browser, on_ready=ready
+    )
+    click.echo("\n" + recording.summary())
+
+
+@main.group()
+def catalog() -> None:
+    """Extract and inspect the device's model catalog."""
+
+
+@catalog.command("extract")
+@click.option("--capture", "capture_dir", type=click.Path(exists=True, file_okay=False, path_type=Path),
+              help="An archived Remote Editor bundle from 'rigsmith probe --dump-app'.")
+@click.option("--firmware", "firmware_dir", type=click.Path(exists=True, file_okay=False, path_type=Path),
+              help="An unpacked firmware tree from 'rigsmith firmware analyse --unpack-to'.")
+@click.option("--out", type=click.Path(path_type=Path), help="Where to save the catalog.")
+@handled
+def catalog_extract(capture_dir: Path | None, firmware_dir: Path | None, out: Path | None) -> None:
+    """Harvest the real model catalog from a bundle and/or firmware.
+
+    Until a catalog is extracted, validation runs in lenient unverified mode
+    and cannot check model ids or parameter ranges.
+    """
+    from .protocol.catalog_extract import extract
+
+    if not capture_dir and not firmware_dir:
+        raise click.UsageError(
+            "give --capture, --firmware, or both.\n"
+            "Get a capture with:   rigsmith probe --dump-app\n"
+            "Get firmware with:    rigsmith firmware analyse IMAGE --unpack-to DIR"
+        )
+    click.echo(extract(capture_dir=capture_dir, firmware_dir=firmware_dir, save_to=out).render())
+
+
+@catalog.command("status")
+@handled
+def catalog_status() -> None:
+    """Show how complete the current model catalog is."""
+    from .rig.catalog import get_catalog
+
+    cat = get_catalog(reload=True)
+    click.echo(f"source: {cat.source}")
+    click.echo(f"models: {len(cat.models)}")
+    click.echo(f"verified: {cat.is_verified}")
+    if cat.captured_at:
+        click.echo(f"captured: {cat.captured_at}")
+    click.echo("")
+    for line in cat.completeness_report():
+        click.echo(line)
+    for warning in cat.warnings[:5]:
+        click.echo(click.style(f"  {warning}", fg="yellow"))
+
+
+@main.group()
+def workspace() -> None:
+    """Inspect and clean the rigsmith workspace."""
+
+
+@workspace.command("status")
+@click.option("--json", "as_json", is_flag=True)
+@handled
+def workspace_status(as_json: bool) -> None:
+    """Show what has accumulated in the workspace."""
+    from .core.workspace import inspect as inspect_workspace
+
+    report = inspect_workspace()
+    _emit(report.render(), as_json=as_json, payload=report.to_dict())
+
+
+@workspace.command("prune")
+@click.argument("areas", nargs=-1)
+@click.option("--older-than", type=float, metavar="DAYS")
+@click.option("--apply", is_flag=True, help="Actually delete. Without this it is a dry run.")
+@handled
+def workspace_prune(areas: tuple[str, ...], older_than: float | None, apply: bool) -> None:
+    """Clean up workspace content. Dry run unless --apply is given."""
+    from .core.workspace import prune
+
+    result = prune(list(areas) or None, older_than_days=older_than, dry_run=not apply)
+    click.echo(result.render())
+
+
+@main.group()
+def jobs() -> None:
+    """Background jobs."""
+
+
+@jobs.command("list")
+@click.option("--active", is_flag=True, help="Only jobs still running.")
+@handled
+def jobs_list(active: bool) -> None:
+    """List background jobs."""
+    from .core.jobs import get_manager
+
+    found = get_manager().list_jobs(active_only=active)
+    if not found:
+        click.echo("No jobs.")
+        return
+    for job in found:
+        click.echo(f"  {job.id}  {job.render()}")
+
+
+@jobs.command("show")
+@click.argument("job_id")
+@handled
+def jobs_show(job_id: str) -> None:
+    """Show one job's state and result."""
+    from .core.jobs import get_manager
+
+    click.echo(get_manager().get(job_id).render())
 
 
 if __name__ == "__main__":
