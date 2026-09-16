@@ -8,6 +8,7 @@ JSON messages with a ``type`` field.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 from typing import Any
 
@@ -94,7 +95,11 @@ def install_websocket(app: FastAPI) -> None:
             for task in tasks:
                 task.cancel()
             # return_exceptions keeps a task that already failed from
-            # re-raising out of the endpoint while we are cleaning up.
-            await asyncio.gather(*tasks, return_exceptions=True)
+            # re-raising out of the endpoint while we are cleaning up. The
+            # outer suppress covers the case where this coroutine is itself
+            # being cancelled - a client that vanishes mid-teardown must not
+            # surface as a server error.
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await asyncio.gather(*tasks, return_exceptions=True)
             for unsubscribe in unsubscribes:
                 unsubscribe()

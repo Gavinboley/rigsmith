@@ -215,8 +215,12 @@ def mel_filterbank(
             centre = left + 1
         if right <= centre:
             right = centre + 1
-        if right > n_fft // 2:
-            break
+        # Clamp rather than break: bailing out left the remaining high
+        # bands as all-zero rows, which silently drops the top of the
+        # spectrum from every MFCC on the fallback path.
+        right = min(right, n_fft // 2)
+        if right <= centre:
+            continue
         filters[i, left:centre] = np.linspace(0, 1, centre - left, endpoint=False)
         filters[i, centre:right] = np.linspace(1, 0, right - centre, endpoint=False)
     return filters

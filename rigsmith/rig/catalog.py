@@ -51,6 +51,8 @@ class ParamSpec:
             return None
         if not isinstance(value, (int, float)) or isinstance(value, bool):
             return f"{self.name}: expected a number, got {value!r}"
+        if self.kind == "int" and float(value) != int(value):
+            return f"{self.name}: expected a whole number, got {value}"
         if self.minimum is not None and value < self.minimum:
             return f"{self.name}: {value} below minimum {self.minimum}"
         if self.maximum is not None and value > self.maximum:

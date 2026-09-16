@@ -205,3 +205,68 @@ def test_unverified_catalog_is_lenient_about_unknown_models():
     rig.add_block(Block(slot=0, category=BlockCategory.AMP, model_id="unknown-amp"))
     result = validate_rig(rig, seed_catalog())
     assert result.ok, "seed catalog must not block real models it has never seen"
+
+
+# --------------------------------------------------------------------------
+# split paths
+# --------------------------------------------------------------------------
+
+
+def test_lane_outside_the_split_section_is_rejected():
+    """SignalPath.layout was documented and tested but enforced nowhere.
+
+    On a 3-4-3 path the split covers slots 4-11; outside it the signal is
+    common to both lanes, so a lane there is a misunderstanding of the
+    routing rather than a harmless extra field.
+    """
+    from rigsmith.rig.model import SignalPath
+
+    rig = Rig(name="split", signal_path=SignalPath.MIDDLE_SPLIT_3_4_3)
+    rig.add_block(
+        Block(slot=1, category=BlockCategory.EFFECT, model_id="generic:overdrive", lane=0)
+    )
+    result = validate_rig(rig, catalog())
+    assert not result.ok
+    assert "outside the split section" in messages(result)
+
+
+def test_lane_inside_the_split_section_is_accepted():
+    from rigsmith.rig.model import SignalPath
+
+    rig = Rig(name="split", signal_path=SignalPath.MIDDLE_SPLIT_3_4_3)
+    rig.add_block(
+        Block(slot=5, category=BlockCategory.EFFECT, model_id="generic:overdrive", lane=0)
+    )
+    rig.add_block(
+        Block(slot=9, category=BlockCategory.EFFECT, model_id="generic:delay", lane=1)
+    )
+    assert validate_rig(rig, catalog()).ok
+
+
+def test_split_section_bounds_follow_the_declared_layout():
+    """7-2-3 has a much narrower split than 3-4-3."""
+    from rigsmith.rig.model import SignalPath
+
+    rig = Rig(name="narrow", signal_path=SignalPath.MIDDLE_SPLIT_7_2_3)
+    # Slot 5 is inside 3-4-3's split but outside 7-2-3's (slots 8-11).
+    rig.add_block(
+        Block(slot=5, category=BlockCategory.EFFECT, model_id="generic:delay", lane=0)
+    )
+    assert "outside the split section" in messages(validate_rig(rig, catalog()))
+
+
+def test_int_parameter_rejects_a_fractional_value():
+    cat = seed_catalog()
+    cat.models["stepped"] = ModelSpec(
+        id="stepped",
+        name="Stepped",
+        category=BlockCategory.EFFECT,
+        params=[ParamSpec("taps", "int", 1, 8, 4)],
+        verified=True,
+    )
+    rig = Rig(name="t")
+    rig.add_block(
+        Block(slot=0, category=BlockCategory.EFFECT, model_id="stepped",
+              params={"taps": 3.5})
+    )
+    assert "whole number" in messages(validate_rig(rig, cat))

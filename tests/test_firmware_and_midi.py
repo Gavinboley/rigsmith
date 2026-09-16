@@ -121,9 +121,21 @@ def test_missing_image_raises(tmp_path):
 
 
 def test_high_entropy_without_structure_is_flagged(tmp_path):
+    """A seeded stream, not os.urandom.
+
+    Two megabytes of true random bytes contain a given 4-byte magic with
+    probability ~0.05%, and there are several - so with urandom this test
+    fails roughly one run in two hundred, which is exactly the kind of
+    intermittent failure nobody can reproduce on demand.
+    """
+    import random
+
     path = tmp_path / "encrypted.bin"
-    path.write_bytes(os.urandom(2_000_000))
+    path.write_bytes(random.Random(20260916).randbytes(2_000_000))
+
     report = analyse_firmware(path)
+    assert not report.strong_signatures, "fixture should contain no real magic"
+    assert report.entropy > 7.9
     assert report.likely_encrypted
     assert "HIGH ENTROPY" in report.render()
 

@@ -185,6 +185,23 @@ def _validate_block(
             slot=slot,
         )
 
+    # A lane only means something inside the split section. Outside it the
+    # signal is common to both paths, so a lane there is a misunderstanding
+    # of the routing rather than a harmless extra field.
+    if rig.signal_path.is_split and block.lane is not None:
+        pre, per_lane, _post = rig.signal_path.layout
+        split_start = pre + 1
+        split_end = pre + per_lane * 2
+        if not split_start <= slot <= split_end:
+            result.add(
+                "error",
+                f"lane {block.lane} is set, but slot {slot} is outside the "
+                f"split section (slots {split_start}-{split_end} on a "
+                f"{rig.signal_path.value} path) where the signal is common "
+                "to both lanes",
+                slot=slot,
+            )
+
     spec = catalog.get(block.model_id)
     if spec is None:
         if catalog.is_verified:

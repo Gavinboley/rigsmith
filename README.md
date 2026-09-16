@@ -1,18 +1,23 @@
 # rigsmith
 
-**AI tone authoring for the HeadRush Core.** Research a song's guitar tone, build the matching rig on the device over local Wi-Fi, and test the result against the source recording.
+**Recreate a recorded guitar tone on a HeadRush Core.** Work out what gear made it, find a NAM capture that matches, build the rig over local Wi-Fi, and measure how close you actually got.
 
-`rigsmith` is an [MCP](https://modelcontextprotocol.io) server plus a CLI. It lets an AI agent do the slow parts of tone recreation — working out what amp, pedals, and cab were actually used on a record, finding a NAM capture that matches, assembling a 14-block rig with Scenes, and then measuring how close the result really is.
+Three ways in, all over the same core: a **web UI**, a **CLI**, and an **MCP server** so an AI agent can do the slow parts for you.
 
-> **Status: pre-hardware.** Everything that can be built and tested without the device is done and covered by 131 tests: rig authoring, validation, NAM analysis, the tone-matching harness, USB backup, MIDI control, firmware analysis, and a 31-tool MCP server. The one remaining piece is the Remote Editor's wire protocol, which has to be captured against a powered-on Core — see [docs/PROTOCOL.md](docs/PROTOCOL.md).
+```bash
+pip install -e ".[all]"
+rigsmith ui
+```
+
+> **Status: works without hardware; one thing needs it.** Rig authoring, validation, NAM analysis, tone matching, catalog extraction, USB backup, MIDI and the web UI are all done and covered by 226 tests. The Remote Editor's wire protocol still has to be captured against a powered-on Core before `write_rig` can write — everything else runs today. See [docs/PROTOCOL.md](docs/PROTOCOL.md).
 
 ---
 
 ## Why this exists
 
-HeadRush firmware 4.0+ makes the Core serve a **Remote Editor** web app over Wi-Fi, and firmware 5.1 added **native NAM A1/A2 support with TONE3000 integration**. So the device already has a network control surface, and already runs the open-source capture format that makes accurate amp recreation possible. Nothing was missing except something to drive it.
+HeadRush firmware 4.0+ makes the Core serve a **Remote Editor** web app over Wi-Fi, and 5.1 added **native NAM A1/A2 support with TONE3000 integration**. So the device already has a network control surface, and already runs the open-source capture format that makes accurate amp recreation possible. Nothing was missing except something to drive it.
 
-As far as public sources show, nothing like this exists for HeadRush — no MCP server, no published API, no documented `.rig` format, no third-party editor for the Prime/Core generation. The equivalent tools exist for Line 6 and Fractal gear; HeadRush has none.
+As far as public sources show, nothing like this exists for HeadRush — no MCP server, no published API, no documented `.rig` format, no third-party editor for the Prime/Core generation. The equivalents exist for Line 6 and Fractal gear; HeadRush has none.
 
 ## Safety
 
@@ -20,78 +25,84 @@ This project does **not** modify, patch, or reflash device firmware, and it neve
 
 - Device writes go through the same interfaces the official Remote Editor uses.
 - Every write is gated: **validate → backup → diff → confirm → write → verify**.
-- `RIGSMITH_READONLY=1` disables all write tools at startup.
-- Firmware analysis, where used, is read-only static inspection for interoperability. No vendor firmware, binaries, or bundled assets are committed to this repo — only derived documentation.
-- If something does go wrong on the device, holding footswitches **4+5** at power-on restores factory rigs.
-
-## Install
-
-```bash
-git clone https://github.com/Gavinboley/rigsmith
-cd rigsmith
-pip install -e ".[all]"
-```
-
-Minimal install (`pip install -e .`) covers discovery and protocol capture. The extras are opt-in: `mcp`, `midi`, `audio`, `match`, `browser`.
+- `RIGSMITH_READONLY=1` disables every write at startup.
+- The web UI binds to **loopback only** and warns loudly if you override that — it can control an amp modeler on your network, and exposing it to that network would be a real footgun.
+- Firmware analysis is read-only static inspection for interoperability. No vendor firmware, binaries, or assets are committed here — only derived documentation.
+- If something goes wrong on the device, holding footswitches **4+5** at power-on restores factory rigs.
 
 ## Quickstart
 
-Check what your environment supports:
-
 ```bash
-rigsmith doctor
+rigsmith doctor        # what this install can and cannot do, and how to fix it
+rigsmith ui            # the web interface
 ```
 
-Put the Core on the same Wi-Fi network, then enable **Global Settings → Wi-Fi → HeadRush Remote = On** and find it:
+Put the Core on the same Wi-Fi network, enable **Global Settings → Wi-Fi → HeadRush Remote**, then:
 
 ```bash
-rigsmith discover
+rigsmith discover              # find it
+rigsmith probe --dump-app      # map the editor's API surface
+rigsmith protocol record       # watch the real editor work, and log every call
 ```
 
-If mDNS is blocked on your network, double-tap "HeadRush Remote" on the device to read its IP and pass it directly:
+If mDNS is blocked, double-tap "HeadRush Remote" on the device to read its IP and pass `--device 192.168.1.42`.
+
+### Build a rig
 
 ```bash
-rigsmith --device 192.168.1.42 discover
+rigsmith rig new "Cherub Rock" --notes "Siamese Dream"
+rigsmith rig add cherub-rock effect "Big Muff"      --param drive=0.72
+rigsmith rig add cherub-rock nam    "Marshall JMP"  --param size='"A2 Lite"'
+rigsmith rig add cherub-rock ir     "1960A-SM57"    --param length='"1024"'
+rigsmith rig add cherub-rock effect "Analog Delay"  --param mix=0.18
+
+rigsmith rig scene cherub-rock "Clean verse" --off 1 --off 4 --fs 1
+rigsmith rig scene cherub-rock "Big chorus"  --on 1 --on 4 --fs 2
+
+rigsmith rig validate cherub-rock
+rigsmith rig preview  cherub-rock
 ```
 
-Then map the editor's API surface:
+### Match it against the record
 
 ```bash
-rigsmith probe --dump-app
+rigsmith match isolate song.wav                   # guitar stem via Demucs
+rigsmith match capture-di --seconds 20            # play the riff once
+rigsmith match search di.wav stem.wav ./captures  # render every capture, rank them
+rigsmith match ab start s1 "Cherub Rock" a.wav b.wav c.wav
 ```
 
-This fetches the same files a browser would when you open the editor, mines them for endpoints, WebSocket URLs, and message types, and writes an inventory to your workspace (`~/.rigsmith/captures/`).
+Then open the **Match** panel in the UI for the blind listening test — both clips are decoded up front and switching is a gain crossfade, so you compare the same instant of each rather than a reload.
 
-Other things you can do right now, with or without the device:
+### Use it from Claude Code
 
 ```bash
-rigsmith device status              # is USB storage mounted, and what is on it
-rigsmith device backup              # timestamped backup, reads only
-rigsmith nam inspect amp.nam        # A1/A2, size, calibration, Core compatibility
-rigsmith nam scan ./captures        # summarise a capture library
-rigsmith firmware analyse fw.bin --unpack-to ./out --strings
-rigsmith rig list                   # drafts in progress
-rigsmith serve                      # run the MCP server over stdio
+claude mcp add rigsmith -- rigsmith serve
 ```
 
-### Using it from Claude Code
+Ask for a tone. The agent researches the gear, finds an A2 capture, builds the rig with scenes on footswitches, validates it, and shows a diff before anything is written.
 
-```bash
-claude mcp add rigsmith -- python -m rigsmith.mcp.server
+## How it's put together
+
+```
+              rigsmith/core/          one implementation
+                    |
+    +---------------+---------------+
+    |               |               |
+  cli.py       mcp/tools/*      web/api.py
+  (click)       (52 tools)       (FastAPI)
 ```
 
-Then ask for a tone. The agent researches the gear, finds an A2 capture, builds the rig with scenes on footswitches, validates it, and shows you a diff before anything is written.
+Each surface is a thin adapter: parse input, call core, format output. That rule exists because the first version broke it — orchestration lived inside the MCP tools, so anything not reachable from a tool was reachable from nowhere, and whole subsystems ended up built and unwired.
 
-## How it talks to the device
-
-Four transports, tried in order, so the tool degrades instead of failing:
+Four transports to the device, tried in order:
 
 | Layer | Mechanism | Role |
 |---|---|---|
-| **A** | Native HTTP/WS client for the Remote Editor | Primary — fast and precise |
+| **A** | Native HTTP/WS client for the Remote Editor | Primary — needs the protocol capture |
 | **B** | Playwright driving the real editor UI | Fallback that cannot drift from what the device accepts |
 | **C** | USB mass storage | Backup/restore, `.nam` and IR delivery |
-| **D** | MIDI PC/CC | Rig and Scene switching, plus independent verification that a write landed |
+| **D** | MIDI PC/CC | Rig and scene switching, and verification independent of whatever performed the write |
 
 We never need to reverse-engineer the `.rig` binary format: the Remote Editor can create rigs, so the device writes its own files.
 
@@ -99,36 +110,34 @@ We never need to reverse-engineer the `.rig` binary format: the Remote Editor ca
 
 Three layers, usable independently:
 
-1. **Offline simulation** — render a DI through a candidate NAM capture and cab IR in Python. Fast, no hardware, approximate.
-2. **Hardware in the loop** — the Core's USB interface is 6-in/4-out with a dry DI on channel 5 alongside stereo wet on 1–2, and supports reamping. Play a riff *once*, then reamp that exact performance through unlimited candidates automatically.
-3. **Human blind A/B** — ranked candidates presented without labels; your rating feeds the refinement loop.
+1. **Offline** — render a DI through a NAM capture and cab IR in Python. No hardware, fast, approximate. `rigsmith match search` does the whole sweep and hands back a ranking.
+2. **Hardware** — the Core's USB interface is 6-in/4-out with a dry DI on channel 5. Play a riff *once*, then reamp that exact performance through unlimited candidates.
+3. **Blind A/B** — the arbiter. Identities hidden until scored.
 
-**On metric honesty.** A commercial recording is not a DI and is not the same performance. Sample-aligned ESR — the metric the NAM ecosystem trusts — is only valid when comparing *your* DI through the Core against *your* reference. Against a source-separated stem from a record, only distribution-level metrics apply, and only as a *ranking* signal. `rigsmith` enforces that distinction rather than reporting a confident number it cannot justify.
+**On metric honesty.** A commercial recording is not a DI and is not the same performance. Sample-aligned ESR is only valid comparing *your* DI through the Core against *your* reference; against a separated stem, only distribution-level metrics apply, as a ranking. rigsmith enforces that rather than reporting a confident number it cannot justify — see [docs/TONE_MATCHING.md](docs/TONE_MATCHING.md), which opens with the measurement that makes the point.
 
-## Roadmap
+## Install
 
-- [x] Device discovery (mDNS, zeroconf browse, subnet sweep)
-- [x] Remote Editor bundle capture and API surface extraction
-- [x] Rig / Block / Scene model, validation, CPU estimation, diffing
-- [x] MCP server — 31 tools
-- [x] NAM capture analysis (A1/A2 detection with evidence)
-- [x] TONE3000 OAuth client
-- [x] Tone matching: metrics, offline render, hardware reamp, blind A/B
-- [x] USB backup, restore, and capture installation
-- [x] MIDI control and verification
-- [x] Firmware static analysis (read-only)
-- [x] CLI
-- [ ] **Live protocol capture against hardware** ← the remaining blocker
-- [ ] Native device client and write pipeline
-- [ ] Model/parameter catalog extraction
+```bash
+pip install -e ".[all]"     # everything, including the UI and test deps
+pip install -e .            # core only: discovery, protocol capture, rig authoring
+```
+
+Extras: `ui`, `mcp`, `midi`, `audio`, `match`, `separation`, `browser`, `dev`. `rigsmith doctor` tells you which you're missing and why you'd want each.
 
 ## Documentation
 
 - [docs/PROTOCOL.md](docs/PROTOCOL.md) — what is known about the Remote Editor protocol, what is not, and how it gets captured
 - [docs/TONE_MATCHING.md](docs/TONE_MATCHING.md) — how tone comparison works and where the numbers stop being trustworthy
 
+## What's left
+
+- [ ] **Capture the Remote Editor protocol against hardware** — the one remaining blocker
+- [ ] Native device client and the real `write_rig`
+- [ ] Extract the full model catalog from a real device (`rigsmith catalog extract` works; it needs a bundle to read)
+
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT — see [LICENSE](LICENSE). Vendored front-end libraries keep their own licences, recorded in [`rigsmith/web/static/vendor/README.md`](rigsmith/web/static/vendor/README.md).
 
 Not affiliated with or endorsed by HeadRush, inMusic Brands, or TONE3000. "HeadRush" and "Core" are trademarks of their respective owners.

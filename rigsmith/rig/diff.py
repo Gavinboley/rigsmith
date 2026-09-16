@@ -145,6 +145,58 @@ def _diff_block(before: Block, after: Block, changes: list[Change]) -> None:
             )
         )
 
+    # EQ, LED colour and lane round-trip through the codec and reach the
+    # device, so a diff that skipped them would show "no changes" for an edit
+    # that is about to alter the sound.
+    if before.eq != after.eq:
+        if len(before.eq) != len(after.eq):
+            changes.append(
+                Change(
+                    "param",
+                    f"slot {slot} ({name}): EQ bands {len(before.eq)} -> {len(after.eq)}",
+                    slot=slot,
+                )
+            )
+        else:
+            for index, (old, new) in enumerate(zip(before.eq, after.eq), start=1):
+                if old == new:
+                    continue
+                parts = []
+                if old.frequency != new.frequency:
+                    parts.append(f"{old.frequency:g} -> {new.frequency:g} Hz")
+                if old.gain_db != new.gain_db:
+                    parts.append(f"{old.gain_db:+g} -> {new.gain_db:+g} dB")
+                if old.q != new.q:
+                    parts.append(f"Q {old.q:g} -> {new.q:g}")
+                if old.mode != new.mode:
+                    parts.append(f"{old.mode} -> {new.mode}")
+                changes.append(
+                    Change(
+                        "param",
+                        f"slot {slot} ({name}): EQ band {index} " + ", ".join(parts),
+                        slot=slot,
+                    )
+                )
+
+    if before.led_color != after.led_color:
+        changes.append(
+            Change(
+                "param",
+                f"slot {slot} ({name}): LED {before.led_color or 'default'} -> "
+                f"{after.led_color or 'default'}",
+                slot=slot,
+            )
+        )
+
+    if before.lane != after.lane:
+        changes.append(
+            Change(
+                "move",
+                f"slot {slot} ({name}): lane {before.lane} -> {after.lane}",
+                slot=slot,
+            )
+        )
+
 
 def _describe_scene(scene: Scene) -> str:
     on = sorted(s for s, st in scene.states.items() if st is SceneBlockState.ON)
@@ -222,27 +274,58 @@ def diff_rigs(before: Rig | None, after: Rig) -> RigDiff:
         changes.append(
             Change("rig", f"rig width: {before.rig_width}% -> {after.rig_width}%")
         )
+    if before.setlist != after.setlist:
+        changes.append(
+            Change("rig", f"setlist: {before.setlist or 'none'} -> {after.setlist or 'none'}")
+        )
+    if before.slot_number != after.slot_number:
+        changes.append(
+            Change(
+                "rig",
+                f"position: {before.slot_number or 'unset'} -> "
+                f"{after.slot_number or 'unset'}",
+            )
+        )
 
     before_blocks = {b.slot: b for b in before.blocks}
     after_blocks = {b.slot: b for b in after.blocks}
 
-    # Match blocks by model id first so a pure reorder reads as a move rather
-    # than as a pile of unrelated adds and removes.
-    before_by_model: dict[str, list[Block]] = {}
-    for block in before.blocks:
-        before_by_model.setdefault(block.model_id, []).append(block)
-
+    # Two passes, because a rig can legitimately hold two instances of the
+    # same pedal. Matching purely by model id would then pair them
+    # arbitrarily, and attribute one block's parameter change to the other.
+    # Pass one claims blocks that kept both their slot and their model, which
+    # is the unambiguous case; pass two matches what is left by model id.
     matched_before: set[int] = set()
+    partners: dict[int, Block] = {}
+
+    for slot, block in after_blocks.items():
+        candidate = before_blocks.get(slot)
+        if candidate is not None and candidate.model_id == block.model_id:
+            partners[slot] = candidate
+            matched_before.add(slot)
+
+    before_by_model: dict[str, list[Block]] = {}
+    for block in sorted(before.blocks, key=lambda b: b.slot):
+        if block.slot not in matched_before:
+            before_by_model.setdefault(block.model_id, []).append(block)
+
     for slot, block in sorted(after_blocks.items()):
+        if slot in partners:
+            continue
         candidates = before_by_model.get(block.model_id, [])
         partner = next((c for c in candidates if c.slot not in matched_before), None)
+        if partner is not None:
+            partners[slot] = partner
+            matched_before.add(partner.slot)
+
+    for slot, block in sorted(after_blocks.items()):
+        partner = partners.get(slot)
         if partner is None:
             changes.append(
                 Change("add", f"slot {slot}: add {_label(block)} ({block.category.value})",
                        slot=slot, after=block.model_id)
             )
             continue
-        matched_before.add(partner.slot)
         if partner.slot != slot:
             changes.append(
                 Change("move", f"{_label(block)}: slot {partner.slot} -> {slot}",
