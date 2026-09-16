@@ -11,7 +11,7 @@ pip install -e ".[all]"
 rigsmith ui
 ```
 
-> **Status: works without hardware; one thing needs it.** Rig authoring, validation, NAM analysis, tone matching, catalog extraction, USB backup, MIDI and the web UI are all done and covered by 447 tests. The Remote Editor's wire protocol still has to be captured against a powered-on Core before `write_rig` can write — everything else runs today. See [docs/PROTOCOL.md](docs/PROTOCOL.md).
+> **Status: works without hardware; one thing needs it.** Rig authoring, validation, NAM analysis, tone matching, catalog extraction, USB backup, MIDI and the web UI are all done and covered by 456 tests. The Remote Editor's wire protocol still has to be captured against a powered-on Core before `write_rig` can write — everything else runs today. See [docs/PROTOCOL.md](docs/PROTOCOL.md).
 
 ---
 
@@ -96,7 +96,13 @@ rigsmith recipe scene cherub-rock "Clean verse" --off fuzz --fs 1
 rigsmith recipe question cherub-rock "Which Big Muff revision?"
 
 rigsmith recipe compile cherub-rock      # -> a draft rig
+
+# ...then, after testing it, the half research alone never closes:
+rigsmith recipe measured cherub-rock "jcm800-hot" stem.wav --composite 0.031 --won
+rigsmith recipe measured cherub-rock "jcm800-hot" stem.wav --kind listen --won --trials 3
 ```
+
+A recipe also records what happened when you tested it. Confidence says how well-sourced a claim is; a measurement says whether acting on it worked. Only a blind listening verdict marks a recipe **verified** — a metric result is a ranking, not a decision.
 
 `stated` and `reported` are **refused without a source**. That is the point:
 an undocumented claim dressed as a documented one is worse than an honest
@@ -154,7 +160,7 @@ Ask for a tone. The agent researches the gear, finds an A2 capture, builds the r
     +---------------+---------------+
     |               |               |
   cli.py       mcp/tools/*      web/api.py
-  (click)       (63 tools)       (FastAPI)
+  (click)       (64 tools)       (FastAPI)
 ```
 
 Each surface is a thin adapter: parse input, call core, format output. That rule exists because the first version broke it — orchestration lived inside the MCP tools, so anything not reachable from a tool was reachable from nowhere, and whole subsystems ended up built and unwired.

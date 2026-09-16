@@ -219,6 +219,96 @@ class SceneSpec:
 
 
 @dataclass
+class Measurement:
+    """What actually happened when this recipe was tested against the record.
+
+    A recipe without this records only what somebody believed. Confidence
+    says how well-sourced a claim is; a measurement says whether acting on it
+    worked - a different axis entirely, and the one that settles arguments.
+
+    Kept deliberately thin. The full ranking lives with the audio; what
+    belongs on the recipe is the answer and enough context to know what the
+    answer was about.
+    """
+
+    label: str
+    """Which candidate - usually the capture or rig that was tested."""
+
+    target: str
+    """What it was compared against, as a filename or a description."""
+
+    kind: str = "score"
+    """``score`` for a metric result, ``listen`` for a blind A/B verdict."""
+
+    mode: str | None = None
+    """``distribution`` or ``aligned``, for a score."""
+
+    composite: float | None = None
+    region: str | None = None
+    """The passage that was compared, if it was not the whole file."""
+
+    won: bool | None = None
+    """Whether this came first. For a blind test, whether ears chose it."""
+
+    trials: int | None = None
+    note: str | None = None
+    at: str = field(
+        default_factory=lambda: datetime.now(timezone.utc).isoformat(timespec="seconds")
+    )
+
+    def describe(self) -> str:
+        bits = [f"{self.label}"]
+        if self.kind == "listen":
+            outcome = "chosen" if self.won else "not chosen"
+            bits.append(f"blind test: {outcome}")
+            if self.trials:
+                bits.append(f"over {self.trials} trial(s)")
+        else:
+            if self.composite is not None:
+                bits.append(f"composite {self.composite:.4f}")
+            if self.mode:
+                bits.append(f"({self.mode})")
+            if self.won:
+                bits.append("- ranked first")
+        if self.region:
+            bits.append(f"over {self.region}")
+        bits.append(f"vs {self.target}")
+        if self.note:
+            bits.append(f"- {self.note}")
+        return "  ".join(bits)
+
+    def to_dict(self) -> dict:
+        return {
+            "label": self.label,
+            "target": self.target,
+            "kind": self.kind,
+            "mode": self.mode,
+            "composite": self.composite,
+            "region": self.region,
+            "won": self.won,
+            "trials": self.trials,
+            "note": self.note,
+            "at": self.at,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "Measurement":
+        return cls(
+            label=str(data.get("label", "")),
+            target=str(data.get("target", "")),
+            kind=data.get("kind", "score"),
+            mode=data.get("mode"),
+            composite=data.get("composite"),
+            region=data.get("region"),
+            won=data.get("won"),
+            trials=data.get("trials"),
+            note=data.get("note"),
+            at=data.get("at")
+            or datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        )
+
+
+@dataclass
 class ToneRecipe:
     """A researched tone, ready to compile into a rig."""
 
@@ -246,6 +336,11 @@ class ToneRecipe:
 
     sources: list[Source] = field(default_factory=list)
     """Sources for the recipe as a whole, as opposed to one gear choice."""
+
+    measurements: list[Measurement] = field(default_factory=list)
+    """What testing it against the record actually produced. This is the half
+    of the loop that research alone never closes: a recipe with measurements
+    has been checked, and one without has only been reasoned about."""
 
     created_at: str = field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -333,8 +428,26 @@ class ToneRecipe:
             lines.append("\nsources:")
             lines.extend(f"  - {source.render()}" for source in self.sources)
 
+        if self.measurements:
+            lines.append("\nmeasured:")
+            lines.extend(f"  - {m.describe()}" for m in self.measurements)
+        else:
+            lines.append(
+                "\nmeasured: nothing yet - this recipe has been reasoned "
+                "about, not checked."
+            )
+
         lines.append("\n" + self.confidence_report())
         return "\n".join(lines)
+
+    @property
+    def verified(self) -> bool:
+        """Has a person actually chosen this by ear?
+
+        A metric result is a ranking, not a verdict - see docs/TONE_MATCHING.md.
+        Only a blind listening test settles it, so only that counts here.
+        """
+        return any(m.kind == "listen" and m.won for m in self.measurements)
 
     # -- persistence ------------------------------------------------------
 
@@ -354,6 +467,7 @@ class ToneRecipe:
             "scenes": [s.to_dict() for s in self.scenes],
             "open_questions": self.open_questions,
             "sources": [s.to_dict() for s in self.sources],
+            "measurements": [m.to_dict() for m in self.measurements],
             "created_at": self.created_at,
         }
 
@@ -385,6 +499,9 @@ class ToneRecipe:
         recipe.gear = [GearChoice.from_dict(g) for g in data.get("gear", [])]
         recipe.scenes = [SceneSpec(**s) for s in data.get("scenes", [])]
         recipe.sources = [Source(**s) for s in data.get("sources", [])]
+        recipe.measurements = [
+            Measurement.from_dict(m) for m in data.get("measurements", [])
+        ]
         return recipe
 
     @classmethod

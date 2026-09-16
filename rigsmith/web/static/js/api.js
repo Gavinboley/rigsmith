@@ -125,6 +125,10 @@ export const api = {
   captureDi: (body) => api.post("/api/match/capture-di", body),
   reamp: (body) => api.post("/api/match/reamp", body),
 
+  recipes: () => api.get("/api/recipes"),
+  recordMeasurement: (id, body) =>
+    api.post(`/api/recipes/${id}/measurements`, body),
+
   abSessions: () => api.get("/api/ab"),
   createAb: (body) => api.post("/api/ab", body),
   abSession: (id) => api.get(`/api/ab/${id}`),

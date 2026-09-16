@@ -610,16 +610,26 @@ def test_the_panels_hand_work_to_each_other(browser, server):
         )
         page.reload(wait_until="networkidle")
         page.click("#tabs .tab[data-panel='recipes']")
-        page.wait_for_selector("#recipe-gear .item")
 
-        # An unresolved amp offers to go and look for a capture.
-        page.click("#recipe-gear button:has-text('find a capture')")
+        # Wait for the row that has the button, not just for any row - the
+        # fuzz renders first and carries no capture link.
+        find_a_capture = page.locator("#recipe-gear button", has_text="find a capture")
+        find_a_capture.wait_for(state="visible", timeout=15000)
+        find_a_capture.click()
         page.wait_for_selector("#panels .panel[data-panel='captures']", state="visible")
         assert page.input_value("#t3k-query") == "Marshall JMP"
 
         page.click("#tabs .tab[data-panel='recipes']")
+        # Coming back re-renders the recipe; compiling before that lands would
+        # read a recipe id that is briefly absent.
+        page.locator("#recipe-gear .item").first.wait_for(state="visible")
         page.click("#compile-recipe")
-        page.click("#compile-out button:has-text('Open in the rig builder')")
+
+        open_in_builder = page.locator(
+            "#compile-out button", has_text="Open in the rig builder"
+        )
+        open_in_builder.wait_for(state="visible", timeout=15000)
+        open_in_builder.click()
 
         page.wait_for_selector("#panels .panel[data-panel='rig']", state="visible")
         page.wait_for_function(
@@ -632,3 +642,43 @@ def test_the_panels_hand_work_to_each_other(browser, server):
         page.click("#test-btn")
         page.wait_for_selector("#panels .panel[data-panel='match']", state="visible")
         assert "Cherub Rock" in page.inner_text("#mode-note")
+
+
+def test_a_measured_result_goes_back_onto_the_recipe(browser, server, tmp_path):
+    """Research that has been checked, rather than only reasoned about."""
+    target = audio_file(tmp_path, "stem.wav")
+    candidate = audio_file(tmp_path, "jcm800.wav")
+
+    with page_at(browser, server) as page:
+        page.evaluate(
+            """async () => {
+                await fetch('/api/recipes', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({title: 'Cherub Rock'}),
+                });
+            }"""
+        )
+        page.reload(wait_until="networkidle")
+        page.click("#tabs .tab[data-panel='recipes']")
+        page.wait_for_selector("#recipe-measured")
+        assert "reasoned about, not checked" in page.inner_text("#recipe-measured")
+        assert page.inner_text("#recipe-verified") == "unverified"
+
+        page.click("#tabs .tab[data-panel='match']")
+        page.fill("#target-path", str(target))
+        page.fill("#candidate-paths", str(candidate))
+        page.click("#score-btn")
+        page.wait_for_selector("#ranking .item", timeout=20000)
+
+        page.click("#ranking button:has-text('Save the winner to a recipe')")
+        page.wait_for_selector("#modal[open]", timeout=10000)
+        page.click("#modal-ok")
+
+        page.click("#tabs .tab[data-panel='recipes']")
+        page.wait_for_selector("#recipe-measured .item", timeout=10000)
+        measured = page.inner_text("#recipe-measured")
+        assert "jcm800" in measured
+        assert "metric" in measured
+        # A metric result is a ranking; it must not claim the recipe is settled.
+        assert page.inner_text("#recipe-verified") == "unverified"

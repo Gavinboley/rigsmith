@@ -15,6 +15,7 @@ from ..tone.recipe import (
     CompileResult,
     Confidence,
     GearChoice,
+    Measurement,
     SceneSpec,
     Source,
     ToneRecipe,
@@ -236,6 +237,64 @@ def add_question(recipe_id: str, question: str) -> ToneRecipe:
     recipe = get(recipe_id)
     if question not in recipe.open_questions:
         recipe.open_questions.append(question)
+    save(recipe, recipe_id)
+    return recipe
+
+
+KINDS = ("score", "listen")
+
+
+def record_measurement(
+    recipe_id: str,
+    label: str,
+    target: str,
+    *,
+    kind: str = "score",
+    mode: str | None = None,
+    composite: float | None = None,
+    region: str | None = None,
+    won: bool | None = None,
+    trials: int | None = None,
+    note: str | None = None,
+) -> ToneRecipe:
+    """Record what testing this recipe against the record actually produced.
+
+    This is the half of the loop that research alone never closes. Confidence
+    says how well-sourced a claim is; a measurement says whether acting on it
+    worked. They are different axes, and a recipe carrying only the first has
+    been reasoned about rather than checked.
+
+    Args:
+        label: The candidate tested, usually a capture or rig name.
+        target: What it was compared against.
+        kind: ``score`` for a metric result, ``listen`` for a blind verdict.
+        won: Whether it came first - for a blind test, whether ears chose it.
+    """
+    if kind not in KINDS:
+        raise Invalid(
+            f"unknown measurement kind '{kind}'",
+            hint=f"Use one of: {', '.join(KINDS)}.",
+        )
+    if kind == "score" and composite is None:
+        raise Invalid(
+            "a score measurement needs a composite value",
+            hint="Pass kind='listen' to record a blind verdict instead.",
+        )
+
+    recipe = get(recipe_id)
+    recipe.measurements.append(
+        Measurement(
+            label=label,
+            target=target,
+            kind=kind,
+            mode=mode,
+            composite=composite,
+            region=region,
+            won=won,
+            trials=trials,
+            note=note,
+        )
+    )
     save(recipe, recipe_id)
     return recipe
 

@@ -296,3 +296,99 @@ def test_open_questions_survive_into_the_compiled_report(workspace):
     recipes.add_gear(recipe_id, "amp", "JMP", category="nam")
     recipes.add_question(recipe_id, "Which revision?")
     assert "1 open question" in recipes.compile_to_draft(recipe_id).render()
+
+
+# --------------------------------------------------------------------------
+# measurements: whether acting on the research actually worked
+# --------------------------------------------------------------------------
+
+
+def test_a_recipe_says_plainly_when_nothing_has_been_measured():
+    from rigsmith.tone.recipe import ToneRecipe
+
+    recipe = ToneRecipe(title="Cherub Rock")
+    assert "reasoned about, not checked" in recipe.render()
+    assert not recipe.verified
+
+
+def test_only_a_listening_verdict_marks_a_recipe_verified():
+    """A metric result is a ranking, not a decision - docs/TONE_MATCHING.md."""
+    from rigsmith.tone.recipe import Measurement, ToneRecipe
+
+    recipe = ToneRecipe(title="T")
+    recipe.measurements.append(
+        Measurement(label="jcm800", target="stem.wav", composite=0.02, won=True)
+    )
+    assert not recipe.verified, "winning on metrics is not being chosen by ear"
+
+    recipe.measurements.append(
+        Measurement(label="jcm800", target="stem.wav", kind="listen", won=True, trials=3)
+    )
+    assert recipe.verified
+
+
+def test_a_losing_listen_does_not_verify_anything():
+    from rigsmith.tone.recipe import Measurement, ToneRecipe
+
+    recipe = ToneRecipe(title="T")
+    recipe.measurements.append(
+        Measurement(label="a", target="t.wav", kind="listen", won=False, trials=3)
+    )
+    assert not recipe.verified
+
+
+def test_measurements_survive_a_round_trip():
+    from rigsmith.tone.recipe import Measurement, ToneRecipe
+
+    recipe = ToneRecipe(title="T")
+    recipe.measurements.append(
+        Measurement(
+            label="jcm800",
+            target="stem.wav",
+            composite=0.0312,
+            mode="distribution",
+            region="41.20s-58.00s",
+            won=True,
+            note="the fizz is still wrong",
+        )
+    )
+    restored = ToneRecipe.from_dict(recipe.to_dict())
+    assert restored.measurements[0].describe() == recipe.measurements[0].describe()
+    assert restored.measurements[0].note == "the fizz is still wrong"
+
+
+def test_a_score_measurement_without_a_score_is_refused(tmp_path, monkeypatch):
+    from rigsmith import config
+    from rigsmith.core import recipes
+    from rigsmith.core.errors import Invalid
+
+    monkeypatch.setenv("RIGSMITH_WORKSPACE", str(tmp_path))
+    config.set_settings(config.Settings())
+    try:
+        recipes.create("T")
+        with pytest.raises(Invalid, match="needs a composite value"):
+            recipes.record_measurement("t", "jcm800", "stem.wav")
+
+        # A listening verdict has no composite by nature, and is fine.
+        recipe = recipes.record_measurement(
+            "t", "jcm800", "stem.wav", kind="listen", won=True, trials=3
+        )
+        assert recipe.verified
+    finally:
+        config.set_settings(None)
+
+
+def test_an_unknown_measurement_kind_names_the_real_ones(tmp_path, monkeypatch):
+    from rigsmith import config
+    from rigsmith.core import recipes
+    from rigsmith.core.errors import Invalid
+
+    monkeypatch.setenv("RIGSMITH_WORKSPACE", str(tmp_path))
+    config.set_settings(config.Settings())
+    try:
+        recipes.create("T")
+        with pytest.raises(Invalid) as caught:
+            recipes.record_measurement("t", "a", "b", kind="vibes")
+        assert "score, listen" in caught.value.hint
+    finally:
+        config.set_settings(None)

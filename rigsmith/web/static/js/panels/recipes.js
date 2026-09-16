@@ -22,6 +22,22 @@ const TONE = { stated: "a2", reported: "a2", inferred: "", guessed: "warn" };
 
 let current = null;
 
+/** What a measurement amounts to, in one line. */
+function summarise(item) {
+  if (item.kind === "listen") {
+    const outcome = item.won ? "chosen" : "not chosen";
+    return item.trials ? `${outcome} over ${item.trials} trial(s)` : outcome;
+  }
+  const parts = [];
+  if (item.composite !== null && item.composite !== undefined) {
+    parts.push(`composite ${item.composite.toFixed(4)}`);
+  }
+  if (item.mode) parts.push(item.mode);
+  if (item.region) parts.push(item.region);
+  if (item.won) parts.push("ranked first");
+  return parts.join("  ");
+}
+
 /* ----------------------------------------------------------------- render */
 
 function gearItem(choice) {
@@ -131,6 +147,40 @@ function render(payload) {
       )
     );
   }
+
+  const measured = clear($("#recipe-measured"));
+  if (!payload.measurements?.length) {
+    measured.append(
+      el("div", {
+        class: "hint",
+        text:
+          "Nothing measured yet. This recipe has been reasoned about, not " +
+          "checked - score it against the record in the Match panel.",
+      })
+    );
+  } else {
+    for (const item of payload.measurements) {
+      measured.append(
+        el(
+          "div",
+          { class: "item", title: item.at },
+          el("span", {
+            class: `tag ${item.won ? "a2" : ""}`,
+            text: item.kind === "listen" ? "ears" : "metric",
+            title:
+              item.kind === "listen"
+                ? "A blind listening verdict. This is what settles it."
+                : "A metric result. A ranking, not a decision.",
+          }),
+          el("span", { class: "title", text: item.label }),
+          el("span", { class: "spacer" }),
+          el("span", { class: "meta", text: item.describe || summarise(item) })
+        )
+      );
+    }
+  }
+  $("#recipe-verified").textContent = payload.verified ? "verified by ear" : "unverified";
+  $("#recipe-verified").className = "tag " + (payload.verified ? "a2" : "warn");
 
   const questions = clear($("#recipe-questions"));
   for (const question of payload.open_questions || []) {

@@ -116,6 +116,18 @@ class QuestionBody(BaseModel):
     question: str
 
 
+class MeasurementBody(BaseModel):
+    label: str
+    target: str
+    kind: str = "score"
+    mode: str | None = None
+    composite: float | None = None
+    region: str | None = None
+    won: bool | None = None
+    trials: int | None = None
+    note: str | None = None
+
+
 class ResolveBody(BaseModel):
     role: str
     model_id: str
@@ -691,6 +703,7 @@ def _recipe_payload(recipe_id: str, recipe) -> dict:
         "recipe_id": recipe_id,
         "confidence": recipe.confidence,
         "unsupported": [g.role for g in recipe.unsupported],
+        "verified": recipe.verified,
         "rendered": recipe.render(),
         **recipe.to_dict(),
     }
@@ -708,6 +721,8 @@ def list_recipes() -> dict:
                 "scenes": len(recipe.scenes),
                 "confidence": recipe.confidence,
                 "questions": len(recipe.open_questions),
+                "measurements": len(recipe.measurements),
+                "verified": recipe.verified,
             }
             for recipe_id, recipe in recipes.list_recipes()
         ]
@@ -762,6 +777,24 @@ def add_question(recipe_id: str, body: QuestionBody) -> dict:
 @router.post("/recipes/{recipe_id}/resolve")
 def resolve_gear(recipe_id: str, body: ResolveBody) -> dict:
     recipe = recipes.resolve_gear(recipe_id, body.role, body.model_id)
+    return _recipe_payload(recipe_id, recipe)
+
+
+@router.post("/recipes/{recipe_id}/measurements")
+def add_measurement(recipe_id: str, body: MeasurementBody) -> dict:
+    """Record what testing this recipe produced, not just what was believed."""
+    recipe = recipes.record_measurement(
+        recipe_id,
+        body.label,
+        body.target,
+        kind=body.kind,
+        mode=body.mode,
+        composite=body.composite,
+        region=body.region,
+        won=body.won,
+        trials=body.trials,
+        note=body.note,
+    )
     return _recipe_payload(recipe_id, recipe)
 
 

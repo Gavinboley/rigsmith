@@ -356,8 +356,19 @@ async function editScene(scene, footswitch = null) {
   );
 }
 
+/* Two refreshes can be in flight at once - showing the panel starts one, and
+ * arriving from a compiled recipe starts another a microtask later. Without
+ * a guard they race, and the loser is whichever the network happens to
+ * answer second, so "open the rig I just compiled" sometimes opened the
+ * previously selected one instead. A sequence token settles it: the newest
+ * request wins, and an older response is dropped on arrival. */
+let refreshToken = 0;
+
 async function refreshDrafts(selectId = null) {
+  const token = ++refreshToken;
   const { drafts } = await api.drafts();
+  if (token !== refreshToken) return;
+
   const select = clear($("#draft-select"));
   for (const draft of drafts) {
     select.append(
@@ -377,7 +388,9 @@ async function refreshDrafts(selectId = null) {
     ? selectId
     : drafts[0].draft_id;
   select.value = wanted;
-  apply(await api.draft(wanted));
+  const draft = await api.draft(wanted);
+  if (token !== refreshToken) return;
+  apply(draft);
 }
 
 async function newDraft() {
@@ -396,7 +409,12 @@ async function newDraft() {
 
 export function init() {
   $("#test-btn").onclick = () =>
-    goTo("match", { rigName: current?.rig?.name || null });
+    goTo("match", {
+      rigName: current?.rig?.name || null,
+      // Compiled rigs keep their recipe's id as the draft id, so a result
+      // measured here can find its way back to the research it came from.
+      recipeId: current?.draft_id || null,
+    });
 
   $("#new-draft").onclick = newDraft;
   $("#new-draft-empty").onclick = newDraft;

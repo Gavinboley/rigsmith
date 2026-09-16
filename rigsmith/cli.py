@@ -1230,6 +1230,40 @@ def recipe_question(recipe_id: str, question: str) -> None:
     click.echo(f"Noted. {len(obj.open_questions)} open question(s).")
 
 
+@recipe.command("measured")
+@click.argument("recipe_id")
+@click.argument("label")
+@click.argument("target")
+@click.option("--kind", default="score", type=click.Choice(["score", "listen"]), show_default=True)
+@click.option("--mode", type=click.Choice(["aligned", "distribution"]))
+@click.option("--composite", type=float, help="The composite score, for --kind score.")
+@click.option("--region", help="The passage compared, if not the whole file.")
+@click.option("--won/--lost", default=None, help="Did it come first?")
+@click.option("--trials", type=int, help="How many A/B trials informed a verdict.")
+@click.option("--note")
+@handled
+def recipe_measured(recipe_id, label, target, kind, mode, composite, region, won, trials, note) -> None:
+    """Record what testing this recipe actually produced.
+
+    Confidence says how well-sourced a claim is. This says whether acting on
+    it worked - a different question, and the one a recipe cannot answer on
+    its own. Only a listening verdict marks a recipe verified; a metric
+    result is a ranking.
+    """
+    from .core import recipes
+
+    obj = recipes.record_measurement(
+        recipe_id, label, target, kind=kind, mode=mode, composite=composite,
+        region=region, won=won, trials=trials, note=note,
+    )
+    click.echo(f"Recorded: {obj.measurements[-1].describe()}")
+    click.echo(
+        click.style("This recipe is verified by ear.", fg="green")
+        if obj.verified
+        else "Still unverified - only a blind listening verdict settles it."
+    )
+
+
 @recipe.command("resolve")
 @click.argument("recipe_id")
 @click.argument("role")

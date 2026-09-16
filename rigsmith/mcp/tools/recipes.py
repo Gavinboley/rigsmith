@@ -210,3 +210,56 @@ def compile_recipe(recipe_id: str, name: str | None = None) -> str:
     from the research, which the device cannot load. The result says which.
     """
     return recipes.compile_to_draft(recipe_id, name=name).render()
+
+
+@tool
+def record_measurement(
+    recipe_id: str,
+    label: str,
+    target: str,
+    kind: Literal["score", "listen"] = "score",
+    mode: str | None = None,
+    composite: float | None = None,
+    region: str | None = None,
+    won: bool | None = None,
+    trials: int | None = None,
+    note: str | None = None,
+) -> str:
+    """Record what testing this recipe against the record actually produced.
+
+    Call this after score_candidates or after a blind A/B finishes. It is the
+    half of the loop that research alone never closes: confidence says how
+    well-sourced a claim is, a measurement says whether acting on it worked,
+    and a recipe carrying only the first has been reasoned about rather than
+    checked.
+
+    Args:
+        label: The candidate tested - usually a capture or rig name.
+        target: What it was compared against.
+        kind: 'score' for a metric result, 'listen' for a blind A/B verdict.
+            Only a listening verdict marks a recipe verified; a metric result
+            is a ranking, not a decision.
+        composite: The composite score. Required when kind is 'score'.
+        region: The passage compared, if it was not the whole file.
+        won: Whether it came first - for a blind test, whether ears chose it.
+        trials: How many A/B trials informed a listening verdict.
+    """
+    recipe = recipes.record_measurement(
+        recipe_id,
+        label,
+        target,
+        kind=kind,
+        mode=mode,
+        composite=composite,
+        region=region,
+        won=won,
+        trials=trials,
+        note=note,
+    )
+    latest = recipe.measurements[-1]
+    verdict = (
+        "This recipe is now verified by ear."
+        if recipe.verified
+        else "Still unverified - only a blind listening verdict settles it."
+    )
+    return f"Recorded: {latest.describe()}\n\n{verdict}"

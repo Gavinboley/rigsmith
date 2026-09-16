@@ -9,10 +9,10 @@
  */
 
 import { api } from "../api.js";
-import { $, attempt, clear, el, jobRow, toast } from "../ui.js";
+import { $, attempt, clear, el, jobRow, prompt, toast } from "../ui.js";
 import { createWave, describeRegion } from "../wave.js";
 import { attachPicker } from "../picker.js";
-import { onArrive } from "../nav.js";
+import { onArrive, goTo } from "../nav.js";
 
 const CROSSFADE_S = 0.008;
 
@@ -23,6 +23,7 @@ let waves = null; // { target, candidate } - built on first use, see ensureWaves
 let found = null; // {label: path} from the last capture-folder scan
 let searchJob = null; // the offline sweep currently running, if any
 let lastRanking = null; // {label: path} of what was scored most recently
+let arrivedFrom = null; // the recipe this test belongs to, if it came from one
 
 /* ------------------------------------------------------------ audio engine */
 
@@ -421,6 +422,26 @@ async function renderSession(sessionId) {
     host.append(
       el("div", { class: "notice", text: "All trials answered - identities revealed." })
     );
+
+    // This is the one result that settles anything, so it is the one the
+    // panel pushes you to keep.
+    const winner = results.standings[0];
+    if (winner) {
+      host.append(
+        el("button", {
+          class: "btn primary",
+          text: `Save "${winner.label}" to a recipe`,
+          title: "A listening verdict is what marks a recipe verified.",
+          onclick: () =>
+            attempt(() =>
+              saveToRecipe(
+                { label: winner.label, won: true },
+                { kind: "listen", trials: winner.trials }
+              )
+            ),
+        })
+      );
+    }
     return;
   }
 
@@ -616,6 +637,24 @@ export function init() {
       }
 
       lastRanking = byLabel;
+      if (result.ranking[0]) {
+        host.append(
+          el("button", {
+            class: "btn small",
+            text: "Save the winner to a recipe",
+            title:
+              "Recorded as a metric result. It does not mark the recipe " +
+              "verified - a ranking is not a decision.",
+            onclick: () =>
+              attempt(() =>
+                saveToRecipe(
+                  { ...result.ranking[0], won: true },
+                  { kind: "score" }
+                )
+              ),
+          })
+        );
+      }
       if (result.ranking.length > 1) {
         host.append(
           el("button", {
@@ -678,13 +717,53 @@ export const onShow = refreshSessions;
 
 // Arriving from the rig builder: say which rig is being tested, so a
 // ranking saved later is not one of several anonymous ones.
-onArrive("match", ({ rigName }) => {
+onArrive("match", ({ rigName, recipeId }) => {
+  arrivedFrom = recipeId || arrivedFrom;
   if (!rigName) return;
   const note = $("#mode-note");
   if (note && !note.textContent.includes(rigName)) {
     note.textContent = `Testing "${rigName}".  ` + note.textContent;
   }
 });
+
+/* Saving the result back onto a recipe is what turns a pile of rankings into
+ * research that has been checked. A metric result is recorded as a metric
+ * result - it does not mark anything verified, because a ranking is not a
+ * decision. */
+
+async function saveToRecipe(entry, { kind, trials = null } = {}) {
+  const { recipes } = await api.recipes();
+  if (!recipes.length) {
+    throw new Error("No recipes yet - the Research panel is where they start");
+  }
+
+  const choice = await prompt("Save this result to a recipe", [
+    {
+      name: "recipe_id",
+      label: "Recipe",
+      type: "select",
+      value: arrivedFrom || recipes[0].recipe_id,
+      options: recipes.map((r) => ({ value: r.recipe_id, label: r.title })),
+    },
+    { name: "note", label: "Anything worth remembering?", placeholder: "optional" },
+  ]);
+  if (!choice?.recipe_id) return;
+
+  const region = regionFor("target");
+  await api.recordMeasurement(choice.recipe_id, {
+    label: entry.label,
+    target: $("#target-path").value.trim() || "the record",
+    kind,
+    mode: kind === "score" ? $("#match-mode").value : null,
+    composite: kind === "score" ? entry.composite : null,
+    region: region ? describeRegion(region) : null,
+    won: Boolean(entry.won),
+    trials,
+    note: choice.note || null,
+  });
+  toast(`Saved to "${choice.recipe_id}"`, { kind: "ok" });
+  arrivedFrom = choice.recipe_id;
+}
 
 export function onHide() {
   stopPlayback();

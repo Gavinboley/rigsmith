@@ -749,3 +749,43 @@ def test_the_nam_directory_is_protected_from_pruning(client):
     areas = {area["name"]: area for area in client.get("/api/workspace").json()["areas"]}
     assert "nam" in areas
     assert areas["nam"]["prunable"] is False
+
+
+def test_measurements_reach_the_recipe_through_the_api(client):
+    client.post("/api/recipes", json={"title": "Cherub Rock"})
+
+    scored = client.post(
+        "/api/recipes/cherub-rock/measurements",
+        json={
+            "label": "jcm800-hot",
+            "target": "stem.wav",
+            "composite": 0.0312,
+            "mode": "distribution",
+            "region": "41.20s-58.00s",
+            "won": True,
+        },
+    )
+    assert scored.status_code == 200
+    # A metric win is a ranking, not a decision.
+    assert scored.json()["verified"] is False
+
+    listened = client.post(
+        "/api/recipes/cherub-rock/measurements",
+        json={"label": "jcm800-hot", "target": "stem.wav", "kind": "listen",
+              "won": True, "trials": 3},
+    )
+    assert listened.json()["verified"] is True
+    assert len(listened.json()["measurements"]) == 2
+
+    listing = client.get("/api/recipes").json()["recipes"][0]
+    assert listing["measurements"] == 2
+    assert listing["verified"] is True
+
+
+def test_a_score_measurement_without_a_score_is_400(client):
+    client.post("/api/recipes", json={"title": "T"})
+    response = client.post(
+        "/api/recipes/t/measurements", json={"label": "a", "target": "b"}
+    )
+    assert response.status_code == 400
+    assert "composite" in response.json()["error"]
