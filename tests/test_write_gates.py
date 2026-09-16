@@ -76,7 +76,9 @@ def test_a_write_without_a_backup_is_refused(draft_id, monkeypatch):
     assert not result.written
     assert "Refusing to write without a backup" in result.message
     assert "USB Transfer" in result.message
-    assert "allow_without_backup" in result.message
+    # Core names no argument - each surface says its own idiom, and there is
+    # a CLI test asserting that translation happens.
+    assert "waive the backup requirement" in result.message
 
 
 def test_the_backup_gate_can_be_waived_deliberately(draft_id, monkeypatch):

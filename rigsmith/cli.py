@@ -489,9 +489,11 @@ def rig_write(draft_id: str, yes: bool, no_backup: bool) -> None:
     click.echo("")
     if result.backup_path:
         click.echo(f"Backup taken first: {result.backup_path}")
-    click.echo(
-        click.style(result.message, fg="green" if result.written else "yellow")
-    )
+    message = result.message
+    if "waive the backup requirement" in message:
+        # Core stays surface-agnostic; the flag name belongs here.
+        message += "\n\nOn this command that is:  --no-backup"
+    click.echo(click.style(message, fg="green" if result.written else "yellow"))
     if result.report is not None:
         click.echo("")
         click.echo(result.report.render())

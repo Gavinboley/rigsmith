@@ -568,7 +568,8 @@ def write(
                     "A write overwrites a rig slot, and a rig built on the "
                     "device's own screen exists nowhere else. Put the Core "
                     "into Menu > USB Transfer so a backup can be taken, or "
-                    "pass allow_without_backup if the slot is expendable."
+                    "waive the backup requirement explicitly if the slot is "
+                    "expendable."
                 ),
             )
         backup_note = (

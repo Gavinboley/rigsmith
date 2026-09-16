@@ -85,7 +85,9 @@ jobs:
           rigsmith recipe compile ci-tone
 
           rigsmith rig validate ci-tone
-          rigsmith --device 127.0.0.1:8123 rig write ci-tone --yes
+          # --no-backup because there is no device storage to back up in CI;
+          # the gate is doing its job, and waiving it has to be deliberate.
+          rigsmith --device 127.0.0.1:8123 rig write ci-tone --yes --no-backup
           rigsmith workspace status
 
   browser:

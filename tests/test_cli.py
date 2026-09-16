@@ -321,3 +321,40 @@ def test_doctor_reports_what_is_in_the_workspace(tmp_path, monkeypatch):
         assert "catalog: unverified" in result.output
     finally:
         config.set_settings(None)
+
+
+def test_the_cli_names_its_own_flag_for_waiving_the_backup(tmp_path, monkeypatch):
+    """Core stays surface-agnostic, so each adapter has to say its own idiom.
+
+    A message telling a CLI user to "pass allow_without_backup" names a Python
+    keyword argument they have no way to use.
+    """
+    from click.testing import CliRunner
+
+    from rigsmith import config
+    from rigsmith.cli import main
+    from rigsmith.core import drafts, rigs
+    from rigsmith.device import usbmsc
+    from rigsmith.device.usbmsc import DeviceStorageError
+
+    monkeypatch.setenv("RIGSMITH_WORKSPACE", str(tmp_path))
+    config.set_settings(config.Settings())
+    drafts.set_store(drafts.DraftStore(tmp_path / "drafts"))
+
+    def refuse(*args, **kwargs):
+        raise DeviceStorageError("no HeadRush volume is mounted")
+
+    monkeypatch.setattr(usbmsc, "find_device_volume", refuse)
+
+    try:
+        created = rigs.create("Cherub Rock")
+        rigs.add_block(created.draft.draft_id, "nam", "JMP")
+
+        result = CliRunner().invoke(
+            main, ["rig", "write", created.draft.draft_id, "--yes"]
+        )
+        assert "--no-backup" in result.output
+        assert "allow_without_backup" not in result.output
+    finally:
+        config.set_settings(None)
+        drafts.set_store(None)

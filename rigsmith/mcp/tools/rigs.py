@@ -308,6 +308,10 @@ def write_rig(
         draft_id, confirm=confirm, allow_without_backup=allow_without_backup
     )
     rendered = result.render()
+    rendered = rendered.replace(
+        "waive the backup requirement explicitly",
+        "call again with allow_without_backup=True",
+    )
     if not result.written and not confirm and result.validation.ok:
         # Core's message is surface-agnostic; name the actual argument here.
         rendered = rendered.replace(
