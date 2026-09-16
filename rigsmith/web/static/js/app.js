@@ -3,13 +3,14 @@
 import { api } from "./api.js";
 import { $, $$, setPill, toast } from "./ui.js";
 
+import * as recipes from "./panels/recipes.js";
 import * as rig from "./panels/rig.js";
 import * as captures from "./panels/captures.js";
 import * as match from "./panels/match.js";
 import * as device from "./panels/device.js";
 import * as workspace from "./panels/workspace.js";
 
-const PANELS = { rig, captures, match, device, workspace };
+const PANELS = { recipes, rig, captures, match, device, workspace };
 
 let activePanel = null;
 

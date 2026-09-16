@@ -291,3 +291,80 @@ def test_websocket_reports_a_running_job(client):
                 assert message["jobs"][0]["name"] == "test job"
                 return
     pytest.fail("the socket never reported the job")
+
+
+# --------------------------------------------------------------------------
+# recipes
+# --------------------------------------------------------------------------
+
+
+def test_recipe_round_trip_through_the_api(client):
+    created = client.post(
+        "/api/recipes",
+        json={"title": "Cherub Rock", "artist": "Smashing Pumpkins"},
+    ).json()
+    assert created["recipe_id"] == "cherub-rock"
+
+    listed = client.get("/api/recipes").json()["recipes"]
+    assert listed[0]["title"] == "Cherub Rock"
+
+    fetched = client.get("/api/recipes/cherub-rock").json()
+    assert fetched["artist"] == "Smashing Pumpkins"
+
+
+def test_gear_confidence_is_enforced_through_the_api(client):
+    client.post("/api/recipes", json={"title": "T"})
+
+    refused = client.post(
+        "/api/recipes/t/gear",
+        json={"role": "amp", "name": "JMP", "confidence": "stated"},
+    )
+    assert refused.status_code == 400
+    assert "no source" in refused.json()["error"]
+
+    accepted = client.post(
+        "/api/recipes/t/gear",
+        json={
+            "role": "amp",
+            "name": "JMP",
+            "confidence": "stated",
+            "source_title": "Liner notes",
+        },
+    )
+    assert accepted.status_code == 200
+    assert accepted.json()["confidence"] == 1.0
+
+
+def test_unsupported_gear_is_reported_to_the_ui(client):
+    """The panel marks these, so the API has to surface them."""
+    client.post("/api/recipes", json={"title": "T"})
+    payload = client.post(
+        "/api/recipes/t/gear", json={"role": "cab", "name": "4x12"}
+    ).json()
+    assert payload["unsupported"] == ["cab"]
+
+
+def test_compile_returns_the_placed_blocks(client):
+    client.post("/api/recipes", json={"title": "T"})
+    client.post(
+        "/api/recipes/t/gear",
+        json={"role": "delay", "name": "Delay", "category": "effect"},
+    )
+    client.post(
+        "/api/recipes/t/gear",
+        json={"role": "amp", "name": "JMP", "category": "nam"},
+    )
+
+    result = client.post("/api/recipes/t/compile").json()
+    # Conventional chain order, not the order they were researched in.
+    assert [p["role"] for p in result["placed"]] == ["amp", "delay"]
+
+
+def test_missing_recipe_is_404(client):
+    assert client.get("/api/recipes/ghost").status_code == 404
+
+
+def test_recipe_delete(client):
+    client.post("/api/recipes", json={"title": "Doomed"})
+    assert client.delete("/api/recipes/doomed").status_code == 200
+    assert client.get("/api/recipes").json()["recipes"] == []

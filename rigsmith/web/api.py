@@ -19,7 +19,7 @@ from pydantic import BaseModel
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
 
-from ..core import captures, devices, matching, rigs, workspace
+from ..core import captures, devices, matching, recipes, rigs, workspace
 from ..core.errors import NotFound, RigsmithError
 from ..core.jobs import get_manager
 from ..rig.codec import rig_to_dict
@@ -76,6 +76,47 @@ class PruneBody(BaseModel):
     areas: list[str] | None = None
     older_than_days: float | None = None
     apply: bool = False
+
+
+class CreateRecipe(BaseModel):
+    title: str
+    artist: str | None = None
+    album: str | None = None
+    year: int | None = None
+    summary: str | None = None
+    guitar: str | None = None
+    tuning: str | None = None
+
+
+class GearBody(BaseModel):
+    role: str
+    name: str
+    category: str = "effect"
+    confidence: str = "guessed"
+    make: str | None = None
+    model: str | None = None
+    settings: dict[str, Any] = {}
+    source_title: str | None = None
+    source_url: str | None = None
+    source_note: str | None = None
+    alternatives: list[str] = []
+    note: str | None = None
+
+
+class RecipeSceneBody(BaseModel):
+    name: str
+    roles_on: list[str] = []
+    roles_off: list[str] = []
+    footswitch: int | None = None
+
+
+class QuestionBody(BaseModel):
+    question: str
+
+
+class ResolveBody(BaseModel):
+    role: str
+    model_id: str
 
 
 class ScoreBody(BaseModel):
@@ -438,6 +479,96 @@ async def tone3000_search(
             for t in tones
         ]
     }
+
+
+# --------------------------------------------------------------------------
+# recipes
+# --------------------------------------------------------------------------
+
+
+def _recipe_payload(recipe_id: str, recipe) -> dict:
+    return {
+        "recipe_id": recipe_id,
+        "confidence": recipe.confidence,
+        "unsupported": [g.role for g in recipe.unsupported],
+        "rendered": recipe.render(),
+        **recipe.to_dict(),
+    }
+
+
+@router.get("/recipes")
+def list_recipes() -> dict:
+    return {
+        "recipes": [
+            {
+                "recipe_id": recipe_id,
+                "title": recipe.title,
+                "artist": recipe.artist,
+                "gear": len(recipe.gear),
+                "scenes": len(recipe.scenes),
+                "confidence": recipe.confidence,
+                "questions": len(recipe.open_questions),
+            }
+            for recipe_id, recipe in recipes.list_recipes()
+        ]
+    }
+
+
+@router.post("/recipes")
+def create_recipe(body: CreateRecipe) -> dict:
+    recipe_id, recipe = recipes.create(
+        body.title, artist=body.artist, album=body.album, year=body.year,
+        summary=body.summary, guitar=body.guitar, tuning=body.tuning,
+    )
+    return _recipe_payload(recipe_id, recipe)
+
+
+@router.get("/recipes/{recipe_id}")
+def get_recipe(recipe_id: str) -> dict:
+    return _recipe_payload(recipe_id, recipes.get(recipe_id))
+
+
+@router.delete("/recipes/{recipe_id}")
+def delete_recipe(recipe_id: str) -> dict:
+    return {"message": recipes.delete(recipe_id)}
+
+
+@router.post("/recipes/{recipe_id}/gear")
+def add_gear(recipe_id: str, body: GearBody) -> dict:
+    recipe = recipes.add_gear(
+        recipe_id, body.role, body.name, category=body.category,
+        make=body.make, model=body.model, settings=body.settings,
+        confidence=body.confidence, source_title=body.source_title,
+        source_url=body.source_url, source_note=body.source_note,
+        alternatives=body.alternatives, note=body.note,
+    )
+    return _recipe_payload(recipe_id, recipe)
+
+
+@router.post("/recipes/{recipe_id}/scenes")
+def add_recipe_scene(recipe_id: str, body: RecipeSceneBody) -> dict:
+    recipe = recipes.add_scene(
+        recipe_id, body.name, roles_on=body.roles_on,
+        roles_off=body.roles_off, footswitch=body.footswitch,
+    )
+    return _recipe_payload(recipe_id, recipe)
+
+
+@router.post("/recipes/{recipe_id}/questions")
+def add_question(recipe_id: str, body: QuestionBody) -> dict:
+    return _recipe_payload(recipe_id, recipes.add_question(recipe_id, body.question))
+
+
+@router.post("/recipes/{recipe_id}/resolve")
+def resolve_gear(recipe_id: str, body: ResolveBody) -> dict:
+    recipe = recipes.resolve_gear(recipe_id, body.role, body.model_id)
+    return _recipe_payload(recipe_id, recipe)
+
+
+@router.post("/recipes/{recipe_id}/compile")
+def compile_recipe(recipe_id: str) -> dict:
+    result = recipes.compile_to_draft(recipe_id)
+    return {**result.to_dict(), "rendered": result.render()}
 
 
 # --------------------------------------------------------------------------

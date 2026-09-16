@@ -18,6 +18,7 @@
   </div>
 
   <nav class="tabs" id="tabs">
+    <button class="tab" data-panel="recipes">Research</button>
     <button class="tab" data-panel="rig">Rig</button>
     <button class="tab" data-panel="captures">Captures</button>
     <button class="tab" data-panel="match">Match</button>
@@ -86,6 +87,78 @@
         <button class="btn" id="preview-btn">Preview changes</button>
         <button class="btn" id="export-btn">Export JSON</button>
         <button class="btn primary" id="write-btn">Write to device</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= RECIPES ================= -->
+  <section class="panel" data-panel="recipes" hidden>
+    <div class="panel-head">
+      <div class="draft-picker">
+        <select id="recipe-select" aria-label="Recipe"></select>
+        <button class="btn" id="new-recipe">New recipe</button>
+        <button class="btn ghost danger" id="delete-recipe">Delete</button>
+      </div>
+      <span class="hint">
+        Where the research goes before there is a rig. Every claim carries its
+        source and how confident it is.
+      </span>
+    </div>
+
+    <div class="rig-empty" id="recipe-empty">
+      <p>No recipes yet.</p>
+      <button class="btn primary" id="new-recipe-empty">Research a tone</button>
+    </div>
+
+    <div id="recipe-body" hidden>
+      <div class="card">
+        <div class="chain-head">
+          <h2 class="rig-name" id="recipe-title"></h2>
+          <span class="meta mono" id="recipe-credit"></span>
+          <div class="chain-meta">
+            <span class="hint">confidence</span>
+            <span class="tag" id="recipe-confidence">--</span>
+          </div>
+        </div>
+        <p class="hint" id="recipe-summary" hidden></p>
+      </div>
+
+      <div class="card">
+        <div class="scenes-head">
+          <h3>Chain</h3>
+          <span class="hint">*** stated&nbsp; ** reported&nbsp; * inferred&nbsp; ? guessed</span>
+          <button class="btn small" id="add-gear">Add gear</button>
+        </div>
+        <div id="recipe-gear" class="list"></div>
+      </div>
+
+      <div class="split">
+        <div class="card">
+          <div class="scenes-head">
+            <h3>Parts of the song</h3>
+            <button class="btn small" id="add-recipe-scene">Add</button>
+          </div>
+          <div id="recipe-scenes" class="list"></div>
+        </div>
+
+        <div class="card">
+          <div class="scenes-head">
+            <h3>Still unknown</h3>
+            <button class="btn small" id="add-question">Add</button>
+          </div>
+          <div id="recipe-questions" class="findings"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="row">
+          <button class="btn primary" id="compile-recipe">Compile into a rig</button>
+          <span class="hint">
+            Gear is placed in conventional chain order, and scenes resolve
+            their roles to the slots the blocks land in.
+          </span>
+        </div>
+        <div id="compile-out"></div>
       </div>
     </div>
   </section>
