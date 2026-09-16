@@ -529,14 +529,29 @@ async def download(
     return results
 
 
+#: Long enough to stay readable, short enough to survive a deep path on a
+#: filesystem with a 260-character limit.
+MAX_FILENAME_STEM = 110
+
+
 def _safe_filename(model, tone_id: str) -> str:
-    """A filename that survives every filesystem and still says what it is."""
+    """A filename that survives every filesystem and still says what it is.
+
+    Names come out of other people's uploads, so this strips anything a path
+    could be built from, and truncates the *stem* - trimming the whole
+    filename would take the extension off a long name, and a capture without
+    a .nam extension is one the scanner never finds and the device never
+    loads.
+    """
     import re
 
     stem = model.name or f"tone{tone_id}-{model.id}"
-    stem = re.sub(r"[^A-Za-z0-9._ -]+", "-", stem).strip(" .-") or f"model-{model.id}"
-    suffix = f"-{model.size}" if model.size else ""
-    return f"{stem}{suffix}.nam"[:120]
+    # Path separators and traversal go first, before anything is kept.
+    stem = re.sub(r"[^A-Za-z0-9._ -]+", "-", stem).strip(" .-")
+    stem = stem or f"model-{model.id}"
+    if model.size:
+        stem = f"{stem}-{model.size}"
+    return f"{stem[:MAX_FILENAME_STEM].strip(' .-') or model.id}.nam"
 
 
 def render_download(results: list[Downloaded]) -> str:
