@@ -33,7 +33,7 @@ from ..rig.model import (
 from ..rig.validate import ValidationResult
 from ..rig.validate import validate_rig as _validate_rig
 from .drafts import Draft, get_store
-from .errors import Conflict, Invalid, NotFound
+from .errors import Conflict, Invalid, NotFound, Unavailable
 
 
 # --------------------------------------------------------------------------
@@ -105,12 +105,18 @@ class WriteResult:
     written: bool
     message: str
     backup_path: Path | None = None
+    report: Any = None
+    """The device client's step-by-step :class:`WriteReport`, when a write
+    was actually attempted."""
 
     def render(self) -> str:
         lines = []
         if self.backup_path:
             lines.append(f"Backup taken first: {self.backup_path}")
         lines.append(self.message)
+        if self.report is not None:
+            lines.append("")
+            lines.append(self.report.render())
         lines.append("")
         lines.append(self.diff.render())
         lines.append("")
@@ -127,6 +133,7 @@ class WriteResult:
             "diff": [c.description for c in self.diff.changes],
             "diff_summary": self.diff.summary(),
             "ok": self.validation.ok,
+            "report": self.report.to_dict() if self.report is not None else None,
         }
 
 
@@ -537,17 +544,46 @@ def write(draft_id: str, *, confirm: bool = False) -> WriteResult:
             "(Menu > USB Transfer). Mount it and rerun for a safety net.\n\n"
         )
 
+    import asyncio
+
+    from ..device.client import connect
+
+    async def perform():
+        async with await connect() as client:
+            return await client.write_rig(draft.rig)
+
+    try:
+        report = asyncio.run(perform())
+    except (NotFound, Invalid, Unavailable) as exc:
+        return WriteResult(
+            draft=draft,
+            diff=difference,
+            validation=validation,
+            written=False,
+            backup_path=backup_path,
+            message=(
+                backup_note
+                + f"Nothing was written: {exc}\n\n"
+                "The Remote Editor protocol has not been captured from real "
+                "hardware yet, so no verified map exists. To develop against "
+                "a stand-in, run 'rigsmith protocol simulate' and point "
+                "--device at it."
+            ),
+        )
+
     return WriteResult(
         draft=draft,
         diff=difference,
         validation=validation,
-        written=False,
+        written=report.ok,
         backup_path=backup_path,
+        report=report,
         message=(
             backup_note
-            + "Device write is not implemented yet. The Remote Editor protocol "
-            "has to be captured against real hardware first - run "
-            "'rigsmith probe --dump-app' with the Core on the network. Until "
-            "then, export the draft and import it over USB."
+            + (
+                f"Wrote '{draft.rig.name}' to the device."
+                if report.ok
+                else f"Write stopped after {report.completed} step(s)."
+            )
         ),
     )

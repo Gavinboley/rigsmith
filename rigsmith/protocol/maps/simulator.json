@@ -1,0 +1,84 @@
+{
+  "name": "simulator",
+  "firmware": "5.1.0-sim",
+  "description": "The invented API served by rigsmith's own device simulator. Useful for developing the client; not evidence about the real device.",
+  "verified": false,
+  "base": "/api/v1",
+  "field_names": {
+    "rig_id": "id",
+    "rig_name": "name",
+    "blocks": "blocks",
+    "scenes": "scenes",
+    "slot": "slot",
+    "model_id": "modelId",
+    "category": "category",
+    "enabled": "enabled",
+    "params": "params",
+    "signal_path": "signalPath",
+    "firmware": "firmware",
+    "cpu": "cpu"
+  },
+  "operations": {
+    "status": {
+      "method": "GET",
+      "path": "/status"
+    },
+    "list_rigs": {
+      "method": "GET",
+      "path": "/rigs",
+      "unwrap": "rigs"
+    },
+    "get_rig": {
+      "method": "GET",
+      "path": "/rigs/{rig_id}"
+    },
+    "create_rig": {
+      "method": "POST",
+      "path": "/rigs",
+      "body": {"name": "{name}"}
+    },
+    "delete_rig": {
+      "method": "DELETE",
+      "path": "/rigs/{rig_id}"
+    },
+    "add_block": {
+      "method": "POST",
+      "path": "/rigs/{rig_id}/blocks",
+      "body": {
+        "modelId": "{model_id}",
+        "category": "{category}",
+        "slot": "{slot}",
+        "enabled": "{enabled}",
+        "params": "{params}"
+      }
+    },
+    "patch_block": {
+      "method": "PATCH",
+      "path": "/rigs/{rig_id}/blocks/{slot}",
+      "body": {"enabled": "{enabled}", "params": "{params}"}
+    },
+    "remove_block": {
+      "method": "DELETE",
+      "path": "/rigs/{rig_id}/blocks/{slot}"
+    },
+    "reorder": {
+      "method": "POST",
+      "path": "/rigs/{rig_id}/reorder",
+      "body": {"order": "{order}"}
+    },
+    "set_scene": {
+      "method": "POST",
+      "path": "/rigs/{rig_id}/scenes",
+      "body": {
+        "name": "{name}",
+        "states": "{states}",
+        "footswitch": "{footswitch}"
+      }
+    },
+    "catalog": {
+      "method": "GET",
+      "path": "/models",
+      "unwrap": "models"
+    }
+  }
+}

@@ -426,15 +426,33 @@ def rig_write(draft_id: str, yes: bool) -> None:
     """Write a draft to the device, after a backup and a diff."""
     from .core import rigs
 
-    preview = rigs.write(draft_id, confirm=False)
-    click.echo(preview.render())
-    if not preview.validation.ok:
+    # Show what would change, without the dry-run's own "not written" line -
+    # it reads as a refusal when you are about to confirm.
+    dry = rigs.write(draft_id, confirm=False)
+    click.echo(dry.diff.render())
+    click.echo(f"\nsummary: {dry.diff.summary()}")
+    click.echo(f"est. CPU: ~{dry.validation.estimated_cpu:.0%}")
+
+    if not dry.validation.ok:
+        click.echo(click.style(f"\n{dry.message}", fg="red"), err=True)
         sys.exit(1)
+
     if not yes and not click.confirm("\nWrite this to the device?", default=False):
         click.echo("Not written.")
         return
+
+    result = rigs.write(draft_id, confirm=True)
     click.echo("")
-    click.echo(rigs.write(draft_id, confirm=True).render())
+    if result.backup_path:
+        click.echo(f"Backup taken first: {result.backup_path}")
+    click.echo(
+        click.style(result.message, fg="green" if result.written else "yellow")
+    )
+    if result.report is not None:
+        click.echo("")
+        click.echo(result.report.render())
+    if not result.written:
+        sys.exit(1)
 
 
 @rig.command("delete")
@@ -1123,6 +1141,36 @@ def recipe_delete(recipe_id: str, yes: bool) -> None:
 @main.group()
 def protocol() -> None:
     """Capture the device's undocumented Remote Editor protocol."""
+
+
+@protocol.command("maps")
+@click.argument("name", required=False)
+@handled
+def protocol_maps_cmd(name: str | None) -> None:
+    """Show the protocol maps rigsmith knows how to speak.
+
+    A map expresses one device and firmware's API as data, so the client can
+    be finished before the real protocol is known. Unverified maps are
+    invented or inferred and say so.
+    """
+    from .protocol import map as protocol_map
+
+    if name:
+        click.echo(protocol_map.get(name).render())
+        return
+
+    found = protocol_map.available()
+    if not found:
+        click.echo("No protocol maps installed.")
+        return
+    for candidate in found:
+        mark = (click.style("verified", fg="green") if candidate.verified
+                else click.style("unverified", fg="yellow"))
+        click.echo(
+            f"  {candidate.name:14} firmware {candidate.firmware or '?':12} "
+            f"{len(candidate.operations):2} ops  {mark}"
+        )
+    click.echo("\nInspect one with:  rigsmith protocol maps <name>")
 
 
 @protocol.command("simulate")

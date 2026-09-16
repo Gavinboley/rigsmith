@@ -9,7 +9,7 @@ pip install -e ".[all]"
 rigsmith ui
 ```
 
-> **Status: works without hardware; one thing needs it.** Rig authoring, validation, NAM analysis, tone matching, catalog extraction, USB backup, MIDI and the web UI are all done and covered by 277 tests. The Remote Editor's wire protocol still has to be captured against a powered-on Core before `write_rig` can write — everything else runs today. See [docs/PROTOCOL.md](docs/PROTOCOL.md).
+> **Status: works without hardware; one thing needs it.** Rig authoring, validation, NAM analysis, tone matching, catalog extraction, USB backup, MIDI and the web UI are all done and covered by 301 tests. The Remote Editor's wire protocol still has to be captured against a powered-on Core before `write_rig` can write — everything else runs today. See [docs/PROTOCOL.md](docs/PROTOCOL.md).
 
 ---
 
@@ -61,6 +61,14 @@ against: discovery, endpoint extraction, catalog extraction and traffic
 recording all run end to end on it. Once real traffic *is* captured,
 `--replay` serves that instead, and the simulator becomes a faithful fixture
 rather than a guess.
+
+`rigsmith rig write` really does write, too - the client is driven by a
+**protocol map**, which expresses one device and firmware's API as data
+(`rigsmith protocol maps`). That is what let the whole write path be finished
+before the real protocol is known: when it is captured, it drops in as
+another JSON file and nothing about the client changes. Unverified maps are
+labelled everywhere they are used, including in the write report, so a guess
+can never quietly pass for knowledge.
 
 It has already paid for itself once: its bundle builds its WebSocket URL by
 concatenation and names message types in comparisons, and the extractor
@@ -181,7 +189,7 @@ Extras: `ui`, `mcp`, `midi`, `audio`, `match`, `separation`, `browser`, `dev`. `
 ## What's left
 
 - [ ] **Capture the Remote Editor protocol against hardware** — the one remaining blocker
-- [ ] Native device client and the real `write_rig`
+- [x] ~~Native device client and the real `write_rig`~~ - built and tested against the simulator; needs a verified protocol map to reach real hardware
 - [ ] Extract the full model catalog from a real device (`rigsmith catalog extract` works; it needs a bundle to read)
 
 ## License
