@@ -290,11 +290,20 @@ class Tone3000Client:
         base_url: str = BASE_URL,
         timeout: float = 20.0,
         rate_limit: int = RATE_LIMIT_PER_MINUTE,
+        transport: Any = None,
     ) -> None:
+        """
+        Args:
+            transport: An httpx transport to use instead of the network. Lets
+                tests exercise the auth and tier-refusal paths without
+                reaching TONE3000 - and without monkeypatching httpx, which
+                breaks the moment anything else in the process uses it.
+        """
         self.base_url = base_url.rstrip("/")
         self.tokens = tokens
         self.client_id = client_id
         self.timeout = timeout
+        self.transport = transport
         self._min_interval = 60.0 / max(1, rate_limit)
         self._last_request = 0.0
 
@@ -319,7 +328,9 @@ class Tone3000Client:
         params = {k: v for k, v in (params or {}).items() if v is not None}
         url = f"{self.base_url}{path}"
 
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
+        async with httpx.AsyncClient(
+            timeout=self.timeout, transport=self.transport
+        ) as client:
             resp = await client.get(url, params=params, headers=self._headers())
 
         if resp.status_code in (401, 403):
