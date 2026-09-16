@@ -687,3 +687,36 @@ def test_browse_rejects_an_unknown_kind(client, tmp_path):
     )
     assert response.status_code == 400
     assert "audio, capture, ir, any" in response.json()["hint"]
+
+
+# --------------------------------------------------------------------------
+# MIDI, which the panel used to describe rather than do
+# --------------------------------------------------------------------------
+
+
+def test_midi_routes_exist_and_report_a_missing_backend_cleanly(client):
+    """Without mido these are 503 with an install hint, not a 500."""
+    calls = [
+        ("/api/device/midi/select", {"program": 3}),
+        ("/api/device/midi/footswitch", {"footswitch": 1}),
+        ("/api/device/midi/block", {"slot": 1, "enabled": True}),
+    ]
+    for path, body in calls:
+        response = client.post(path, json=body)
+        assert response.status_code in (200, 503), f"{path} -> {response.status_code}"
+        if response.status_code == 503:
+            assert "midi" in str(response.json()).lower()
+
+
+def test_midi_program_is_range_checked_before_any_port_is_opened(client):
+    """A bad program number is the caller's mistake, not a missing device."""
+    response = client.post("/api/device/midi/select", json={"program": 200})
+    assert response.status_code == 400
+    assert "0-127" in response.json()["error"]
+
+
+def test_midi_verify_needs_a_real_draft(client):
+    response = client.post(
+        "/api/device/midi/verify", json={"draft_id": "ghost"}
+    )
+    assert response.status_code in (404, 503)

@@ -323,10 +323,37 @@
         one that performed it.
       </p>
       <div class="row">
-        <button class="btn" id="midi-ports">List ports</button>
-        <input type="number" id="midi-program" placeholder="PC #" class="narrow" min="0" max="127">
-        <button class="btn" id="midi-select">Select rig</button>
+        <select id="midi-port" class="grow" title="MIDI output port">
+          <option value="">Auto-detect the HeadRush</option>
+        </select>
+        <button class="btn" id="midi-ports">Refresh ports</button>
+        <input type="number" id="midi-channel" class="narrow" min="1" max="16" value="1" title="MIDI channel">
       </div>
+
+      <div class="row">
+        <input type="number" id="midi-program" placeholder="PC #" class="narrow" min="0" max="127">
+        <button class="btn" id="midi-select">Load rig</button>
+        <span class="hint">
+          The PC-to-rig numbering is not published, so check which rig
+          actually loaded before relying on it.
+        </span>
+      </div>
+
+      <div class="row">
+        <span class="hint">Scenes:</span>
+        <div class="footswitches inline" id="midi-footswitches"></div>
+      </div>
+
+      <div class="row">
+        <select id="midi-draft" class="grow" title="Draft to exercise"></select>
+        <button class="btn" id="midi-verify">Verify over MIDI</button>
+        <span class="hint">
+          Loads the rig and toggles each block. Not a read-back &mdash; the
+          device reports no block state, so this proves it responds, not that
+          its contents match.
+        </span>
+      </div>
+
       <pre id="midi-out" class="out"></pre>
     </div>
   </section>

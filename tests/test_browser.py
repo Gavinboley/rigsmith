@@ -531,3 +531,28 @@ def test_cancelling_the_picker_leaves_the_path_alone(browser, server, tmp_path):
         page.click("dialog.picker .picker-cancel")
         page.wait_for_selector("dialog.picker", state="detached")
         assert page.input_value("#search-di") == str(tmp_path)
+
+
+def test_the_device_panel_sends_midi_rather_than_describing_it(browser, server):
+    """This panel used to print the CLI command you should go and run."""
+    with page_at(browser, server) as page:
+        page.click("#tabs .tab[data-panel='device']")
+
+        # Five footswitches, because there is no scene-select CC - a scene is
+        # reached by pressing the switch it is assigned to.
+        page.wait_for_selector("#midi-footswitches button")
+        assert page.locator("#midi-footswitches button").count() == 5
+
+        page.click("#midi-ports")
+        page.wait_for_function(
+            "() => document.querySelector('#midi-out').textContent.includes('outputs')",
+            timeout=10000,
+        )
+        out = page.inner_text("#midi-out")
+        assert "rigsmith device midi" not in out, "the panel should act, not instruct"
+
+        # A bad program number is caught before anything is sent.
+        page.fill("#midi-program", "999")
+        page.click("#midi-select")
+        page.wait_for_selector(".toast", timeout=10000)
+        assert "0-127" in page.inner_text(".toasts")

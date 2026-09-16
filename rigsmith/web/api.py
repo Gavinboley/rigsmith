@@ -167,6 +167,29 @@ class ReampBody(BaseModel):
     label: str = "candidate"
 
 
+class MidiBody(BaseModel):
+    port: str | None = None
+    channel: int = 0
+
+
+class MidiSelect(MidiBody):
+    program: int
+
+
+class MidiFootswitch(MidiBody):
+    footswitch: int
+
+
+class MidiBlock(MidiBody):
+    slot: int
+    enabled: bool
+
+
+class MidiVerify(MidiBody):
+    draft_id: str
+    program: int | None = None
+
+
 class AbCreate(BaseModel):
     session_id: str
     target_label: str
@@ -280,13 +303,65 @@ def device_backup() -> dict:
 
 @router.get("/device/midi")
 def device_midi() -> dict:
-    outputs, inputs = devices.midi_ports()
-    return {"outputs": outputs, "inputs": inputs}
+    """List MIDI ports.
+
+    Asking what exists is a capability question, not an action, so a missing
+    backend comes back as an empty list with a reason rather than a 503. The
+    panel can then say what to install in place of the port list, instead of
+    throwing a toast over an otherwise blank section.
+    """
+    from ..device.midi import MidiUnavailable
+
+    try:
+        outputs, inputs = devices.midi_ports()
+    except MidiUnavailable as exc:
+        return {"outputs": [], "inputs": [], "error": exc.message, "hint": exc.hint}
+    return {"outputs": outputs, "inputs": inputs, "error": None}
 
 
 # --------------------------------------------------------------------------
 # catalog
 # --------------------------------------------------------------------------
+
+
+@router.post("/device/midi/select")
+def midi_select(body: MidiSelect) -> dict:
+    return {"message": devices.select_rig(
+        body.program, port=body.port, channel=body.channel
+    )}
+
+
+@router.post("/device/midi/footswitch")
+def midi_footswitch(body: MidiFootswitch) -> dict:
+    """Press a footswitch - which is also how a scene is activated.
+
+    There is no scene-select CC on this device, so a scene is reached by
+    pressing the switch it is assigned to. That is the whole mechanism, and
+    it is why scenes carry a footswitch number in the rig model.
+    """
+    return {"message": devices.press_footswitch(
+        body.footswitch, port=body.port, channel=body.channel
+    )}
+
+
+@router.post("/device/midi/block")
+def midi_block(body: MidiBlock) -> dict:
+    return {"message": devices.set_block(
+        body.slot, body.enabled, port=body.port, channel=body.channel
+    )}
+
+
+@router.post("/device/midi/verify")
+def midi_verify(body: MidiVerify) -> dict:
+    """Drive a draft's rig over MIDI on a channel independent of the write.
+
+    Not a read-back: the device reports no block state over MIDI, so this
+    shows the rig loads and responds, not that its contents match.
+    """
+    result = devices.verify_rig(
+        body.draft_id, program=body.program, port=body.port, channel=body.channel
+    )
+    return {**result.to_dict(), "rendered": result.render()}
 
 
 @router.get("/catalog/search")

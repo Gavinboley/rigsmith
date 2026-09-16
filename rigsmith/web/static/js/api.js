@@ -98,6 +98,10 @@ export const api = {
   storage: () => api.get("/api/device/storage"),
   backup: () => api.post("/api/device/backup"),
   midiPorts: () => api.get("/api/device/midi"),
+  midiSelect: (body) => api.post("/api/device/midi/select", body),
+  midiFootswitch: (body) => api.post("/api/device/midi/footswitch", body),
+  midiBlock: (body) => api.post("/api/device/midi/block", body),
+  midiVerify: (body) => api.post("/api/device/midi/verify", body),
 
   scanCaptures: (directory) => api.get("/api/captures/scan", { directory }),
   tone3000Status: () => api.get("/api/tone3000/status"),

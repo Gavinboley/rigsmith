@@ -459,3 +459,7 @@ input:focus, select:focus { outline: 1px solid var(--amber-dim); border-color: v
 .picker-row.dir::before { content: "/"; color: var(--text-faint); font-family: var(--mono); }
 .picker-row.up::before { content: "^"; color: var(--text-faint); font-family: var(--mono); }
 .picker-row.file::before { content: "\00b7"; color: var(--text-faint); font-family: var(--mono); }
+
+/* MIDI footswitches sit inline with their label, unlike the rig panel's
+   full-width strip. */
+.footswitches.inline { display: flex; gap: 6px; flex-wrap: wrap; }
