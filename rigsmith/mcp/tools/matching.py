@@ -157,6 +157,8 @@ def score_candidates(
     target_path: str,
     candidate_paths: dict[str, str],
     mode: Mode = "distribution",
+    target_region: str | None = None,
+    candidate_region: str | None = None,
 ) -> str:
     """Score rendered candidates against a target and rank them.
 
@@ -167,11 +169,26 @@ def score_candidates(
             performance - your own DI reamped through each rig, against your
             own reference. Use 'distribution' against anything separated from
             a record, which is a different performance.
+        target_region: 'start:end' in seconds, to score one passage of the
+            target instead of all of it. Worth setting whenever the tone you
+            are chasing is one section - a whole track averages its clean
+            intro together with its solo, and a candidate matching neither
+            can win that way.
+        candidate_region: The matching passage of each candidate. Usually
+            different from target_region, because the same riff sits at a
+            different time code in a DI than it does on the record. In
+            aligned mode it must equal target_region.
 
     In distribution mode the sample-wise metrics (ESR, STFT loss) are not
     computed at all. Against a different performance they are unstable to
     arbitrary timing offsets and report nonsense.
     """
-    scores = matching.score(target_path, candidate_paths, mode=mode)
+    scores = matching.score(
+        target_path,
+        candidate_paths,
+        mode=mode,
+        target_region=target_region,
+        candidate_region=candidate_region,
+    )
     detail = "\n\n".join(s.render() for s in scores[:3])
     return f"{matching.render_ranking(scores)}\n\nTop candidates in detail:\n\n{detail}"

@@ -241,6 +241,103 @@ def reamp(di_path: str | Path, *, label: str = "candidate") -> RenderedCandidate
 # --------------------------------------------------------------------------
 
 
+# --------------------------------------------------------------------------
+# regions
+# --------------------------------------------------------------------------
+
+#: Below this, a window carries too few FFT frames for the spectral metrics to
+#: mean anything - 2048-sample windows at 48 kHz are ~43 ms each.
+MIN_REGION_SECONDS = 0.25
+
+
+@dataclass(frozen=True)
+class Region:
+    """A span of one file, in seconds.
+
+    Scoring a whole track averages its clean intro together with its solo,
+    which is how a candidate that matches neither can win. Naming the span you
+    actually care about is the single cheapest accuracy improvement available
+    here, so it is a first-class argument rather than something you pre-trim
+    by hand.
+    """
+
+    start: float = 0.0
+    end: float | None = None
+
+    def __post_init__(self) -> None:
+        if self.start < 0:
+            raise Invalid(f"region start {self.start}s is before the file begins")
+        if self.end is not None:
+            if self.end <= self.start:
+                raise Invalid(
+                    f"region ends ({self.end}s) at or before it starts "
+                    f"({self.start}s)"
+                )
+            if self.end - self.start < MIN_REGION_SECONDS:
+                raise Invalid(
+                    f"region is {self.end - self.start:.3f}s long, too short to "
+                    "measure",
+                    hint=f"Select at least {MIN_REGION_SECONDS}s.",
+                )
+
+    @property
+    def duration(self) -> float | None:
+        return None if self.end is None else self.end - self.start
+
+    @classmethod
+    def parse(cls, value) -> Region | None:
+        """Accept ``None``, a ``(start, end)`` pair, or a ``"start:end"`` string."""
+        if value is None:
+            return None
+        if isinstance(value, Region):
+            return value
+        if isinstance(value, str):
+            text = value.strip()
+            if not text:
+                return None
+            head, _, tail = text.partition(":")
+            if not _:
+                raise Invalid(
+                    f"could not read region '{value}'",
+                    hint="Write it as start:end in seconds, for example 41.2:58.0",
+                )
+            try:
+                return cls(float(head or 0), float(tail) if tail else None)
+            except ValueError:
+                raise Invalid(
+                    f"could not read region '{value}'",
+                    hint="Both ends must be numbers of seconds, e.g. 41.2:58.0",
+                ) from None
+        try:
+            start, end = value
+        except (TypeError, ValueError):
+            raise Invalid(f"could not read region {value!r}") from None
+        return cls(float(start), None if end is None else float(end))
+
+    def slice(self, audio, sample_rate: int, *, label: str = "audio"):
+        """Cut this span out of ``audio``, refusing a span that is not there."""
+        total = len(audio) / sample_rate
+        if self.start >= total:
+            raise Invalid(
+                f"{label} is {total:.2f}s long, so a region starting at "
+                f"{self.start:.2f}s selects nothing"
+            )
+        first = int(round(self.start * sample_rate))
+        last = len(audio) if self.end is None else int(round(self.end * sample_rate))
+        cut = audio[first:min(last, len(audio))]
+        if len(cut) < MIN_REGION_SECONDS * sample_rate:
+            raise Invalid(
+                f"the selected region of {label} is only "
+                f"{len(cut) / sample_rate:.3f}s long once clipped to the file",
+                hint=f"Select at least {MIN_REGION_SECONDS}s that exists in the file.",
+            )
+        return cut
+
+    def describe(self) -> str:
+        end = "end" if self.end is None else f"{self.end:.2f}s"
+        return f"{self.start:.2f}s-{end}"
+
+
 def parse_mode(value: str):
     from ..match.metrics import ComparisonMode
 
@@ -262,12 +359,20 @@ def score(
     candidate_paths: dict[str, str | Path],
     *,
     mode: str = "distribution",
+    target_region=None,
+    candidate_region=None,
 ):
     """Score rendered candidates against a target and rank them.
 
     In distribution mode the sample-wise metrics are not computed at all:
     against a different performance they are artefacts of an arbitrary
     alignment. See docs/TONE_MATCHING.md.
+
+    ``target_region`` and ``candidate_region`` narrow the comparison to one
+    span of each file. They are separate because the usual case is asymmetric:
+    the solo sits at 2:41 of the record and at 0:04 of the DI you played. In
+    aligned mode they must describe the same span, since that mode's whole
+    premise is that both signals are the same performance.
     """
     from ..match.render_offline import load_audio, resample
     from ..match.score import rank_candidates
@@ -276,13 +381,34 @@ def score(
         raise Invalid("no candidates given")
 
     comparison = parse_mode(mode)
+    target_region = Region.parse(target_region)
+    candidate_region = Region.parse(candidate_region)
+
+    if comparison.value == "aligned" and target_region != candidate_region:
+        # Trimming the two signals differently shifts one against the other,
+        # which is exactly the contamination aligned mode exists to avoid.
+        raise Invalid(
+            "aligned mode needs the same region on both sides, but got "
+            f"target {target_region.describe() if target_region else 'whole file'} "
+            f"and candidates "
+            f"{candidate_region.describe() if candidate_region else 'whole file'}",
+            hint=(
+                "Aligned mode compares sample against sample. Use one region "
+                "for both, or switch to distribution mode."
+            ),
+        )
+
     target, sample_rate = load_audio(target_path)
+    if target_region:
+        target = target_region.slice(target, sample_rate, label="the target")
 
     loaded = {}
     for label, path in candidate_paths.items():
         audio, rate = load_audio(path)
         if rate != sample_rate:
             audio = resample(audio, rate, sample_rate)
+        if candidate_region:
+            audio = candidate_region.slice(audio, sample_rate, label=label)
         loaded[label] = audio
 
     return rank_candidates(target, loaded, sample_rate, mode=comparison)

@@ -105,7 +105,13 @@ export const api = {
 
   matchDevices: () => api.get("/api/match/devices"),
   score: (body) => api.post("/api/match/score", body),
-  spectrum: (path) => api.get("/api/match/spectrum", { path }),
+  spectrum: (path, region) =>
+    api.get("/api/match/spectrum", {
+      path,
+      start: region ? region[0] : undefined,
+      end: region ? region[1] : undefined,
+    }),
+  openAudio: (path) => api.post("/api/match/open", { path }),
 
   abSessions: () => api.get("/api/ab"),
   abSession: (id) => api.get(`/api/ab/${id}`),

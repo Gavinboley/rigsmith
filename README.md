@@ -11,7 +11,7 @@ pip install -e ".[all]"
 rigsmith ui
 ```
 
-> **Status: works without hardware; one thing needs it.** Rig authoring, validation, NAM analysis, tone matching, catalog extraction, USB backup, MIDI and the web UI are all done and covered by 382 tests. The Remote Editor's wire protocol still has to be captured against a powered-on Core before `write_rig` can write — everything else runs today. See [docs/PROTOCOL.md](docs/PROTOCOL.md).
+> **Status: works without hardware; one thing needs it.** Rig authoring, validation, NAM analysis, tone matching, catalog extraction, USB backup, MIDI and the web UI are all done and covered by 414 tests. The Remote Editor's wire protocol still has to be captured against a powered-on Core before `write_rig` can write — everything else runs today. See [docs/PROTOCOL.md](docs/PROTOCOL.md).
 
 ---
 
@@ -127,10 +127,13 @@ rigsmith rig preview  cherub-rock
 rigsmith match isolate song.wav                   # guitar stem via Demucs
 rigsmith match capture-di --seconds 20            # play the riff once
 rigsmith match search di.wav stem.wav ./captures  # render every capture, rank them
+rigsmith match score stem.wav a.wav b.wav --region 41.2:58.0   # just the solo
 rigsmith match ab start s1 "Cherub Rock" a.wav b.wav c.wav
 ```
 
-Then open the **Match** panel in the UI for the blind listening test — both clips are decoded up front and switching is a gain crossfade, so you compare the same instant of each rather than a reload.
+`--region` matters more than it looks. A track is not one tone — the clean intro, the rhythm verse and the solo are often three different amps — and scoring the whole file averages them into something no capture actually matches. In the **Match** panel you drag across the waveform instead of counting seconds.
+
+Then the same panel runs the blind listening test — both clips are decoded up front and switching is a gain crossfade, so you compare the same instant of each rather than a reload.
 
 ### Use it from Claude Code
 

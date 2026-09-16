@@ -381,3 +381,37 @@ input:focus, select:focus { outline: 1px solid var(--amber-dim); border-color: v
 /* progress inside a list item */
 .bar { width: 110px; height: 5px; background: var(--bg-sunken); border-radius: 3px; overflow: hidden; }
 .bar > span { display: block; height: 100%; background: var(--blue); transition: width .3s; }
+
+/* ------------------------------------------------------------- waveforms */
+
+.wave-block {
+  margin: 12px 0;
+  padding: 10px 12px 12px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--bg-sunken);
+  display: grid;
+  gap: 8px;
+}
+
+.wave-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--text-dim);
+}
+
+/* The region readout is the number you would otherwise have to guess, so it
+   gets the accent rather than sitting in with the rest of the metadata. */
+.wave-head .mono:last-of-type { color: var(--amber); }
+
+.wave {
+  min-height: 84px;
+  cursor: crosshair;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.item.clickable { cursor: pointer; }
+.item.clickable:hover { background: var(--bg-raised); border-color: var(--line); }

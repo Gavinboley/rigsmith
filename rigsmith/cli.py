@@ -138,6 +138,7 @@ def doctor() -> None:
         ("scipy (IR convolution)", "scipy", "pip install 'rigsmith[match]' for offline rendering"),
         ("demucs (guitar isolation)", "demucs", "pip install 'rigsmith[separation]' to pull a guitar stem out of a record"),
         ("neural-amp-modeler (offline NAM)", "nam", "pip install neural-amp-modeler to render captures without hardware"),
+        ("playwright (UI tests)", "playwright", "pip install 'rigsmith[browser]' - only needed to run the browser tests"),
     ]
     for label, module, why in checks:
         try:
@@ -844,12 +845,45 @@ def match_search(di, target, captures_dir, ir_path, mode) -> None:
 @click.argument("target", type=click.Path(exists=True, path_type=Path))
 @click.argument("candidates", nargs=-1, required=True, type=click.Path(exists=True, path_type=Path))
 @click.option("--mode", default="distribution", type=click.Choice(["aligned", "distribution"]), show_default=True)
+@click.option(
+    "--region",
+    metavar="START:END",
+    help="Score only this span of the target, in seconds - e.g. 41.2:58.0",
+)
+@click.option(
+    "--candidate-region",
+    metavar="START:END",
+    help="The matching span of each candidate, when it sits elsewhere in time.",
+)
 @handled
-def match_score(target: Path, candidates: tuple[Path, ...], mode: str) -> None:
-    """Score rendered candidates against a target and rank them."""
+def match_score(
+    target: Path,
+    candidates: tuple[Path, ...],
+    mode: str,
+    region: str | None,
+    candidate_region: str | None,
+) -> None:
+    """Score rendered candidates against a target and rank them.
+
+    A whole track averages its clean intro together with its solo, so
+    --region is worth reaching for whenever the passage you care about is
+    only part of the file.
+    """
     from .core import matching
 
-    scores = matching.score(target, {p.stem: p for p in candidates}, mode=mode)
+    if mode == "aligned" and region and not candidate_region:
+        # Aligned mode is the same performance on both sides, so one span
+        # describes both. Distribution mode is not - the solo sits at 2:41 of
+        # the record and 0:04 of the DI - so there the default stays "all".
+        candidate_region = region
+
+    scores = matching.score(
+        target,
+        {p.stem: p for p in candidates},
+        mode=mode,
+        target_region=region,
+        candidate_region=candidate_region,
+    )
     click.echo(matching.render_ranking(scores))
 
 

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 from pydantic import BaseModel
 from fastapi import APIRouter, HTTPException, Request
@@ -123,6 +124,14 @@ class ScoreBody(BaseModel):
     target_path: str
     candidate_paths: dict[str, str]
     mode: str = "distribution"
+    # [start, end] in seconds, or null for the whole file. Separate because
+    # the passage you care about rarely sits at the same place in both.
+    target_region: list[float] | None = None
+    candidate_region: list[float] | None = None
+
+
+class OpenAudio(BaseModel):
+    path: str
 
 
 class AbCreate(BaseModel):
@@ -601,9 +610,18 @@ def match_devices() -> dict:
 
 @router.post("/match/score")
 def match_score(body: ScoreBody) -> dict:
-    scores = matching.score(body.target_path, body.candidate_paths, mode=body.mode)
+    _allow_audio(body.target_path, *body.candidate_paths.values())
+    scores = matching.score(
+        body.target_path,
+        body.candidate_paths,
+        mode=body.mode,
+        target_region=body.target_region,
+        candidate_region=body.candidate_region,
+    )
     return {
         "mode": body.mode,
+        "target_region": body.target_region,
+        "candidate_region": body.candidate_region,
         "ranking": [
             {
                 "label": s.label,
@@ -622,14 +640,28 @@ def match_score(body: ScoreBody) -> dict:
 
 
 @router.get("/match/spectrum")
-def match_spectrum(path: str, bands: int = 96) -> dict:
-    """Average log spectrum of a file, for the comparison plot."""
+def match_spectrum(
+    path: str,
+    bands: int = 96,
+    start: float | None = None,
+    end: float | None = None,
+) -> dict:
+    """Average log spectrum of a file, for the comparison plot.
+
+    Takes the same region as scoring does, so the curve you are looking at is
+    the one the numbers came from rather than the whole track's average.
+    """
     import numpy as np
 
+    from ..core.matching import Region
     from ..match.metrics import _stft_magnitude, normalise_rms, to_mono
     from ..match.render_offline import load_audio
 
+    _allow_audio(path)
     audio, sample_rate = load_audio(path)
+    region = Region.parse(None if start is None and end is None else (start or 0.0, end))
+    if region:
+        audio = region.slice(audio, sample_rate, label=Path(path).name)
     audio = normalise_rms(to_mono(audio))
 
     n_fft = 2048
@@ -648,12 +680,29 @@ def match_spectrum(path: str, bands: int = 96) -> dict:
         centres.append(float((start + end) / 2))
         values.append(float(20 * np.log10(magnitude[mask].mean() + 1e-12)))
 
-    return {"path": path, "freqs": centres, "db": values}
+    return {
+        "path": path,
+        "freqs": centres,
+        "db": values,
+        "region": None if region is None else [region.start, region.end],
+    }
 
 
 # --------------------------------------------------------------------------
 # blind A/B
 # --------------------------------------------------------------------------
+
+
+def _audio_url(path) -> str:
+    """A URL for a file the session already refers to.
+
+    Quoted, because a Windows path is full of backslashes and spaces, and
+    named, because a session's clips routinely live outside the workspace.
+    """
+    if not path:
+        return ""
+    _allow_audio(path)
+    return f"/api/audio?path={quote(str(path))}"
 
 
 def _session_payload(session) -> dict:
@@ -672,8 +721,8 @@ def _session_payload(session) -> dict:
                 "trial_id": trial.trial_id,
                 "left": trial.left,
                 "right": trial.right,
-                "left_audio": f"/api/audio?path={session.audio_paths.get(trial.left, '')}",
-                "right_audio": f"/api/audio?path={session.audio_paths.get(trial.right, '')}",
+                "left_audio": _audio_url(session.audio_paths.get(trial.left)),
+                "right_audio": _audio_url(session.audio_paths.get(trial.right)),
             }
             if trial
             else None
@@ -766,21 +815,87 @@ def cancel_job(job_id: str) -> dict:
     return get_manager().cancel(job_id).to_dict()
 
 
-@router.get("/audio")
-def serve_audio(path: str) -> FileResponse:
-    """Serve an audio file from the workspace.
+# A GET with a path parameter that reaches anywhere on disk is a file-read
+# primitive, and loopback is not the boundary people assume it is - any page
+# in any tab can issue requests to 127.0.0.1. So the workspace is the default
+# limit, and anything outside it has to be named first through a POST the
+# user actually initiated (scoring, or opening a file in the waveform view).
+# That keeps targets on a music drive usable without leaving the door open.
+_NAMED_AUDIO: set[Path] = set()
 
-    Confined to the workspace: the UI is loopback-only, but a path parameter
-    that reaches anywhere on disk is a bad idea regardless of who can reach it.
-    """
+
+def reset_audio_allowance() -> None:
+    """Forget every externally named file. Called when an app is built."""
+    _NAMED_AUDIO.clear()
+
+
+def _allow_audio(*paths: str | Path) -> None:
+    for path in paths:
+        if path:
+            _NAMED_AUDIO.add(Path(path).resolve())
+
+
+def _audio_is_allowed(target: Path) -> bool:
     from ..config import get_settings
 
-    root = get_settings().workspace.resolve()
-    target = Path(path).resolve()
+    if target in _NAMED_AUDIO:
+        return True
     try:
-        target.relative_to(root)
+        target.relative_to(get_settings().workspace.resolve())
     except ValueError:
-        raise HTTPException(403, "audio must live inside the rigsmith workspace")
+        return False
+    return True
+
+
+@router.post("/match/open")
+def open_audio(body: OpenAudio) -> dict:
+    """Name a file for the waveform view, and report what is in it.
+
+    The duration comes back from the header rather than from decoding, so
+    pointing at an hour-long file costs nothing until you actually play it.
+    """
+    from ..core.matching import MIN_REGION_SECONDS
+
+    target = Path(body.path).resolve()
+    if not target.is_file():
+        raise NotFound(f"no audio file at {body.path}")
+
+    try:
+        import soundfile as sf
+
+        info = sf.info(str(target))
+        duration, sample_rate, channels = (
+            float(info.duration),
+            int(info.samplerate),
+            int(info.channels),
+        )
+    except ImportError:
+        duration, sample_rate, channels = 0.0, 0, 0
+    except Exception as exc:  # a real file that soundfile cannot read
+        raise HTTPException(400, f"could not read {target.name}: {exc}") from exc
+
+    _allow_audio(target)
+    return {
+        "path": str(target),
+        "name": target.name,
+        "url": f"/api/audio?path={quote(str(target))}",
+        "duration": duration,
+        "sample_rate": sample_rate,
+        "channels": channels,
+        "min_region": MIN_REGION_SECONDS,
+    }
+
+
+@router.get("/audio")
+def serve_audio(path: str) -> FileResponse:
+    """Serve an audio file for the player and the waveform view."""
+    target = Path(path).resolve()
+    if not _audio_is_allowed(target):
+        raise HTTPException(
+            403,
+            "audio outside the rigsmith workspace has to be opened first - "
+            "POST /api/match/open with the path",
+        )
     if not target.is_file():
         raise NotFound(f"no audio file at {path}")
     return FileResponse(target)

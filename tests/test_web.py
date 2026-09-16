@@ -94,6 +94,7 @@ def test_vendored_assets_are_real_libraries():
         "sortable.min.js": "Sortable",
         "uplot.iife.min.js": "uPlot",
         "wavesurfer.min.js": "WaveSurfer",
+        "wavesurfer.regions.min.js": "Regions",
     }
     for name, global_name in expected.items():
         path = vendor / name
@@ -101,6 +102,28 @@ def test_vendored_assets_are_real_libraries():
         text = path.read_text(encoding="utf-8", errors="replace")
         assert "<html" not in text[:200].lower(), f"{name} looks like an error page"
         assert global_name in text, f"{name} does not define {global_name}"
+
+
+def test_the_javascript_parses(client):
+    """The module-graph test proves the files resolve, not that they run.
+
+    A syntax error in a panel is otherwise invisible until someone opens that
+    tab in a browser, which no test does.
+    """
+    import shutil
+    import subprocess
+
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node is not installed; this check is advisory")
+
+    sources = sorted(static_dir().glob("js/**/*.js"))
+    assert len(sources) >= 8, f"expected the whole front end, found {sources}"
+    for source in sources:
+        result = subprocess.run(
+            [node, "--check", str(source)], capture_output=True, text=True
+        )
+        assert result.returncode == 0, f"{source.name} does not parse: {result.stderr}"
 
 
 # --------------------------------------------------------------------------
@@ -368,3 +391,103 @@ def test_recipe_delete(client):
     client.post("/api/recipes", json={"title": "Doomed"})
     assert client.delete("/api/recipes/doomed").status_code == 200
     assert client.get("/api/recipes").json()["recipes"] == []
+
+
+# --------------------------------------------------------------------------
+# waveforms and regions
+# --------------------------------------------------------------------------
+
+
+@pytest.fixture()
+def outside_file(tmp_path_factory):
+    """An audio file somewhere the workspace guard would normally refuse."""
+    sf = pytest.importorskip("soundfile")
+    import numpy as np
+
+    elsewhere = tmp_path_factory.mktemp("music")
+    path = elsewhere / "a take.wav"
+    tone = np.sin(2 * np.pi * 196 * np.arange(48000 * 3) / 48000)
+    sf.write(str(path), tone.astype("float32"), 48000)
+    return path
+
+
+def test_opening_a_file_is_what_makes_it_servable(client, outside_file):
+    """The path guard stays shut until the user names a file themselves."""
+    assert client.get("/api/audio", params={"path": str(outside_file)}).status_code == 403
+
+    opened = client.post("/api/match/open", json={"path": str(outside_file)})
+    assert opened.status_code == 200
+    body = opened.json()
+    assert body["duration"] == pytest.approx(3.0, abs=0.01)
+    assert body["sample_rate"] == 48000
+    assert "%20" in body["url"], "a path with a space has to survive the round trip"
+
+    assert client.get("/api/audio", params={"path": str(outside_file)}).status_code == 200
+
+
+def test_opening_a_file_that_is_not_there_is_404(client, tmp_path):
+    response = client.post("/api/match/open", json={"path": str(tmp_path / "ghost.wav")})
+    assert response.status_code == 404
+
+
+def test_spectrum_honours_the_region(client, outside_file):
+    whole = client.get("/api/match/spectrum", params={"path": str(outside_file)}).json()
+    part = client.get(
+        "/api/match/spectrum",
+        params={"path": str(outside_file), "start": 0.5, "end": 2.0},
+    ).json()
+    assert whole["region"] is None
+    assert part["region"] == [0.5, 2.0]
+    assert len(part["freqs"]) == len(whole["freqs"])
+
+
+def test_a_region_too_short_to_measure_is_400(client, outside_file):
+    response = client.get(
+        "/api/match/spectrum",
+        params={"path": str(outside_file), "start": 0.5, "end": 0.6},
+    )
+    assert response.status_code == 400
+    assert "too short" in response.json()["error"]
+
+
+def test_scoring_accepts_regions_and_reports_them_back(client, outside_file):
+    response = client.post(
+        "/api/match/score",
+        json={
+            "target_path": str(outside_file),
+            "candidate_paths": {"same": str(outside_file)},
+            "target_region": [0.5, 2.0],
+            "candidate_region": [0.5, 2.0],
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["target_region"] == [0.5, 2.0]
+    assert body["ranking"][0]["label"] == "same"
+
+
+def test_aligned_mode_refuses_mismatched_regions_through_the_api(client, outside_file):
+    response = client.post(
+        "/api/match/score",
+        json={
+            "target_path": str(outside_file),
+            "candidate_paths": {"same": str(outside_file)},
+            "mode": "aligned",
+            "target_region": [0.0, 1.0],
+            "candidate_region": [1.0, 2.0],
+        },
+    )
+    assert response.status_code == 400
+    assert "same region on both sides" in response.json()["error"]
+
+
+def test_scoring_a_file_also_makes_it_servable(client, outside_file):
+    """So the winner can be drawn without a second round trip to open it."""
+    client.post(
+        "/api/match/score",
+        json={
+            "target_path": str(outside_file),
+            "candidate_paths": {"same": str(outside_file)},
+        },
+    )
+    assert client.get("/api/audio", params={"path": str(outside_file)}).status_code == 200

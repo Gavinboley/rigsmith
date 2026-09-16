@@ -208,16 +208,47 @@
       <h3>Compare</h3>
       <div class="row">
         <input type="text" id="target-path" placeholder="Target audio (a guitar stem)" class="grow">
+        <button class="btn" id="open-target">Open</button>
         <select id="match-mode" class="inline-select" title="Comparison mode">
           <option value="distribution">Distribution (vs a record)</option>
           <option value="aligned">Aligned (same performance)</option>
         </select>
       </div>
+
+      <div class="wave-block" id="target-wave-block" hidden>
+        <div class="wave-head">
+          <span class="mono" id="target-wave-name"></span>
+          <span class="spacer"></span>
+          <span class="mono" id="target-region-label">whole file</span>
+          <button class="btn small" id="target-play">Play</button>
+          <button class="btn small ghost" id="target-clear">Clear region</button>
+        </div>
+        <div class="wave" id="target-wave"></div>
+        <span class="hint">
+          Drag across the waveform to score only that passage. A whole track
+          averages its clean intro in with its solo, and a candidate that
+          matches neither can win that way.
+        </span>
+      </div>
+
       <div id="mode-note" class="notice subtle"></div>
       <div class="row">
         <input type="text" id="candidate-paths" placeholder="Candidate files, comma separated" class="grow">
         <button class="btn" id="score-btn">Score</button>
       </div>
+
+      <div class="wave-block" id="candidate-wave-block" hidden>
+        <div class="wave-head">
+          <span class="mono" id="candidate-wave-name"></span>
+          <span class="spacer"></span>
+          <span class="mono" id="candidate-region-label">whole file</span>
+          <button class="btn small" id="candidate-play">Play</button>
+          <button class="btn small ghost" id="candidate-clear">Clear region</button>
+        </div>
+        <div class="wave" id="candidate-wave"></div>
+        <span class="hint" id="candidate-wave-hint"></span>
+      </div>
+
       <div id="ranking" class="list"></div>
       <div id="spectrum" class="chart"></div>
     </div>
@@ -319,6 +350,7 @@
 <script src="/static/vendor/sortable.min.js"></script>
 <script src="/static/vendor/uplot.iife.min.js"></script>
 <script src="/static/vendor/wavesurfer.min.js"></script>
+<script src="/static/vendor/wavesurfer.regions.min.js"></script>
 <script type="module" src="/static/js/app.js"></script>
 </body>
 </html>

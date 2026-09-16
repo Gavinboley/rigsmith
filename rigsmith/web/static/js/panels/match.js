@@ -10,12 +10,14 @@
 
 import { api } from "../api.js";
 import { $, attempt, clear, el, toast } from "../ui.js";
+import { createWave, describeRegion } from "../wave.js";
 
 const CROSSFADE_S = 0.008;
 
 let context = null;
 let player = null; // { sources, gains, startedAt, active }
 let chart = null;
+let waves = null; // { target, candidate } - built on first use, see ensureWaves
 
 /* ------------------------------------------------------------ audio engine */
 
@@ -89,15 +91,79 @@ function markActive(index) {
   });
 }
 
+/* -------------------------------------------------------------- waveforms */
+
+/* Built on first use rather than at init, because wavesurfer measures its
+ * container when it is created and the Match panel starts hidden - a width
+ * of zero there draws a waveform one pixel wide. */
+function ensureWaves() {
+  if (waves) return waves;
+  waves = {
+    target: createWave($("#target-wave"), {
+      onChange: (span) => onRegionChanged("target", span),
+    }),
+    candidate: createWave($("#candidate-wave"), {
+      onChange: (span) => onRegionChanged("candidate", span),
+    }),
+  };
+  return waves;
+}
+
+/** True when the two sides must describe the same span - the server agrees. */
+const regionsAreLocked = () => $("#match-mode").value === "aligned";
+
+let mirroring = false;
+
+function onRegionChanged(which, span) {
+  const other = which === "target" ? "candidate" : "target";
+  $(`#${which}-region-label`).textContent = describeRegion(span);
+
+  // Aligned mode compares sample against sample, so trimming the two sides
+  // differently would shift one against the other - the exact contamination
+  // that mode exists to avoid. Keep them together rather than letting the
+  // server refuse the score after the fact.
+  if (regionsAreLocked() && !mirroring && waves?.[other]?.info()) {
+    mirroring = true;
+    try {
+      waves[other].setRegion(span);
+      $(`#${other}-region-label`).textContent = describeRegion(span);
+    } finally {
+      mirroring = false;
+    }
+  }
+}
+
+async function openInto(which, path) {
+  const wave = ensureWaves()[which];
+  const info = await wave.load(path);
+  $(`#${which}-wave-block`).hidden = false;
+  $(`#${which}-wave-name`).textContent = info.duration
+    ? `${info.name}  ${info.duration.toFixed(1)}s  ${info.sample_rate} Hz`
+    : info.name;
+  return info;
+}
+
+function regionFor(which) {
+  return waves?.[which]?.region() ?? null;
+}
+
 /* --------------------------------------------------------------- spectrum */
 
-async function drawSpectrum(paths) {
+async function drawSpectrum(target, candidates) {
   const host = clear($("#spectrum"));
-  if (!paths.length) return;
+  const wanted = [
+    { path: target, region: regionFor("target") },
+    ...candidates.slice(0, 3).map((path) => ({
+      path,
+      // Only the candidate actually on screen has a region of its own.
+      region:
+        path === waves?.candidate?.info()?.path ? regionFor("candidate") : null,
+    })),
+  ];
 
   const series = [];
-  for (const path of paths.slice(0, 4)) {
-    const data = await api.spectrum(path).catch(() => null);
+  for (const { path, region } of wanted) {
+    const data = await api.spectrum(path, region).catch(() => null);
     if (data && data.freqs.length) series.push({ path, ...data });
   }
   if (!series.length) return;
@@ -139,8 +205,8 @@ function metricRow(metric) {
   );
 }
 
-function rankingItem(entry, index) {
-  return el(
+function rankingItem(entry, index, path) {
+  const node = el(
     "div",
     { class: "item" },
     el("span", { class: "tag", text: `#${index + 1}` }),
@@ -150,6 +216,22 @@ function rankingItem(entry, index) {
       .filter((m) => ["esr", "spectral_profile", "mfcc_distribution"].includes(m.name))
       .map(metricRow)
   );
+  if (path) {
+    node.classList.add("clickable");
+    node.title = "Show this candidate's waveform";
+    node.onclick = () => attempt(() => showCandidate(path));
+  }
+  return node;
+}
+
+async function showCandidate(path) {
+  await openInto("candidate", path);
+  $("#candidate-wave-hint").textContent = regionsAreLocked()
+    ? "Locked to the target's region - aligned mode compares the same span " +
+      "of the same performance."
+    : "Drag to pick the matching passage here. It rarely sits at the same " +
+      "time code as it does on the record.";
+  if (regionsAreLocked()) waves.candidate.setRegion(regionFor("target"));
 }
 
 function modeNote() {
@@ -161,7 +243,8 @@ function modeNote() {
       "Aligned mode assumes the target and every candidate are the SAME " +
       "performance - your own DI through each rig, against your own " +
       "reference. Against a record it reports nonsense, because the offset " +
-      "is arbitrary.";
+      "is arbitrary. Regions are locked together here for the same reason.";
+    if (waves?.target?.info()) onRegionChanged("target", regionFor("target"));
   } else {
     host.className = "notice subtle";
     host.textContent =
@@ -278,38 +361,76 @@ async function refreshSessions() {
 
 /* -------------------------------------------------------------------- init */
 
+const candidatePaths = () =>
+  $("#candidate-paths")
+    .value.split(",")
+    .map((text) => text.trim())
+    .filter(Boolean);
+
 export function init() {
   $("#match-mode").onchange = modeNote;
   modeNote();
 
+  $("#open-target").onclick = () =>
+    attempt(async () => {
+      const path = $("#target-path").value.trim();
+      if (!path) throw new Error("Give a path to the target audio first");
+      await openInto("target", path);
+    });
+
+  $("#target-play").onclick = () => ensureWaves().target.playPause();
+  $("#target-clear").onclick = () => ensureWaves().target.clear();
+  $("#candidate-play").onclick = () => ensureWaves().candidate.playPause();
+  $("#candidate-clear").onclick = () => ensureWaves().candidate.clear();
+
   $("#score-btn").onclick = () =>
     attempt(async () => {
       const target = $("#target-path").value.trim();
-      const candidates = $("#candidate-paths")
-        .value.split(",")
-        .map((s) => s.trim())
-        .filter(Boolean);
+      const candidates = candidatePaths();
       if (!target || !candidates.length) {
         throw new Error("Give a target and at least one candidate");
       }
 
+      const targetRegion = regionFor("target");
       const body = {
         target_path: target,
+        mode: $("#match-mode").value,
+        target_region: targetRegion,
+        // Locked modes send one span for both sides; otherwise the candidate
+        // region applies only while a candidate is actually on screen.
+        candidate_region: regionsAreLocked()
+          ? targetRegion
+          : regionFor("candidate"),
         candidate_paths: Object.fromEntries(
           candidates.map((path) => [path.split(/[\\/]/).pop(), path])
         ),
-        mode: $("#match-mode").value,
       };
       const result = await api.score(body);
 
+      const byLabel = body.candidate_paths;
       const host = clear($("#ranking"));
       result.ranking.forEach((entry, index) =>
-        host.append(rankingItem(entry, index))
+        host.append(rankingItem(entry, index, byLabel[entry.label]))
       );
       if (result.ranking[0]?.notes?.length) {
         host.append(el("div", { class: "notice subtle", text: result.ranking[0].notes[0] }));
       }
-      await drawSpectrum([target, ...candidates]);
+      if (targetRegion) {
+        host.append(
+          el("div", {
+            class: "hint",
+            text: `Scored over ${describeRegion(targetRegion)} of the target.`,
+          })
+        );
+      }
+
+      // Put the winner on screen, so the thing you are about to listen to is
+      // the thing the numbers just picked.
+      const winner = byLabel[result.ranking[0]?.label];
+      if (winner && winner !== waves?.candidate?.info()?.path) {
+        await showCandidate(winner).catch(() => {});
+      }
+      await drawSpectrum(target, candidates);
     });
 
   $("#ab-session").onchange = (event) => renderSession(event.target.value);
@@ -319,4 +440,9 @@ export function init() {
 }
 
 export const onShow = refreshSessions;
-export const onHide = stopPlayback;
+
+export function onHide() {
+  stopPlayback();
+  waves?.target.stop();
+  waves?.candidate.stop();
+}

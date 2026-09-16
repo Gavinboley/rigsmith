@@ -32,6 +32,23 @@ def test_readme_test_count_is_accurate(request):
     if not whole_suite:
         pytest.skip("partial run - the collected count is not the suite total")
 
+    # A missing optional dependency skips whole modules at import, which moves
+    # the total without anything being wrong with the README. Only a complete
+    # install can answer this question, so elsewhere it declines to guess
+    # rather than failing someone who installed a subset on purpose.
+    from importlib.util import find_spec
+
+    missing = [
+        name
+        for name in ("mcp", "fastapi", "soundfile", "scipy", "pytest_asyncio", "playwright")
+        if find_spec(name) is None
+    ]
+    if missing:
+        pytest.skip(
+            f"not a full install ({', '.join(missing)} absent) - the collected "
+            "count would be short through no fault of the README"
+        )
+
     claimed = re.search(r"covered by ([\d,]+) tests", README.read_text(encoding="utf-8"))
     assert claimed, "the README should state how many tests there are"
 

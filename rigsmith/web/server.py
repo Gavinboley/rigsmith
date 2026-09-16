@@ -41,8 +41,12 @@ def build_app():
         ) from exc
 
     from .. import __version__
-    from .api import install_error_handler, router
+    from .api import install_error_handler, reset_audio_allowance, router
     from .ws import install_websocket
+
+    # A new app serves a new session; files the last one was told about do
+    # not carry over.
+    reset_audio_allowance()
 
     app = FastAPI(
         title="rigsmith",

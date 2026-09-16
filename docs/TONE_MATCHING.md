@@ -92,6 +92,34 @@ Source separation via Demucs `htdemucs_6s` — the only widely available open mo
 
 A separated stem is **not a DI and not ground truth**. It still carries the record's amp, cabinet, microphone, room, and mix processing — compression, EQ, saturation, bus glue — plus separation artefacts. It is a timbral reference for ranking, and `rigsmith` labels it as such everywhere it appears.
 
+## Choosing the passage
+
+A track is not one tone. The clean intro, the rhythm verse, and the solo are
+often three different amp settings, sometimes three different amps. Scoring
+the whole file averages them together, and the winner of that average can be
+a capture that matches none of the three.
+
+So every scoring surface takes a region:
+
+```
+rigsmith match score target.wav a.wav b.wav --region 41.2:58.0
+score_candidates(..., target_region="41.2:58.0")        # MCP
+drag across the waveform                                 # web UI
+```
+
+The two sides are separate — `--candidate-region`, `candidate_region` — because
+the passage rarely sits at the same time code in both. The solo is at 2:41 of
+the record and 0:04 of the DI you played.
+
+In `ALIGNED` mode they must be the same span, and the code refuses anything
+else. That mode compares sample against sample, so trimming the two signals
+differently would shift one against the other — reintroducing exactly the
+offset contamination the mode exists to avoid.
+
+A region shorter than 0.25 s is refused outright: at a 2048-sample window
+there is almost nothing left to average, and a number computed from two
+frames looks as authoritative as one computed from two thousand.
+
 ## Practical workflow
 
 ```
@@ -102,6 +130,7 @@ A separated stem is **not a DI and not ground truth**. It still carries the reco
      load the rig on the Core
      reamp_di          your DI              -> that rig's actual output
 5. score_candidates   mode="distribution"   -> ranking vs the record's stem
+                      target_region="2:41"     (the passage, not the track)
 6. start_ab_test      top 3 candidates      -> blind listening
 7. submit_ab_verdict  x N                   -> the verdict that counts
 ```
