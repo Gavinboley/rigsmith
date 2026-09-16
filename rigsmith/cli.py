@@ -950,6 +950,177 @@ def firmware_analyse(image: Path, unpack_to: Path | None, mine: bool) -> None:
 
 
 @main.group()
+def recipe() -> None:
+    """Research a tone, then compile it into a rig."""
+
+
+@recipe.command("new")
+@click.argument("title")
+@click.option("--artist")
+@click.option("--album")
+@click.option("--year", type=int)
+@click.option("--summary", help="What the tone actually sounds like.")
+@click.option("--guitar")
+@click.option("--tuning")
+@handled
+def recipe_new(title, artist, album, year, summary, guitar, tuning) -> None:
+    """Start a tone recipe for a specific recording."""
+    from .core import recipes
+
+    recipe_id, obj = recipes.create(
+        title, artist=artist, album=album, year=year,
+        summary=summary, guitar=guitar, tuning=tuning,
+    )
+    click.echo(f"Created recipe '{recipe_id}' for {obj.title}.")
+    click.echo(
+        "\nAdd gear with:\n"
+        f"  rigsmith recipe gear {recipe_id} amp \"Marshall JMP\" "
+        "--confidence reported --source \"Guitar World interview\""
+    )
+
+
+@recipe.command("list")
+@handled
+def recipe_list() -> None:
+    """List saved recipes."""
+    from .core import recipes
+
+    found = recipes.list_recipes()
+    if not found:
+        click.echo("No recipes. Start one with:  rigsmith recipe new \"Song name\"")
+        return
+    for recipe_id, obj in found:
+        click.echo(
+            f"  {recipe_id:28} {obj.title:28} "
+            f"{len(obj.gear)} gear, confidence {obj.confidence:.0%}"
+        )
+
+
+@recipe.command("show")
+@click.argument("recipe_id")
+@handled
+def recipe_show(recipe_id: str) -> None:
+    """Show a recipe in full, with sources and confidence."""
+    from .core import recipes
+
+    click.echo(recipes.get(recipe_id).render())
+
+
+@recipe.command("gear")
+@click.argument("recipe_id")
+@click.argument("role")
+@click.argument("name")
+@click.option("--category", default="effect",
+              type=click.Choice(["amp", "cab", "ir", "clone", "nam", "effect"]), show_default=True)
+@click.option("--confidence", default="guessed",
+              type=click.Choice(["stated", "reported", "inferred", "guessed"]), show_default=True)
+@click.option("--make")
+@click.option("--model")
+@click.option("--source", "source_title", help="Required for stated/reported.")
+@click.option("--source-url")
+@click.option("--source-note", help="What the source actually says.")
+@click.option("--param", "params", multiple=True, metavar="KEY=VALUE")
+@click.option("--alt", "alternatives", multiple=True, help="Other candidates.")
+@click.option("--note")
+@handled
+def recipe_gear(recipe_id, role, name, category, confidence, make, model,
+                source_title, source_url, source_note, params, alternatives, note) -> None:
+    """Record one element of the chain and the evidence for it.
+
+    stated and reported require a source - they claim the choice is
+    documented, and an undocumented claim dressed as one is worse than an
+    honest guess.
+    """
+    from .core import recipes
+
+    settings = {}
+    for item in params:
+        if "=" not in item:
+            raise click.BadParameter(f"--param must be KEY=VALUE, got '{item}'")
+        key, _, value = item.partition("=")
+        try:
+            settings[key] = json.loads(value)
+        except json.JSONDecodeError:
+            settings[key] = value
+
+    obj = recipes.add_gear(
+        recipe_id, role, name, category=category, make=make, model=model,
+        settings=settings, confidence=confidence, source_title=source_title,
+        source_url=source_url, source_note=source_note,
+        alternatives=list(alternatives), note=note,
+    )
+    click.echo(obj.role(role).render())
+    click.echo("\n" + obj.confidence_report())
+
+
+@recipe.command("scene")
+@click.argument("recipe_id")
+@click.argument("name")
+@click.option("--on", "roles_on", multiple=True, help="Gear roles active. Repeatable.")
+@click.option("--off", "roles_off", multiple=True)
+@click.option("--fs", "footswitch", type=int)
+@handled
+def recipe_scene(recipe_id, name, roles_on, roles_off, footswitch) -> None:
+    """Describe a part of the song by which gear is active."""
+    from .core import recipes
+
+    obj = recipes.add_scene(
+        recipe_id, name, roles_on=list(roles_on),
+        roles_off=list(roles_off), footswitch=footswitch,
+    )
+    click.echo(next(s for s in obj.scenes if s.name == name).render())
+
+
+@recipe.command("question")
+@click.argument("recipe_id")
+@click.argument("question")
+@handled
+def recipe_question(recipe_id: str, question: str) -> None:
+    """Record something the research could not establish."""
+    from .core import recipes
+
+    obj = recipes.add_question(recipe_id, question)
+    click.echo(f"Noted. {len(obj.open_questions)} open question(s).")
+
+
+@recipe.command("resolve")
+@click.argument("recipe_id")
+@click.argument("role")
+@click.argument("model_id")
+@handled
+def recipe_resolve(recipe_id: str, role: str, model_id: str) -> None:
+    """Bind a gear role to a real device model or NAM capture."""
+    from .core import recipes
+
+    recipes.resolve_gear(recipe_id, role, model_id)
+    click.echo(f"'{role}' now resolves to {model_id}.")
+
+
+@recipe.command("compile")
+@click.argument("recipe_id")
+@click.option("--name", help="Rig name, if different from the recipe title.")
+@handled
+def recipe_compile(recipe_id: str, name: str | None) -> None:
+    """Build a draft rig from a recipe."""
+    from .core import recipes
+
+    click.echo(recipes.compile_to_draft(recipe_id, name=name).render())
+
+
+@recipe.command("delete")
+@click.argument("recipe_id")
+@click.option("--yes", is_flag=True)
+@handled
+def recipe_delete(recipe_id: str, yes: bool) -> None:
+    """Delete a saved recipe."""
+    from .core import recipes
+
+    if not yes and not click.confirm(f"Delete recipe '{recipe_id}'?", default=False):
+        return
+    click.echo(recipes.delete(recipe_id))
+
+
+@main.group()
 def protocol() -> None:
     """Capture the device's undocumented Remote Editor protocol."""
 

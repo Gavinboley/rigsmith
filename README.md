@@ -9,7 +9,7 @@ pip install -e ".[all]"
 rigsmith ui
 ```
 
-> **Status: works without hardware; one thing needs it.** Rig authoring, validation, NAM analysis, tone matching, catalog extraction, USB backup, MIDI and the web UI are all done and covered by 226 tests. The Remote Editor's wire protocol still has to be captured against a powered-on Core before `write_rig` can write — everything else runs today. See [docs/PROTOCOL.md](docs/PROTOCOL.md).
+> **Status: works without hardware; one thing needs it.** Rig authoring, validation, NAM analysis, tone matching, catalog extraction, USB backup, MIDI and the web UI are all done and covered by 254 tests. The Remote Editor's wire protocol still has to be captured against a powered-on Core before `write_rig` can write — everything else runs today. See [docs/PROTOCOL.md](docs/PROTOCOL.md).
 
 ---
 
@@ -46,6 +46,33 @@ rigsmith protocol record       # watch the real editor work, and log every call
 ```
 
 If mDNS is blocked, double-tap "HeadRush Remote" on the device to read its IP and pass `--device 192.168.1.42`.
+
+### Research a tone
+
+A **recipe** is where the research goes before any rig exists: what gear the
+tone used, where each claim came from, and how confident it is.
+
+```bash
+rigsmith recipe new "Cherub Rock" --artist "Smashing Pumpkins" --year 1993   --summary "Saturated but articulate. The fuzz is doing the work, not the amp gain."
+
+rigsmith recipe gear cherub-rock fuzz "Big Muff Pi" --confidence stated   --source "Siamese Dream liner notes" --source-note "Listed in the equipment credits."
+
+rigsmith recipe gear cherub-rock amp "Marshall JMP" --category nam --confidence reported   --source "Guitar World interview" --alt "Marshall JCM800"
+
+rigsmith recipe gear cherub-rock cab "1960A 4x12" --category ir --confidence inferred
+
+rigsmith recipe scene cherub-rock "Clean verse" --off fuzz --fs 1
+rigsmith recipe question cherub-rock "Which Big Muff revision?"
+
+rigsmith recipe compile cherub-rock      # -> a draft rig
+```
+
+`stated` and `reported` are **refused without a source**. That is the point:
+an undocumented claim dressed as a documented one is worse than an honest
+guess, and this is the one field that lets a reader tell your findings from
+your reasoning. Gear compiles into conventional chain order regardless of the
+order you researched it in, and scenes reference gear by role, so they resolve
+to whatever slots the gear lands in.
 
 ### Build a rig
 
@@ -90,7 +117,7 @@ Ask for a tone. The agent researches the gear, finds an A2 capture, builds the r
     +---------------+---------------+
     |               |               |
   cli.py       mcp/tools/*      web/api.py
-  (click)       (52 tools)       (FastAPI)
+  (click)       (61 tools)       (FastAPI)
 ```
 
 Each surface is a thin adapter: parse input, call core, format output. That rule exists because the first version broke it — orchestration lived inside the MCP tools, so anything not reachable from a tool was reachable from nowhere, and whole subsystems ended up built and unwired.
