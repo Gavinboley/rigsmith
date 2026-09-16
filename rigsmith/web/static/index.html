@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>rigsmith</title>
+<link rel="stylesheet" href="/static/vendor/uplot.min.css">
+<link rel="stylesheet" href="/static/app.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>&#127928;</text></svg>">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-mark"></span>
+    <span class="brand-name">rigsmith</span>
+    <span class="brand-sub">HeadRush Core</span>
+  </div>
+
+  <nav class="tabs" id="tabs">
+    <button class="tab" data-panel="rig">Rig</button>
+    <button class="tab" data-panel="captures">Captures</button>
+    <button class="tab" data-panel="match">Match</button>
+    <button class="tab" data-panel="device">Device</button>
+    <button class="tab" data-panel="workspace">Workspace</button>
+  </nav>
+
+  <div class="status" id="status-cluster">
+    <span class="pill" id="pill-device" title="Device connection">device</span>
+    <span class="pill" id="pill-catalog" title="Model catalog">catalog</span>
+    <span class="pill" id="pill-jobs" title="Background jobs" hidden>jobs</span>
+  </div>
+</header>
+
+<main id="panels">
+
+  <!-- ================= RIG ================= -->
+  <section class="panel" data-panel="rig">
+    <div class="panel-head">
+      <div class="draft-picker">
+        <select id="draft-select" aria-label="Draft"></select>
+        <button class="btn" id="new-draft">New rig</button>
+        <button class="btn ghost" id="dup-draft" title="Fork this rig">Duplicate</button>
+        <button class="btn ghost danger" id="del-draft">Delete</button>
+      </div>
+      <div class="meter" title="Estimated CPU. The device's own meter is authoritative.">
+        <span class="meter-label">CPU</span>
+        <span class="meter-track"><span class="meter-fill" id="cpu-fill"></span></span>
+        <span class="meter-value mono" id="cpu-value">--</span>
+      </div>
+    </div>
+
+    <div class="rig-empty" id="rig-empty">
+      <p>No rig open.</p>
+      <button class="btn primary" id="new-draft-empty">Create your first rig</button>
+    </div>
+
+    <div class="rig-body" id="rig-body" hidden>
+      <div class="chain-head">
+        <h2 id="rig-name" class="rig-name" contenteditable="false"></h2>
+        <div class="chain-meta">
+          <span class="mono" id="chain-summary"></span>
+          <select id="signal-path" class="inline-select" title="Signal path">
+            <option value="straight">Straight</option>
+            <option value="middle_split_3_4_3">Split 3-4-3</option>
+            <option value="middle_split_5_3_3">Split 5-3-3</option>
+            <option value="middle_split_7_2_3">Split 7-2-3</option>
+          </select>
+        </div>
+      </div>
+
+      <ol class="board" id="board" aria-label="Signal chain"></ol>
+
+      <div class="scenes">
+        <div class="scenes-head">
+          <h3>Scenes</h3>
+          <span class="hint">One footswitch press. Blocks you don't name are left alone.</span>
+          <button class="btn small" id="new-scene">Add scene</button>
+        </div>
+        <div class="footswitches" id="footswitches"></div>
+      </div>
+
+      <div class="findings" id="findings"></div>
+
+      <div class="rig-actions">
+        <button class="btn" id="preview-btn">Preview changes</button>
+        <button class="btn" id="export-btn">Export JSON</button>
+        <button class="btn primary" id="write-btn">Write to device</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= CAPTURES ================= -->
+  <section class="panel" data-panel="captures" hidden>
+    <div class="panel-head">
+      <h2>NAM captures</h2>
+      <span class="hint">The Core runs A2 Full and Lite, plus every A1 size. A2 captures sag and compression better.</span>
+    </div>
+
+    <div class="split">
+      <div class="card">
+        <h3>Local library</h3>
+        <div class="row">
+          <input type="text" id="scan-dir" placeholder="Folder of .nam files" class="grow">
+          <button class="btn" id="scan-btn">Scan</button>
+        </div>
+        <div id="scan-results" class="list"></div>
+      </div>
+
+      <div class="card">
+        <h3>TONE3000</h3>
+        <div id="t3k-status" class="notice"></div>
+        <div class="row">
+          <input type="text" id="t3k-query" placeholder="e.g. JCM800 hot" class="grow">
+          <select id="t3k-arch" class="inline-select">
+            <option value="2">A2</option>
+            <option value="1">A1</option>
+            <option value="any">Any</option>
+          </select>
+          <button class="btn" id="t3k-search">Search</button>
+        </div>
+        <div id="t3k-results" class="list"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= MATCH ================= -->
+  <section class="panel" data-panel="match" hidden>
+    <div class="panel-head">
+      <h2>Tone matching</h2>
+      <span class="hint">Metrics rank. Ears decide.</span>
+    </div>
+
+    <div class="card">
+      <h3>Compare</h3>
+      <div class="row">
+        <input type="text" id="target-path" placeholder="Target audio (a guitar stem)" class="grow">
+        <select id="match-mode" class="inline-select" title="Comparison mode">
+          <option value="distribution">Distribution (vs a record)</option>
+          <option value="aligned">Aligned (same performance)</option>
+        </select>
+      </div>
+      <div id="mode-note" class="notice subtle"></div>
+      <div class="row">
+        <input type="text" id="candidate-paths" placeholder="Candidate files, comma separated" class="grow">
+        <button class="btn" id="score-btn">Score</button>
+      </div>
+      <div id="ranking" class="list"></div>
+      <div id="spectrum" class="chart"></div>
+    </div>
+
+    <div class="card">
+      <h3>Blind listening</h3>
+      <p class="hint">
+        Identities stay hidden until the session is scored, and both clips are
+        decoded up front so switching is instant rather than a reload.
+      </p>
+      <div class="row">
+        <select id="ab-session" class="grow"></select>
+        <button class="btn" id="ab-refresh">Refresh</button>
+      </div>
+      <div id="ab-trial" class="ab-trial"></div>
+      <div id="ab-standings" class="list"></div>
+    </div>
+  </section>
+
+  <!-- ================= DEVICE ================= -->
+  <section class="panel" data-panel="device" hidden>
+    <div class="panel-head">
+      <h2>Device</h2>
+      <span class="hint">Nothing here modifies or reflashes firmware.</span>
+    </div>
+
+    <div class="split">
+      <div class="card">
+        <h3>Network</h3>
+        <p class="hint">Needs Global Settings &rsaquo; Wi-Fi &rsaquo; HeadRush Remote = On.</p>
+        <button class="btn" id="discover-btn">Discover</button>
+        <div id="discover-results" class="list"></div>
+      </div>
+
+      <div class="card">
+        <h3>USB storage</h3>
+        <p class="hint">Put the device into Menu &rsaquo; USB Transfer.</p>
+        <div class="row">
+          <button class="btn" id="storage-btn">Check</button>
+          <button class="btn" id="backup-btn">Back up</button>
+        </div>
+        <pre id="storage-out" class="out"></pre>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>MIDI</h3>
+      <p class="hint">
+        The one fully documented interface. Use it to load the rig you want to
+        reamp through, and to verify a write on a channel independent of the
+        one that performed it.
+      </p>
+      <div class="row">
+        <button class="btn" id="midi-ports">List ports</button>
+        <input type="number" id="midi-program" placeholder="PC #" class="narrow" min="0" max="127">
+        <button class="btn" id="midi-select">Select rig</button>
+      </div>
+      <pre id="midi-out" class="out"></pre>
+    </div>
+  </section>
+
+  <!-- ================= WORKSPACE ================= -->
+  <section class="panel" data-panel="workspace" hidden>
+    <div class="panel-head">
+      <h2>Workspace</h2>
+      <span class="hint">Everything rigsmith keeps on disk.</span>
+    </div>
+    <div class="card">
+      <div id="workspace-areas" class="list"></div>
+      <div class="row">
+        <button class="btn" id="prune-dry">Preview cleanup</button>
+        <button class="btn danger" id="prune-apply">Delete now</button>
+        <span class="hint">Backups and drafts are never pruned by default.</span>
+      </div>
+      <pre id="prune-out" class="out"></pre>
+    </div>
+
+    <div class="card">
+      <h3>Jobs</h3>
+      <div id="jobs-list" class="list"></div>
+    </div>
+  </section>
+
+</main>
+
+<div class="toasts" id="toasts"></div>
+
+<dialog id="modal" class="modal">
+  <form method="dialog" id="modal-form">
+    <h3 id="modal-title"></h3>
+    <div id="modal-body"></div>
+    <menu class="modal-actions">
+      <button value="cancel" class="btn ghost">Cancel</button>
+      <button value="ok" class="btn primary" id="modal-ok">OK</button>
+    </menu>
+  </form>
+</dialog>
+
+<script src="/static/vendor/sortable.min.js"></script>
+<script src="/static/vendor/uplot.iife.min.js"></script>
+<script src="/static/vendor/wavesurfer.min.js"></script>
+<script type="module" src="/static/js/app.js"></script>
+</body>
+</html>
