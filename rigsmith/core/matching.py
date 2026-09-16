@@ -119,6 +119,17 @@ class RenderedCandidate:
     warnings: list[str] = field(default_factory=list)
     safe_for_aligned: bool = True
 
+    def applied(self, stage: str) -> bool:
+        """Did a named stage actually run?
+
+        ``render_chain`` skips a stage it cannot run and says so in a warning,
+        which is right for a single render - a partial result is still worth
+        hearing. In a sweep it is not: every candidate whose capture failed to
+        load renders to the same unprocessed DI, so they all score identically
+        and the ranking looks authoritative while meaning nothing.
+        """
+        return any(entry.startswith(stage) for entry in self.stages)
+
     def render(self) -> str:
         lines = [f"{self.label}  [{self.layer}]  {self.path}"]
         if self.stages:
@@ -431,6 +442,7 @@ class SearchResult:
 
     target_path: Path
     mode: str
+    region: str | None = None
     rendered: list[RenderedCandidate] = field(default_factory=list)
     scores: list[Any] = field(default_factory=list)
     failures: list[str] = field(default_factory=list)
@@ -441,6 +453,7 @@ class SearchResult:
         lines = [
             f"target: {self.target_path.name}",
             f"rendered {len(self.rendered)} candidate(s) offline",
+            *([f"scored over {self.region} of the target"] if self.region else []),
             "",
             _render(self.scores),
         ]
@@ -457,6 +470,7 @@ class SearchResult:
         return {
             "target_path": str(self.target_path),
             "mode": self.mode,
+            "region": self.region,
             "rendered": [r.to_dict() for r in self.rendered],
             "failures": self.failures,
             "ranking": [
@@ -477,6 +491,8 @@ def run_offline_search(
     *,
     ir_path: str | Path | None = None,
     mode: str = "distribution",
+    target_region=None,
+    candidate_region=None,
     progress: Progress | None = None,
 ) -> SearchResult:
     """Render a DI through every candidate capture and rank them all.
@@ -492,11 +508,20 @@ def run_offline_search(
         ir_path: A cabinet IR applied to every candidate, for fairness.
         mode: ``distribution`` against a record, ``aligned`` only when target
             and candidates are the same performance.
+        target_region: ``"start:end"`` in seconds, to rank against one passage
+            of the target rather than the whole of it.
+        candidate_region: The matching passage of each render. Since every
+            render comes from the same DI, one span fits them all.
     """
     if not captures:
         raise Invalid("no captures to try")
 
-    result = SearchResult(target_path=Path(target_path), mode=mode)
+    described = Region.parse(target_region)
+    result = SearchResult(
+        target_path=Path(target_path),
+        mode=mode,
+        region=described.describe() if described else None,
+    )
     total = len(captures)
 
     for index, (label, nam_path) in enumerate(captures.items(), start=1):
@@ -510,6 +535,17 @@ def run_offline_search(
         except (Unavailable, Invalid, OSError) as exc:
             result.failures.append(f"{label}: {exc}")
             continue
+
+        if not rendered.applied("NAM("):
+            # The capture did not load. Keeping this candidate would enter the
+            # bare DI into the ranking under the capture's name.
+            reason = next(
+                (w for w in rendered.warnings if w.startswith("NAM")),
+                "the capture did not load",
+            )
+            result.failures.append(f"{label}: {reason}")
+            continue
+
         result.rendered.append(rendered)
 
     if not result.rendered:
@@ -524,6 +560,8 @@ def run_offline_search(
         target_path,
         {r.label: r.path for r in result.rendered},
         mode=mode,
+        target_region=target_region,
+        candidate_region=candidate_region,
     )
     if progress:
         progress.update(1.0, "done")
@@ -546,15 +584,59 @@ def create_ab(
     *,
     pairs: int | None = None,
 ):
-    """Start a blind listening test. Metrics rank; ears decide."""
+    """Start a blind listening test. Metrics rank; ears decide.
+
+    The clips are copied to opaque filenames first. Blinding that only hides
+    the label while the audio is still served from ``jcm800-hot-offline.wav``
+    is not blinding: the path shows up in a terminal, in a URL bar, and in the
+    page's own DOM. A copy per clip is cheap next to a listening test whose
+    result you intend to trust.
+    """
     from ..match.ab import create_session
 
     require_writable("create an A/B session")
     if len(candidates) < 2:
         raise Invalid("a blind test needs at least two candidates")
+
     session = create_session(session_id, target_label, candidates, pairs=pairs)
+    session.audio_paths = _blind_the_audio(session_id, session)
     session.save(_ab_path(session_id))
     return session
+
+
+def _blind_the_audio(session_id: str, session) -> dict[str, str]:
+    """Copy each clip to a name that gives nothing away.
+
+    A clip that cannot be copied keeps its original path rather than
+    disappearing from the test - a missing side is worse than a named one,
+    and :func:`ab_leaks` reports what is still identifying.
+    """
+    import shutil
+
+    directory = _audio_dir() / f"ab-{session_id}"
+    directory.mkdir(parents=True, exist_ok=True)
+
+    blinded: dict[str, str] = {}
+    for blind_id, source in session.audio_paths.items():
+        origin = Path(source)
+        destination = directory / f"{blind_id}{origin.suffix or '.wav'}"
+        try:
+            shutil.copyfile(origin, destination)
+        except OSError:
+            blinded[blind_id] = str(origin)
+            continue
+        blinded[blind_id] = str(destination)
+    return blinded
+
+
+def ab_leaks(session) -> list[str]:
+    """Blinded ids whose audio path still contains the candidate's name."""
+    leaking = []
+    for blind_id, real_label in session.blinded.items():
+        path = str(session.audio_paths.get(blind_id, "")).lower()
+        if real_label.lower() in path:
+            leaking.append(blind_id)
+    return leaking
 
 
 def load_ab(session_id: str):

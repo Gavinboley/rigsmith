@@ -134,6 +134,38 @@ class OpenAudio(BaseModel):
     path: str
 
 
+class IsolateBody(BaseModel):
+    audio_path: str
+    output_dir: str | None = None
+
+
+class RenderBody(BaseModel):
+    di_path: str
+    nam_path: str | None = None
+    ir_path: str | None = None
+    label: str = "candidate"
+
+
+class SearchBody(BaseModel):
+    di_path: str
+    target_path: str
+    captures: dict[str, str]
+    ir_path: str | None = None
+    mode: str = "distribution"
+    target_region: list[float] | None = None
+    candidate_region: list[float] | None = None
+
+
+class CaptureDiBody(BaseModel):
+    duration_s: float = 15.0
+    name: str = "take"
+
+
+class ReampBody(BaseModel):
+    di_path: str
+    label: str = "candidate"
+
+
 class AbCreate(BaseModel):
     session_id: str
     target_label: str
@@ -639,6 +671,79 @@ def match_score(body: ScoreBody) -> dict:
     }
 
 
+@router.post("/match/isolate")
+def match_isolate(body: IsolateBody) -> dict:
+    """Pull a guitar stem out of a mixed recording. Minutes, so it is a job."""
+    _allow_audio(body.audio_path)
+    job = get_manager().submit(
+        f"isolate {Path(body.audio_path).name}",
+        lambda progress: matching.isolate_guitar(
+            body.audio_path, out_dir=body.output_dir, progress=progress
+        ),
+    )
+    return {"job_id": job.id, "name": job.name}
+
+
+@router.post("/match/render")
+def match_render(body: RenderBody) -> dict:
+    """Render one DI through a capture and a cab, in Python. No hardware."""
+    _allow_audio(body.di_path)
+    rendered = matching.render_offline(
+        body.di_path,
+        nam_path=body.nam_path,
+        ir_path=body.ir_path,
+        label=body.label,
+    )
+    _allow_audio(rendered.path)
+    return {**rendered.to_dict(), "url": _audio_url(rendered.path)}
+
+
+@router.post("/match/search")
+def match_search(body: SearchBody) -> dict:
+    """The whole Layer 1 loop: one DI, every capture, one ranking.
+
+    A job rather than a request, because rendering twenty captures is minutes
+    of work and the page should show it happening rather than hang.
+    """
+    _allow_audio(body.di_path, body.target_path)
+    job = get_manager().submit(
+        f"render and rank {len(body.captures)} captures",
+        lambda progress: matching.run_offline_search(
+            body.di_path,
+            body.target_path,
+            body.captures,
+            ir_path=body.ir_path,
+            mode=body.mode,
+            target_region=body.target_region,
+            candidate_region=body.candidate_region,
+            progress=progress,
+        ).to_dict(),
+    )
+    return {"job_id": job.id, "name": job.name}
+
+
+@router.post("/match/capture-di")
+def match_capture_di(body: CaptureDiBody) -> dict:
+    """Record one performance: the wet tone and the dry DI together."""
+    capture, paths = matching.capture_di(body.duration_s, name=body.name)
+    return {
+        "describe": capture.describe(),
+        "latency_measured": capture.latency_measured,
+        "safe_for_aligned_scoring": capture.safe_for_aligned_scoring,
+        "paths": {name: str(path) for name, path in paths.items()},
+        "urls": {name: _audio_url(path) for name, path in paths.items()},
+    }
+
+
+@router.post("/match/reamp")
+def match_reamp(body: ReampBody) -> dict:
+    """Play a DI through the Core's currently loaded rig and record it."""
+    _allow_audio(body.di_path)
+    rendered = matching.reamp(body.di_path, label=body.label)
+    _allow_audio(rendered.path)
+    return {**rendered.to_dict(), "url": _audio_url(rendered.path)}
+
+
 @router.get("/match/spectrum")
 def match_spectrum(
     path: str,
@@ -694,15 +799,26 @@ def match_spectrum(
 
 
 def _audio_url(path) -> str:
-    """A URL for a file the session already refers to.
+    """A URL for a file the caller already named.
 
     Quoted, because a Windows path is full of backslashes and spaces, and
-    named, because a session's clips routinely live outside the workspace.
+    named, because rendered clips routinely live outside the workspace.
     """
     if not path:
         return ""
     _allow_audio(path)
     return f"/api/audio?path={quote(str(path))}"
+
+
+def _blind_url(session_id: str, blinded: str) -> str:
+    """A URL that says nothing about which candidate is on the other end.
+
+    The clips are already copied to opaque filenames when a session is
+    created, but a path-carrying URL would still put the directory - and on a
+    re-used session, the original name - in the page's DOM and the browser's
+    history. This resolves server-side instead.
+    """
+    return f"/api/ab/{session_id}/audio/{blinded}" if blinded else ""
 
 
 def _session_payload(session) -> dict:
@@ -721,8 +837,8 @@ def _session_payload(session) -> dict:
                 "trial_id": trial.trial_id,
                 "left": trial.left,
                 "right": trial.right,
-                "left_audio": _audio_url(session.audio_paths.get(trial.left)),
-                "right_audio": _audio_url(session.audio_paths.get(trial.right)),
+                "left_audio": _blind_url(session.session_id, trial.left),
+                "right_audio": _blind_url(session.session_id, trial.right),
             }
             if trial
             else None
@@ -740,7 +856,10 @@ def create_ab(body: AbCreate) -> dict:
     session = matching.create_ab(
         body.session_id, body.target_label, body.candidates, pairs=body.pairs
     )
-    return _session_payload(session)
+    # A clip that could not be copied to a blinded name still identifies
+    # itself. The page says so rather than presenting a compromised test as
+    # a clean one.
+    return {**_session_payload(session), "leaks": matching.ab_leaks(session)}
 
 
 @router.get("/ab/{session_id}")
@@ -761,6 +880,21 @@ def answer_ab(session_id: str, body: AbVerdict) -> dict:
             for label, points, seen in session.standings()
         ]
     return payload
+
+
+@router.get("/ab/{session_id}/audio/{blinded}")
+def ab_audio(session_id: str, blinded: str) -> FileResponse:
+    """Serve one side of a trial without naming it."""
+    session = matching.load_ab(session_id)
+    path = session.audio_paths.get(blinded)
+    if not path:
+        raise NotFound(f"session '{session_id}' has no clip '{blinded}'")
+    target = Path(path)
+    if not target.is_file():
+        raise NotFound(f"the clip for '{blinded}' is no longer on disk")
+    # Named by the blinded id, so a download or a devtools panel reveals
+    # nothing either.
+    return FileResponse(target, filename=f"{blinded}{target.suffix}")
 
 
 @router.get("/ab/{session_id}/results")
@@ -803,10 +937,15 @@ def list_jobs() -> dict:
 def get_job(job_id: str) -> dict:
     job = get_manager().get(job_id)
     payload = job.to_dict(include_events=True)
-    if job.result is not None and hasattr(job.result, "to_dict"):
-        payload["result"] = job.result.to_dict()
-    elif job.result is not None:
-        payload["result"] = str(job.result)
+    if job.result is not None:
+        if hasattr(job.result, "to_dict"):
+            payload["result"] = job.result.to_dict()
+        elif isinstance(job.result, (dict, list, int, float, bool)):
+            # A job that already returned JSON-shaped data - str() here would
+            # hand the page a Python repr to parse, which it cannot.
+            payload["result"] = job.result
+        else:
+            payload["result"] = str(job.result)
     return payload
 
 

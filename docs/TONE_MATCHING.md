@@ -86,6 +86,15 @@ Candidates are relabelled with opaque ids (`X1`, `X2`, …) assigned from a shuf
 
 Sessions persist to JSON, so listening can be spread over days, and verdicts carry optional confidence and comments that feed back into refinement.
 
+
+Blinding hides the label, and that is only half of it. A clip served from
+`jcm800-hot-offline.wav` announces itself in a terminal, in a URL bar, and in
+the page's own DOM - so the clips are copied to opaque filenames when the
+session is created, and the web UI serves them through
+`/api/ab/<session>/audio/<blinded id>` rather than by path. A clip that could
+not be copied stays in the test, because a missing side is worse than a named
+one, but every surface says so: `ab_leaks()` reports which, and both the CLI
+and the panel warn that the result is compromised.
 ## Getting a target to compare against
 
 Source separation via Demucs `htdemucs_6s` — the only widely available open model with a first-class **guitar** stem (four-stem models fold guitar into "other"). It runs offline; expect minutes per track on CPU.

@@ -9,6 +9,7 @@ vendored - which fails in a way that is invisible until someone opens it.
 from __future__ import annotations
 
 import re
+import time
 
 import pytest
 
@@ -491,3 +492,116 @@ def test_scoring_a_file_also_makes_it_servable(client, outside_file):
         },
     )
     assert client.get("/api/audio", params={"path": str(outside_file)}).status_code == 200
+
+
+# --------------------------------------------------------------------------
+# the render layer, which the UI previously could not reach at all
+# --------------------------------------------------------------------------
+
+
+def test_offline_search_starts_a_job_rather_than_blocking(client, tmp_path):
+    """Rendering twenty captures is minutes; the page must not hang on it."""
+    pytest.importorskip("soundfile")
+    import numpy as np
+    import soundfile as sf
+
+    di = tmp_path / "di.wav"
+    sf.write(str(di), np.zeros(4800, dtype="float32"), 48000)
+
+    response = client.post(
+        "/api/match/search",
+        json={
+            "di_path": str(di),
+            "target_path": str(di),
+            "captures": {"nothing": str(tmp_path / "absent.nam")},
+        },
+    )
+    assert response.status_code == 200
+    job_id = response.json()["job_id"]
+
+    for _ in range(100):
+        job = client.get(f"/api/jobs/{job_id}").json()
+        if job["finished"]:
+            break
+        time.sleep(0.05)
+    else:  # pragma: no cover - only on a wedged machine
+        pytest.fail("the job never finished")
+
+    # Every candidate failed, which is a failed job and not a crashed server.
+    assert job["state"] == "failed"
+    assert "absent.nam" in (job["error"] or "") or "no candidate" in (job["error"] or "")
+
+
+def test_a_job_result_that_is_already_json_is_not_stringified(client):
+    """A Python repr in `result` is unparseable by the page that asked for it."""
+    from rigsmith.core.jobs import get_manager
+
+    job = get_manager().submit("shaped", lambda progress: {"ranking": [1, 2]})
+    for _ in range(100):
+        if job.finished:
+            break
+        time.sleep(0.02)
+
+    payload = client.get(f"/api/jobs/{job.id}").json()
+    assert payload["result"] == {"ranking": [1, 2]}
+
+
+def test_isolate_starts_a_job(client, tmp_path):
+    audio = tmp_path / "song.wav"
+    audio.write_bytes(b"RIFF....WAVE")
+    response = client.post("/api/match/isolate", json={"audio_path": str(audio)})
+    assert response.status_code == 200
+    assert response.json()["job_id"]
+
+
+def test_render_without_anything_to_render_through_is_400(client, tmp_path):
+    di = tmp_path / "di.wav"
+    di.write_bytes(b"RIFF....WAVE")
+    response = client.post("/api/match/render", json={"di_path": str(di)})
+    assert response.status_code == 400
+    assert "nothing to render through" in response.json()["error"]
+
+
+def test_an_ab_session_can_be_started_from_the_page(client, tmp_path):
+    """Score then listen was previously a CLI-only handoff."""
+    first, second = tmp_path / "a.wav", tmp_path / "b.wav"
+    for path in (first, second):
+        path.write_bytes(b"RIFF....WAVE")
+
+    created = client.post(
+        "/api/ab",
+        json={
+            "session_id": "from-the-page",
+            "target_label": "the record",
+            "candidates": {"a": str(first), "b": str(second)},
+        },
+    )
+    assert created.status_code == 200
+
+    session = client.get("/api/ab/from-the-page").json()
+    assert session["trial"], "a fresh session should offer a trial"
+    # The clips have to be reachable, or the player has nothing to play.
+    for side in ("left_audio", "right_audio"):
+        assert client.get(session["trial"][side]).status_code == 200
+
+    # And nothing in what the page receives may say which is which. A URL
+    # carrying a path would put the answer in the DOM and in the address bar.
+    payload = str(session["trial"])
+    assert "a.wav" not in payload and "b.wav" not in payload, payload
+    assert str(first.parent) not in payload
+    assert session["trial"]["left_audio"].startswith("/api/ab/from-the-page/audio/")
+
+
+def test_a_blinded_clip_url_that_does_not_exist_is_404(client, tmp_path):
+    first, second = tmp_path / "a.wav", tmp_path / "b.wav"
+    for path in (first, second):
+        path.write_bytes(b"RIFF....WAVE")
+    client.post(
+        "/api/ab",
+        json={
+            "session_id": "s",
+            "target_label": "t",
+            "candidates": {"a": str(first), "b": str(second)},
+        },
+    )
+    assert client.get("/api/ab/s/audio/nonsense").status_code == 404

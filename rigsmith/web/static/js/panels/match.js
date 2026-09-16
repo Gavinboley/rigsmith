@@ -9,7 +9,7 @@
  */
 
 import { api } from "../api.js";
-import { $, attempt, clear, el, toast } from "../ui.js";
+import { $, attempt, clear, el, jobRow, toast } from "../ui.js";
 import { createWave, describeRegion } from "../wave.js";
 
 const CROSSFADE_S = 0.008;
@@ -18,6 +18,9 @@ let context = null;
 let player = null; // { sources, gains, startedAt, active }
 let chart = null;
 let waves = null; // { target, candidate } - built on first use, see ensureWaves
+let found = null; // {label: path} from the last capture-folder scan
+let searchJob = null; // the offline sweep currently running, if any
+let lastRanking = null; // {label: path} of what was scored most recently
 
 /* ------------------------------------------------------------ audio engine */
 
@@ -145,6 +148,132 @@ async function openInto(which, path) {
 
 function regionFor(which) {
   return waves?.[which]?.region() ?? null;
+}
+
+/* -------------------------------------------------- offline render + rank */
+
+/* Layer 1: one DI through every capture in a folder, all scored against the
+ * target. It is minutes of work, so it runs as a job and the page watches it
+ * rather than hanging on a request. */
+
+async function scanCaptures() {
+  const directory = $("#search-captures").value.trim();
+  if (!directory) throw new Error("Give a folder of .nam captures");
+
+  const { captures } = await api.scanCaptures(directory);
+  found = Object.fromEntries(captures.map((capture) => [capture.name, capture.path]));
+
+  const count = captures.length;
+  // The .nam format carries no generation field, so this is inferred from the
+  // file's own contents - see rigsmith/tone/nam.py.
+  const a2 = captures.filter((capture) => capture.generation === "A2").length;
+  $("#search-found").textContent = count
+    ? `${count} capture(s), ${a2} of them A2. A2 models sag and compression ` +
+      "better, which is most of what separates a good capture from a close one."
+    : "No .nam files there.";
+  $("#search-run").disabled = !count;
+  return captures;
+}
+
+function watchSearch(jobId) {
+  searchJob = jobId;
+  const host = clear($("#search-progress"));
+  host.append(el("div", { class: "hint", text: "starting..." }));
+}
+
+/** Called from the live socket for every job event. */
+export function onJobs(jobs) {
+  if (!searchJob) return;
+  const job = jobs.find((candidate) => candidate.id === searchJob);
+  if (!job) return;
+
+  clear($("#search-progress")).append(
+    jobRow(job, {
+      onCancel: () => attempt(() => api.cancelJob(job.id)),
+    })
+  );
+  if (job.finished) {
+    const id = searchJob;
+    searchJob = null;
+    if (job.state === "succeeded") attempt(() => showSearchResult(id));
+  }
+}
+
+async function showSearchResult(jobId) {
+  const { result } = await api.job(jobId);
+  const host = clear($("#search-out"));
+  if (!result || !result.ranking) return;
+
+  lastRanking = Object.fromEntries(
+    result.rendered.map((rendered) => [rendered.label, rendered.path])
+  );
+
+  for (const [index, entry] of result.ranking.entries()) {
+    const path = lastRanking[entry.label];
+    const node = el(
+      "div",
+      { class: "item clickable", title: "Show this render's waveform" },
+      el("span", { class: "tag", text: `#${index + 1}` }),
+      el("span", { class: "title", text: entry.label }),
+      el("span", { class: "spacer" }),
+      el("span", { class: "meta", text: `composite ${entry.composite.toFixed(4)}` })
+    );
+    node.onclick = () => attempt(() => showCandidate(path));
+    host.append(node);
+  }
+
+  for (const failure of result.failures || []) {
+    host.append(el("div", { class: "finding warning", text: failure }));
+  }
+  host.append(
+    el("div", {
+      class: "notice subtle",
+      text:
+        "Layer 1 is an approximation used to shortlist. Confirm the top few " +
+        "on the device, then decide by ear.",
+    }),
+    el("button", {
+      class: "btn primary",
+      text: "Blind test the top 3",
+      onclick: () =>
+        attempt(() =>
+          startBlindTest(
+            result.ranking.slice(0, 3).map((entry) => entry.label),
+            lastRanking
+          )
+        ),
+    })
+  );
+}
+
+/* ---------------------------------------------------- score -> listen loop */
+
+/** The step that was previously only reachable from the CLI. */
+async function startBlindTest(labels, paths) {
+  const usable = labels.filter((label) => paths[label]);
+  if (usable.length < 2) {
+    throw new Error("A blind test needs at least two candidates");
+  }
+  const sessionId = `s${Date.now().toString(36)}`;
+  const created = await api.createAb({
+    session_id: sessionId,
+    target_label: $("#target-path").value.trim() || "target",
+    candidates: Object.fromEntries(usable.map((label) => [label, paths[label]])),
+  });
+  if (created.leaks?.length) {
+    toast(
+      `${created.leaks.length} clip(s) could not be blinded - their paths ` +
+        "still identify them, so treat this result with suspicion.",
+      { kind: "error", timeout: 12000 }
+    );
+  }
+  await refreshSessions();
+  $("#ab-session").value = sessionId;
+  await renderSession(sessionId);
+  toast(`Blind test ${sessionId} started with ${usable.length} candidates`, {
+    kind: "ok",
+  });
+  $("#ab-trial").scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 
 /* --------------------------------------------------------------- spectrum */
@@ -424,6 +553,24 @@ export function init() {
         );
       }
 
+      lastRanking = byLabel;
+      if (result.ranking.length > 1) {
+        host.append(
+          el("button", {
+            class: "btn",
+            text: "Blind test the top 3",
+            title: "Metrics rank; ears decide. This is the deciding step.",
+            onclick: () =>
+              attempt(() =>
+                startBlindTest(
+                  result.ranking.slice(0, 3).map((entry) => entry.label),
+                  byLabel
+                )
+              ),
+          })
+        );
+      }
+
       // Put the winner on screen, so the thing you are about to listen to is
       // the thing the numbers just picked.
       const winner = byLabel[result.ranking[0]?.label];
@@ -431,6 +578,32 @@ export function init() {
         await showCandidate(winner).catch(() => {});
       }
       await drawSpectrum(target, candidates);
+    });
+
+  $("#search-scan").onclick = () => attempt(scanCaptures);
+
+  $("#search-run").onclick = () =>
+    attempt(async () => {
+      const target = $("#target-path").value.trim();
+      const di = $("#search-di").value.trim();
+      if (!target) throw new Error("Give the target audio above first");
+      if (!di) throw new Error("Give a dry DI recording to render through");
+      if (!found || !Object.keys(found).length) {
+        await scanCaptures();
+      }
+
+      const targetRegion = regionFor("target");
+      const { job_id } = await api.offlineSearch({
+        di_path: di,
+        target_path: target,
+        captures: found,
+        ir_path: $("#search-ir").value.trim() || null,
+        mode: $("#match-mode").value,
+        target_region: targetRegion,
+        // Every render comes from the same DI, so one span covers them all.
+        candidate_region: regionsAreLocked() ? targetRegion : regionFor("candidate"),
+      });
+      watchSearch(job_id);
     });
 
   $("#ab-session").onchange = (event) => renderSession(event.target.value);

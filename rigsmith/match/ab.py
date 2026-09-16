@@ -146,7 +146,14 @@ class ABSession:
         return "\n".join(lines)
 
     def render_next(self) -> str:
-        """What to tell the listener for the next trial, revealing nothing."""
+        """What to tell the listener for the next trial, revealing nothing.
+
+        This prints the audio paths because the listener has to be able to
+        play them. That is only safe because the paths are blinded copies -
+        see :func:`rigsmith.core.matching.create_ab`. Never point a session
+        at the original renders: ``jcm800-hot-offline.wav`` in a terminal is
+        the answer, written out in full.
+        """
         trial = self.next_trial()
         if trial is None:
             return "All trials answered. Call standings() to unblind."

@@ -799,8 +799,18 @@ def match_render(di, nam_path, ir_path, truncate, name) -> None:
 @click.argument("captures_dir", type=click.Path(exists=True, file_okay=False, path_type=Path))
 @click.option("--ir", "ir_path", type=click.Path(exists=True, path_type=Path))
 @click.option("--mode", default="distribution", type=click.Choice(["aligned", "distribution"]), show_default=True)
+@click.option(
+    "--region",
+    metavar="START:END",
+    help="Rank against this span of the target, in seconds - e.g. 41.2:58.0",
+)
+@click.option(
+    "--di-region",
+    metavar="START:END",
+    help="The matching span of the DI. One span fits every render of it.",
+)
 @handled
-def match_search(di, target, captures_dir, ir_path, mode) -> None:
+def match_search(di, target, captures_dir, ir_path, mode, region, di_region) -> None:
     """Render a DI through every capture in a directory and rank them.
 
     The whole offline loop in one command, with no hardware needed.
@@ -835,7 +845,14 @@ def match_search(di, target, captures_dir, ir_path, mode) -> None:
                 pass
 
         result = matching.run_offline_search(
-            di, target, found, ir_path=ir_path, mode=mode, progress=Reporter()
+            di,
+            target,
+            found,
+            ir_path=ir_path,
+            mode=mode,
+            target_region=region,
+            candidate_region=di_region if di_region else (region if mode == "aligned" else None),
+            progress=Reporter(),
         )
     click.echo("")
     click.echo(result.render())
@@ -906,6 +923,15 @@ def ab_start(session_id, target_label, candidates, pairs) -> None:
         session_id, target_label, {p.stem: str(p) for p in candidates}, pairs=pairs
     )
     click.echo(f"Created '{session_id}' with {len(session.trials)} trial(s).\n")
+
+    leaks = matching.ab_leaks(session)
+    if leaks:
+        click.echo(click.style(
+            f"  WARNING: {len(leaks)} clip(s) could not be copied to a blinded "
+            "name, so their paths still identify them. Treat this session's "
+            "result with suspicion.", fg="yellow"))
+        click.echo("")
+
     click.echo(session.render_next())
 
 

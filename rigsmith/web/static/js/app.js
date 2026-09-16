@@ -65,6 +65,9 @@ function connectLive() {
           if (pill) pill.hidden = true;
         }
         if (activePanel === "workspace") workspace.refreshJobs(message.jobs);
+        // A panel that started a job watches it wherever the user is, so
+        // wandering off to another tab does not lose the progress.
+        for (const panel of Object.values(PANELS)) panel.onJobs?.(message.jobs);
       }
 
       if (message.type === "job" && message.kind === "state") {

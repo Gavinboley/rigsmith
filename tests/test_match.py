@@ -7,6 +7,8 @@ of getting that right.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 import pytest
 
@@ -308,3 +310,62 @@ def test_next_trial_does_not_leak_identities():
     rendered = session.render_next()
     assert "secret-winner" not in rendered
     assert "secret-loser" not in rendered
+
+
+# --------------------------------------------------------------------------
+# blinding is only blinding if the filename is blinded too
+# --------------------------------------------------------------------------
+
+
+def test_session_audio_is_copied_to_opaque_filenames(tmp_path, monkeypatch):
+    """A clip served from 'jcm800-hot-offline.wav' is not blind.
+
+    The label is hidden in the payload, but the path shows up in a terminal,
+    in a URL bar, and in the page's own DOM - so the copy happens at creation
+    rather than being each surface's problem to remember.
+    """
+    monkeypatch.setenv("RIGSMITH_WORKSPACE", str(tmp_path))
+
+    from rigsmith import config
+    from rigsmith.core import matching
+
+    config.set_settings(config.Settings())
+    try:
+        candidates = {}
+        for label in ("jcm800-hot", "twin-clean"):
+            path = tmp_path / f"{label}-offline.wav"
+            path.write_bytes(b"RIFF....WAVE")
+            candidates[label] = str(path)
+
+        session = matching.create_ab("s", "the record", candidates)
+
+        assert not matching.ab_leaks(session), session.audio_paths
+        for blind_id, path in session.audio_paths.items():
+            assert blind_id in Path(path).stem
+            assert Path(path).is_file(), "the copy has to actually exist"
+    finally:
+        config.set_settings(None)
+
+
+def test_a_clip_that_cannot_be_copied_stays_in_the_test(tmp_path, monkeypatch):
+    """A missing side is worse than a named one; ab_leaks says which."""
+    monkeypatch.setenv("RIGSMITH_WORKSPACE", str(tmp_path))
+
+    from rigsmith import config
+    from rigsmith.core import matching
+
+    config.set_settings(config.Settings())
+    try:
+        real = tmp_path / "real.wav"
+        real.write_bytes(b"RIFF....WAVE")
+        session = matching.create_ab(
+            "s",
+            "t",
+            {"real": str(real), "gone": str(tmp_path / "gone.wav")},
+        )
+        assert len(session.audio_paths) == 2
+        leaks = matching.ab_leaks(session)
+        assert leaks, "the un-copied clip still carries its own name"
+        assert session.blinded[leaks[0]] == "gone"
+    finally:
+        config.set_settings(None)

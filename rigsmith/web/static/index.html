@@ -254,6 +254,27 @@
     </div>
 
     <div class="card">
+      <h3>Render and rank, with no hardware</h3>
+      <p class="hint">
+        Layer 1. One DI through every capture in a folder, all scored against
+        the target above. An approximation used to shortlist &mdash; confirm
+        the top few on the device before trusting the order.
+      </p>
+      <div class="row">
+        <input type="text" id="search-di" placeholder="Dry DI recording" class="grow">
+        <input type="text" id="search-ir" placeholder="Cab IR (optional, applied to all)" class="grow">
+      </div>
+      <div class="row">
+        <input type="text" id="search-captures" placeholder="Folder of .nam captures" class="grow">
+        <button class="btn" id="search-scan">Scan</button>
+        <button class="btn primary" id="search-run" disabled>Render and rank</button>
+      </div>
+      <div id="search-found" class="hint"></div>
+      <div id="search-progress" class="list"></div>
+      <div id="search-out"></div>
+    </div>
+
+    <div class="card">
       <h3>Blind listening</h3>
       <p class="hint">
         Identities stay hidden until the session is scored, and both clips are

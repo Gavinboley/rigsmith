@@ -152,3 +152,45 @@ export function setPill(id, text, kind = "") {
   pill.className = `pill ${kind}`;
   pill.hidden = false;
 }
+
+/* One row for one background job.
+ *
+ * Shared so the Workspace list and an in-panel progress strip cannot drift
+ * into describing the same job two different ways - which is how a user ends
+ * up unsure whether they are looking at one job or two.
+ */
+export function jobRow(job, { onCancel = null } = {}) {
+  const node = el(
+    "div",
+    { class: "item" },
+    el("span", {
+      class: `tag ${
+        job.state === "succeeded" ? "a2" : job.state === "failed" ? "bad" : "warn"
+      }`,
+      text: job.state,
+    }),
+    el("span", { class: "title", text: job.name })
+  );
+
+  if (!job.finished && job.progress !== null && job.progress !== undefined) {
+    node.append(
+      el("span", { class: "bar" }, el("span", { style: `width:${job.progress * 100}%` }))
+    );
+  }
+
+  node.append(
+    el("span", { class: "spacer" }),
+    el("span", { class: "meta", text: job.message || "" }),
+    el("span", { class: "meta", text: `${job.elapsed}s` })
+  );
+
+  if (job.error) {
+    node.append(el("span", { class: "tag bad", text: job.error, title: job.error }));
+  }
+  if (!job.finished && onCancel) {
+    node.append(
+      el("button", { class: "btn small", text: "cancel", onclick: onCancel })
+    );
+  }
+  return node;
+}

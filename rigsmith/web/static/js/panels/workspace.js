@@ -1,7 +1,7 @@
 /* Workspace panel: what is on disk, and the jobs that put it there. */
 
 import { api } from "../api.js";
-import { $, attempt, bytes, clear, el } from "../ui.js";
+import { $, attempt, bytes, clear, el, jobRow } from "../ui.js";
 
 function areaItem(area) {
   return el(
@@ -24,41 +24,6 @@ function areaItem(area) {
   );
 }
 
-function jobItem(job) {
-  const node = el(
-    "div",
-    { class: "item" },
-    el("span", {
-      class: `tag ${
-        job.state === "succeeded" ? "a2" : job.state === "failed" ? "bad" : "warn"
-      }`,
-      text: job.state,
-    }),
-    el("span", { class: "title", text: job.name })
-  );
-
-  if (!job.finished && job.progress !== null && job.progress !== undefined) {
-    node.append(
-      el("span", { class: "bar" }, el("span", { style: `width:${job.progress * 100}%` }))
-    );
-  }
-  node.append(
-    el("span", { class: "spacer" }),
-    el("span", { class: "meta", text: job.message || "" }),
-    el("span", { class: "meta", text: `${job.elapsed}s` })
-  );
-  if (!job.finished) {
-    node.append(
-      el("button", {
-        class: "btn small",
-        text: "cancel",
-        onclick: () => attempt(() => api.cancelJob(job.id).then(refresh)),
-      })
-    );
-  }
-  return node;
-}
-
 export async function refreshJobs(jobs = null) {
   const list = jobs ?? (await api.jobs().then((r) => r.jobs).catch(() => []));
   const host = clear($("#jobs-list"));
@@ -66,7 +31,13 @@ export async function refreshJobs(jobs = null) {
     host.append(el("div", { class: "hint", text: "No background jobs." }));
     return;
   }
-  for (const job of list) host.append(jobItem(job));
+  for (const job of list) {
+    host.append(
+      jobRow(job, {
+        onCancel: () => attempt(() => api.cancelJob(job.id).then(() => refreshJobs())),
+      })
+    );
+  }
 }
 
 async function refresh() {

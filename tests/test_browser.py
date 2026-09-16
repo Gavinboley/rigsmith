@@ -342,3 +342,101 @@ def test_dragging_a_block_reorders_the_chain(browser, server):
             "#board .slot:not(.empty)", "nodes => nodes.map(n => n.dataset.slot)"
         )
         assert slots == ["1", "2", "3"], f"the chain has a gap or a duplicate: {slots}"
+
+
+def test_the_score_to_listen_loop_runs_in_the_page(browser, server, tmp_path):
+    """Score, then blind-test the winners, without leaving the panel.
+
+    Starting a listening session used to be a CLI-only step, which made the
+    deciding stage of the whole method the one stage the interface could not
+    do.
+    """
+    target = audio_file(tmp_path, "target.wav")
+    first = audio_file(tmp_path, "bright-capture.wav")
+    second = audio_file(tmp_path, "dark-capture.wav", seconds=3.5)
+
+    with page_at(browser, server) as page:
+        page.click("#tabs .tab[data-panel='match']")
+        page.fill("#target-path", str(target))
+        page.fill("#candidate-paths", f"{first},{second}")
+        page.click("#score-btn")
+
+        page.wait_for_selector("#ranking .item", timeout=20000)
+        assert page.locator("#ranking .item").count() == 2
+
+        page.click("#ranking button:has-text('Blind test the top 3')")
+        page.wait_for_selector("#ab-trial .ab-pair", timeout=20000)
+
+        # Nothing on screen may say which side is which.
+        trial = page.inner_text("#ab-trial")
+        assert "bright-capture" not in trial and "dark-capture" not in trial, trial
+
+        # Nor may the audio URLs, which end up in the DOM and in history.
+        urls = page.eval_on_selector_all(
+            "#ab-trial *", "nodes => nodes.map(n => n.outerHTML).join()"
+        )
+        assert "bright-capture" not in urls and "dark-capture" not in urls
+
+        page.click("#ab-trial button:has-text('A is closer')")
+        page.wait_for_function(
+            "() => document.querySelector('#ab-trial').textContent.includes('1/1')"
+            " || document.querySelector('#ab-standings').children.length > 0",
+            timeout=10000,
+        )
+
+
+def test_the_offline_sweep_reports_its_own_failure_in_the_panel(
+    browser, server, tmp_path
+):
+    """A sweep that renders nothing must say so, not spin forever.
+
+    This drives the scan/run/watch path the page actually uses, which is the
+    part no HTTP test can reach: the captures folder is scanned in the
+    browser, the job is started from the button, and its state arrives over
+    the live socket.
+    """
+    target = audio_file(tmp_path, "target.wav")
+    di = audio_file(tmp_path, "di.wav")
+
+    captures = tmp_path / "captures"
+    captures.mkdir()
+    # A .nam that parses well enough to be listed but cannot be rendered
+    # through: the scan finds it, the sweep refuses it.
+    import json
+
+    (captures / "not-really.nam").write_text(
+        json.dumps(
+            {
+                "version": "0.5.2",
+                "architecture": "WaveNet",
+                "config": {"layers_array": [{"channels": 16, "activation": "Tanh"}]},
+                "weights": [0.1] * 64,
+                "metadata": {"name": "not-really"},
+                "sample_rate": 48000,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with page_at(browser, server) as page:
+        page.click("#tabs .tab[data-panel='match']")
+        page.fill("#target-path", str(target))
+        page.fill("#search-di", str(di))
+        page.fill("#search-captures", str(captures))
+
+        page.click("#search-scan")
+        page.wait_for_function(
+            "() => document.querySelector('#search-found').textContent"
+            ".includes('capture')",
+            timeout=10000,
+        )
+        assert "1 capture" in page.inner_text("#search-found")
+        assert not page.locator("#search-run").is_disabled()
+
+        page.click("#search-run")
+        page.wait_for_function(
+            "() => document.querySelector('#search-progress').textContent"
+            ".includes('failed')",
+            timeout=30000,
+        )
+        assert "failed" in page.inner_text("#search-progress")
