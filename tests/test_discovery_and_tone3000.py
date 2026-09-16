@@ -450,3 +450,67 @@ def test_credentials_the_api_rejects_are_reported_as_expired(tmp_path, monkeypat
         assert "token expired" in status.render()
     finally:
         config.set_settings(None)
+
+
+# --------------------------------------------------------------------------
+# what is good enough to act on
+# --------------------------------------------------------------------------
+
+
+def _device(source, *, confirmed=False, host="192.168.1.50"):
+    from rigsmith.device.discovery import DeviceInfo
+
+    info = DeviceInfo(host=host, address=host)
+    info.source = source
+    info.confirmed = confirmed
+    return info
+
+
+def _with_results(monkeypatch, devices):
+    import asyncio
+
+    from rigsmith.device import discovery
+
+    async def fake_discover(**kwargs):
+        return list(devices)
+
+    monkeypatch.setattr(discovery, "discover", fake_discover)
+    return lambda: asyncio.run(discovery.find_device())
+
+
+def test_a_confirmed_device_is_chosen(monkeypatch):
+    find = _with_results(
+        monkeypatch,
+        [_device("sweep", confirmed=True, host="a"), _device("hostname", host="b")],
+    )
+    assert find().host == "a"
+
+
+def test_an_unconfirmed_sweep_hit_is_not_acted_on(monkeypatch):
+    """It is any web server on the subnet. Writing a rig at one would be a
+    guess dressed as a find."""
+    find = _with_results(monkeypatch, [_device("sweep", host="printer")])
+    assert find() is None
+
+
+def test_a_hostname_match_is_good_enough_without_a_fingerprint(monkeypatch):
+    """headrushcore.local resolving is the device naming itself, and a
+    firmware whose fingerprint has changed must not become undiscoverable."""
+    find = _with_results(monkeypatch, [_device("hostname", host="headrushcore.local")])
+    assert find().host == "headrushcore.local"
+
+
+def test_an_explicitly_configured_address_is_the_users_instruction(monkeypatch):
+    find = _with_results(monkeypatch, [_device("configured", host="127.0.0.1")])
+    assert find().host == "127.0.0.1"
+
+
+def test_a_confirmed_sweep_hit_is_still_fine(monkeypatch):
+    """The fingerprint is what makes it trustworthy, not how it was found."""
+    find = _with_results(monkeypatch, [_device("sweep", confirmed=True, host="c")])
+    assert find().host == "c"
+
+
+def test_nothing_found_is_none(monkeypatch):
+    find = _with_results(monkeypatch, [])
+    assert find() is None

@@ -300,7 +300,11 @@ async def connect(
             raise NotFound(
                 "no device found",
                 hint=(
-                    "Run 'rigsmith discover', or start the simulator with "
+                    "Run 'rigsmith discover' to see everything that answered - "
+                    "hosts it could not identify as a HeadRush are listed "
+                    "there but never written to, so pass --device explicitly "
+                    "if one of them is yours.\n"
+                    "With no hardware, start the simulator with "
                     "'rigsmith protocol simulate' and pass --device."
                 ),
             )

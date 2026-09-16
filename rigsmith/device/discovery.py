@@ -355,10 +355,26 @@ async def discover(
     return found
 
 
+#: Discovery sources that identify a host well enough to act on without a
+#: fingerprint. A configured address is the user's own instruction, and a
+#: documented .local hostname or an advertised service is the device naming
+#: itself. A sweep hit is none of those - it is any web server on the subnet.
+TRUSTED_SOURCES = {"configured", "hostname", "zeroconf"}
+
+
 async def find_device(**kwargs) -> DeviceInfo | None:
-    """Return the single best device candidate, or ``None`` if none answered."""
+    """Return the single device worth acting on, or ``None``.
+
+    Stricter than :func:`discover`, which lists everything it saw so a person
+    can look. This one feeds the write path, so an unconfirmed host found by
+    sweeping the subnet is not returned: it is any machine on the network that
+    answered a request, and picking one would be a guess dressed as a find.
+    """
     devices = await discover(**kwargs)
     for device in devices:
         if device.confirmed:
             return device
-    return devices[0] if devices else None
+    for device in devices:
+        if device.source in TRUSTED_SOURCES:
+            return device
+    return None
