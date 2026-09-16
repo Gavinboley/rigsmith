@@ -623,3 +623,67 @@ def test_tone3000_login_is_reachable_from_the_page(client):
     assert job["finished"]
     if job["state"] == "failed":
         assert "client id" in (job["error"] or "").lower()
+
+
+# --------------------------------------------------------------------------
+# picking paths
+# --------------------------------------------------------------------------
+
+
+def test_browse_lists_a_directory(client, tmp_path):
+    (tmp_path / "songs").mkdir()
+    (tmp_path / "riff.wav").write_bytes(b"RIFF")
+    (tmp_path / "notes.txt").write_text("not audio", encoding="utf-8")
+    (tmp_path / ".hidden").write_bytes(b"")
+
+    payload = client.get("/api/browse", params={"path": str(tmp_path)}).json()
+    assert [d["name"] for d in payload["directories"]] == ["songs"]
+    # Only files of the asked-for kind, and nothing hidden.
+    assert [f["name"] for f in payload["files"]] == ["riff.wav"]
+    assert payload["parent"]
+    assert payload["roots"], "the picker needs somewhere to start"
+    # Named, not shown as raw paths - a row of absolute paths is unreadable.
+    assert {"name", "path"} == set(payload["roots"][0])
+    assert payload["roots"][0]["name"] == "workspace"
+
+
+def test_browse_filters_by_kind(client, tmp_path):
+    (tmp_path / "riff.wav").write_bytes(b"RIFF")
+    (tmp_path / "amp.nam").write_text("{}", encoding="utf-8")
+
+    audio = client.get("/api/browse", params={"path": str(tmp_path)}).json()
+    captures = client.get(
+        "/api/browse", params={"path": str(tmp_path), "kind": "capture"}
+    ).json()
+    everything = client.get(
+        "/api/browse", params={"path": str(tmp_path), "kind": "any"}
+    ).json()
+
+    assert [f["name"] for f in audio["files"]] == ["riff.wav"]
+    assert [f["name"] for f in captures["files"]] == ["amp.nam"]
+    assert len(everything["files"]) == 2
+
+
+def test_browsing_to_a_file_shows_the_folder_it_is_in(client, tmp_path):
+    """So a path already in the box opens the picker somewhere useful."""
+    target = tmp_path / "riff.wav"
+    target.write_bytes(b"RIFF")
+    payload = client.get("/api/browse", params={"path": str(target)}).json()
+    assert payload["path"] == str(tmp_path.resolve())
+
+
+def test_browse_does_not_return_file_contents(client, tmp_path):
+    """Listing a name is not the same as being allowed to read the file."""
+    secret = tmp_path / "riff.wav"
+    secret.write_bytes(b"RIFF-the-contents")
+    payload = client.get("/api/browse", params={"path": str(tmp_path)}).json()
+    assert "the-contents" not in str(payload)
+    assert set(payload["files"][0]) == {"name", "path", "size"}
+
+
+def test_browse_rejects_an_unknown_kind(client, tmp_path):
+    response = client.get(
+        "/api/browse", params={"path": str(tmp_path), "kind": "nonsense"}
+    )
+    assert response.status_code == 400
+    assert "audio, capture, ir, any" in response.json()["hint"]

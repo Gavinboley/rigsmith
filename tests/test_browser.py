@@ -490,3 +490,44 @@ def test_the_blind_test_can_be_decided_from_the_keyboard(browser, server, tmp_pa
             " || document.querySelector('#ab-standings').children.length > 0",
             timeout=10000,
         )
+
+
+def test_a_path_can_be_picked_instead_of_typed(browser, server, tmp_path):
+    """A browser will not hand the page an absolute path, so the server does."""
+    library = tmp_path / "library"
+    library.mkdir()
+    audio_file(library, "picked.wav")
+    audio_file(library, "other.wav")
+
+    with page_at(browser, server) as page:
+        page.click("#tabs .tab[data-panel='match']")
+
+        # A path already in the box is where the picker opens, so this starts
+        # in the folder rather than walking the whole drive to reach it.
+        page.fill("#target-path", str(library))
+        page.click("#target-path + button")
+        page.wait_for_selector("dialog.picker", state="visible")
+
+        rows = page.locator("dialog.picker .picker-row.file")
+        assert rows.count() == 2, "both takes should be listed"
+
+        page.click("dialog.picker .picker-row.file:has-text('picked.wav')")
+        page.click("dialog.picker .picker-ok")
+
+        page.wait_for_function(
+            "() => document.querySelector('#target-path').value.endsWith('picked.wav')",
+            timeout=10000,
+        )
+        # Picking a target also opens it, so the waveform is there to drag on.
+        page.wait_for_selector("#target-wave canvas", timeout=15000)
+
+
+def test_cancelling_the_picker_leaves_the_path_alone(browser, server, tmp_path):
+    with page_at(browser, server) as page:
+        page.click("#tabs .tab[data-panel='match']")
+        page.fill("#search-di", str(tmp_path))
+        page.click("#search-di + button")
+        page.wait_for_selector("dialog.picker", state="visible")
+        page.click("dialog.picker .picker-cancel")
+        page.wait_for_selector("dialog.picker", state="detached")
+        assert page.input_value("#search-di") == str(tmp_path)

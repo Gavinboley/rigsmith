@@ -2,6 +2,7 @@
 
 import { api } from "../api.js";
 import { $, attempt, clear, el } from "../ui.js";
+import { attachPicker } from "../picker.js";
 
 function compatibilityTag(capture) {
   if (capture.headrush_compatible === true) {
@@ -139,6 +140,13 @@ export function onJobs(jobs) {
 }
 
 export function init() {
+  attachPicker("#scan-dir", {
+    kind: "capture",
+    folder: true,
+    title: "Choose a folder of .nam captures",
+    onPick: () => $("#scan-btn").click(),
+  });
+
   $("#scan-btn").onclick = () =>
     attempt(async () => {
       const directory = $("#scan-dir").value.trim();

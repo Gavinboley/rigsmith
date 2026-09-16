@@ -12,6 +12,7 @@ into a query parameter.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
@@ -21,7 +22,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
 
 from ..core import captures, devices, matching, recipes, rigs, workspace
-from ..core.errors import NotFound, RigsmithError
+from ..core.errors import Invalid, NotFound, RigsmithError
 from ..core.jobs import get_manager
 from ..rig.codec import rig_to_dict
 
@@ -1004,6 +1005,101 @@ def _audio_is_allowed(target: Path) -> bool:
     except ValueError:
         return False
     return True
+
+
+@router.get("/browse")
+def browse(path: str | None = None, kind: str = "audio") -> dict:
+    """List a directory, so paths can be picked instead of typed.
+
+    Every input in this tool is a path, and a browser cannot hand the page an
+    absolute one - `<input type=file>` deliberately withholds it. So the
+    server, which is already local and already reads these files, lists them.
+
+    It returns names and types only, never contents: reading a file still
+    goes through the audio route and its allowance. Hidden entries and
+    directories that cannot be read are skipped rather than raising, because
+    one unreadable folder should not make a drive unbrowsable.
+    """
+    from ..config import get_settings
+
+    suffixes = {
+        "audio": {".wav", ".flac", ".aiff", ".aif", ".mp3", ".ogg", ".m4a"},
+        "capture": {".nam"},
+        "ir": {".wav", ".aiff", ".aif"},
+        "any": set(),
+    }.get(kind)
+    if suffixes is None:
+        raise Invalid(
+            f"unknown kind '{kind}'",
+            hint="Use one of: audio, capture, ir, any.",
+        )
+
+    here = Path(path).expanduser() if path else get_settings().workspace
+    here = here.resolve()
+    if not here.is_dir():
+        # A file was passed: show the folder it lives in, with it selected.
+        here = here.parent if here.parent.is_dir() else Path.home()
+
+    directories, files = [], []
+    try:
+        entries = sorted(here.iterdir(), key=lambda e: e.name.lower())
+    except OSError as exc:
+        raise NotFound(f"cannot read {here}: {exc}") from None
+
+    for entry in entries:
+        if entry.name.startswith("."):
+            continue
+        try:
+            if entry.is_dir():
+                directories.append({"name": entry.name, "path": str(entry)})
+            elif not suffixes or entry.suffix.lower() in suffixes:
+                files.append(
+                    {
+                        "name": entry.name,
+                        "path": str(entry),
+                        "size": entry.stat().st_size,
+                    }
+                )
+        except OSError:
+            continue
+
+    return {
+        "path": str(here),
+        "parent": str(here.parent) if here.parent != here else None,
+        "roots": _browse_roots(),
+        "directories": directories,
+        "files": files,
+        "kind": kind,
+    }
+
+
+def _browse_roots() -> list[dict]:
+    """Somewhere to start, each with a name short enough to read.
+
+    Labelled rather than shown as full paths: a row of absolute paths is a
+    wall of text, and the one you want is usually "workspace" or "home".
+    """
+    from ..config import get_settings
+
+    roots = [
+        {"name": "workspace", "path": str(get_settings().workspace)},
+        {"name": "home", "path": str(Path.home())},
+    ]
+    if os.name == "nt":
+        roots += [
+            {"name": f"{letter}:", "path": f"{letter}:/"}
+            for letter in "CDEFGH"
+            if Path(f"{letter}:/").exists()
+        ]
+    else:
+        roots.append({"name": "/", "path": "/"})
+
+    seen, unique = set(), []
+    for root in roots:
+        if root["path"] not in seen:
+            seen.add(root["path"])
+            unique.append(root)
+    return unique
 
 
 @router.post("/match/open")

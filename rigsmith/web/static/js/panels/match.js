@@ -11,6 +11,7 @@
 import { api } from "../api.js";
 import { $, attempt, clear, el, jobRow, toast } from "../ui.js";
 import { createWave, describeRegion } from "../wave.js";
+import { attachPicker } from "../picker.js";
 
 const CROSSFADE_S = 0.008;
 
@@ -544,6 +545,21 @@ const candidatePaths = () =>
 export function init() {
   $("#match-mode").onchange = modeNote;
   modeNote();
+
+  // Every one of these is an absolute path, which a browser will not hand
+  // the page from a file input. Typing still works; the button is for people.
+  attachPicker("#target-path", {
+    kind: "audio",
+    onPick: (path) => attempt(() => openInto("target", path)),
+  });
+  attachPicker("#search-di", { kind: "audio" });
+  attachPicker("#search-ir", { kind: "ir", title: "Choose a cab IR" });
+  attachPicker("#search-captures", {
+    kind: "capture",
+    folder: true,
+    title: "Choose a folder of .nam captures",
+    onPick: () => attempt(scanCaptures),
+  });
 
   $("#open-target").onclick = () =>
     attempt(async () => {
