@@ -1125,6 +1125,41 @@ def protocol() -> None:
     """Capture the device's undocumented Remote Editor protocol."""
 
 
+@protocol.command("simulate")
+@click.option("--host", default="127.0.0.1", show_default=True)
+@click.option("--port", default=0, show_default=True, help="0 picks a free port.")
+@click.option("--replay", type=click.Path(exists=True, path_type=Path),
+              help="Serve a captured traffic.jsonl instead of the invented API.")
+@handled
+def protocol_simulate(host: str, port: int, replay: Path | None) -> None:
+    """Run a stand-in HeadRush, so the device path works without hardware.
+
+    This is NOT the real protocol - nobody has captured that yet. It is an
+    invented API of roughly the right shape, so discovery, probing, catalog
+    extraction and recording can all be exercised today.
+
+    Point the other commands at it with --device, for example:
+
+      rigsmith --device 127.0.0.1:8100 probe --dump-app
+
+    With --replay it serves a session captured from a real device, at which
+    point it stops being a guess and becomes a faithful fixture.
+    """
+    from .protocol.simulator import run_simulator
+
+    def ready(url: str) -> None:
+        click.echo(f"Simulated HeadRush on {url}")
+        if not replay:
+            click.echo(click.style(
+                "  This is an invented API, not the real device protocol.",
+                fg="yellow"))
+        address = url.replace("http://", "")
+        click.echo(f"\n  rigsmith --device {address} probe --dump-app")
+        click.echo("\n  Ctrl-C to stop.\n")
+
+    run_simulator(host=host, port=port, recording=replay, on_ready=ready)
+
+
 @protocol.command("record")
 @click.option("--upstream", help="Device base URL. Discovered if omitted.")
 @click.option("--port", default=0, show_default=True, help="0 picks a free port.")

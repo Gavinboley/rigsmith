@@ -129,3 +129,54 @@ def test_summary_counts_strong_evidence():
     )
     summary = inventory.summary()
     assert "endpoints" in summary and "call sites" in summary
+
+
+# --------------------------------------------------------------------------
+# patterns real bundles actually use
+# --------------------------------------------------------------------------
+
+CONSTRUCTED = """
+var sock = new WebSocket("ws://" + location.host + "/api/v1/ws");
+sock.onmessage = function(e){
+  var m = JSON.parse(e.data);
+  if (m.type === "cpu") { render(m) }
+  else if (m.type === "rig_changed") { reload(m.id) }
+};
+function send(t, p){ sock.send(JSON.stringify({type: t, payload: p})) }
+function selectRig(i){ send("select_rig", {id: i}) }
+function pressFootswitch(n){ send("footswitch", {number: n}) }
+"""
+
+
+def test_websocket_path_recovered_from_a_constructed_url():
+    """Bundles build their socket URL; they rarely write a literal one.
+
+    Matching only `"ws://..."` string literals found nothing on exactly the
+    kind of bundle this exists to read.
+    """
+    _, _, websockets, ctors, _ = analyse(CONSTRUCTED)
+    assert "/api/v1/ws" in websockets
+    assert ctors, "the constructor expression should still be recorded"
+
+
+def test_message_types_found_in_comparisons():
+    """The receiving half names types by comparing, not by declaring.
+
+    `if (m.type === "cpu")` is frequently the only place a type name appears
+    as a literal, because the sending half passes a variable.
+    """
+    *_, message_types = analyse(CONSTRUCTED)
+    assert "cpu" in message_types
+    assert "rig_changed" in message_types
+
+
+def test_message_types_found_in_send_wrappers():
+    *_, message_types = analyse(CONSTRUCTED)
+    assert "select_rig" in message_types
+    assert "footswitch" in message_types
+
+
+def test_variable_message_type_is_not_mistaken_for_a_literal():
+    """`{type: t}` names no type; it must not invent one."""
+    *_, message_types = analyse("send(JSON.stringify({type: t, payload: p}))")
+    assert "t" not in message_types

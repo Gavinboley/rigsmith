@@ -9,7 +9,7 @@ pip install -e ".[all]"
 rigsmith ui
 ```
 
-> **Status: works without hardware; one thing needs it.** Rig authoring, validation, NAM analysis, tone matching, catalog extraction, USB backup, MIDI and the web UI are all done and covered by 254 tests. The Remote Editor's wire protocol still has to be captured against a powered-on Core before `write_rig` can write — everything else runs today. See [docs/PROTOCOL.md](docs/PROTOCOL.md).
+> **Status: works without hardware; one thing needs it.** Rig authoring, validation, NAM analysis, tone matching, catalog extraction, USB backup, MIDI and the web UI are all done and covered by 277 tests. The Remote Editor's wire protocol still has to be captured against a powered-on Core before `write_rig` can write — everything else runs today. See [docs/PROTOCOL.md](docs/PROTOCOL.md).
 
 ---
 
@@ -44,6 +44,27 @@ rigsmith discover              # find it
 rigsmith probe --dump-app      # map the editor's API surface
 rigsmith protocol record       # watch the real editor work, and log every call
 ```
+
+### No hardware yet?
+
+```bash
+rigsmith protocol simulate --port 8100
+rigsmith --device 127.0.0.1:8100 discover
+rigsmith --device 127.0.0.1:8100 probe --dump-app
+rigsmith catalog extract --capture ~/.rigsmith/captures/<timestamp>
+```
+
+A stand-in device, so the whole device-facing toolchain is exercisable
+today. **It is not the real protocol** - nobody has captured that yet, and
+every response it gives is invented. What it is good for is developing
+against: discovery, endpoint extraction, catalog extraction and traffic
+recording all run end to end on it. Once real traffic *is* captured,
+`--replay` serves that instead, and the simulator becomes a faithful fixture
+rather than a guess.
+
+It has already paid for itself once: its bundle builds its WebSocket URL by
+concatenation and names message types in comparisons, and the extractor
+caught neither. Both are what real minified bundles do.
 
 If mDNS is blocked, double-tap "HeadRush Remote" on the device to read its IP and pass `--device 192.168.1.42`.
 

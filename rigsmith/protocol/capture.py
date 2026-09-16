@@ -56,6 +56,12 @@ _GENERIC_PATH_PATTERN = re.compile(r"""["'`](/[A-Za-z0-9_\-]+(?:/[A-Za-z0-9_\-.$
 _WS_PATTERN = re.compile(r"""["'`](wss?://[^"'`\s]+)["'`]""", re.I)
 _WS_CTOR_PATTERN = re.compile(r"""new\s+WebSocket\s*\(\s*([^)]{0,200})\)""", re.I)
 
+#: A bundle rarely hardcodes its own socket URL - it builds one, typically as
+#: `new WebSocket("ws://" + location.host + "/api/v1/ws")`. Matching only
+#: literal ws:// strings therefore finds nothing on exactly the bundles this
+#: is for, so the path fragment is pulled out of the constructor expression.
+_WS_PATH_IN_CTOR = re.compile(r"""["'`](/[A-Za-z0-9_\-./${}:]*w?s?[A-Za-z0-9_\-./${}:]*)["'`]""")
+
 # fetch()/axios/XHR call sites, to distinguish real calls from stray strings.
 _CALL_PATTERNS = (
     re.compile(r"""\bfetch\s*\(\s*["'`]([^"'`]+)["'`]"""),
@@ -75,6 +81,23 @@ _MSG_KEYS = "type|event|cmd|command|action|op|msg|method"
 _MSG_TYPE_PATTERN = re.compile(
     r"""(?:["'`]\s*(?:%s)\s*["'`]|\b(?:%s)\b)\s*:\s*["'`]([A-Za-z0-9_.\-]{2,48})["'`]"""
     % (_MSG_KEYS, _MSG_KEYS)
+)
+
+#: Handlers name message types by comparing against them, not by declaring
+#: them - `if (m.type === "cpu")`. On the receiving half of a protocol that is
+#: usually the *only* place a type name appears as a literal, since the
+#: sending half passes a variable through JSON.stringify.
+_MSG_COMPARE_PATTERN = re.compile(
+    r"""\.(?:%s)\s*={2,3}\s*["'`]([A-Za-z0-9_.\-]{2,48})["'`]""" % _MSG_KEYS
+)
+_MSG_COMPARE_REVERSED = re.compile(
+    r"""["'`]([A-Za-z0-9_.\-]{2,48})["'`]\s*={2,3}\s*\w+\.(?:%s)\b""" % _MSG_KEYS
+)
+
+#: `send("select_rig", {...})` - a thin wrapper over the socket, where the
+#: type is the first argument rather than an object key.
+_MSG_SEND_PATTERN = re.compile(
+    r"""\b(?:send|emit|dispatch|post)\w*\s*\(\s*["'`]([a-z][A-Za-z0-9_.\-]{1,47})["'`]\s*,"""
 )
 
 _TEXTUAL_SUFFIXES = {".html", ".htm", ".js", ".mjs", ".cjs", ".css", ".json", ".map", ".txt", ""}
@@ -291,13 +314,25 @@ def analyse_bundle(texts: dict[str, str]) -> tuple[
 
         websockets.update(_WS_PATTERN.findall(text))
         for match in _WS_CTOR_PATTERN.findall(text):
-            ws_ctors.add(" ".join(match.split())[:200])
+            expression = " ".join(match.split())[:200]
+            ws_ctors.add(expression)
+            # Recover the path from a constructed URL, so a bundle that never
+            # writes a literal ws:// still yields somewhere to connect.
+            for path in _WS_PATH_IN_CTOR.findall(expression):
+                if len(path) > 2:
+                    websockets.add(path)
+
         # A bare HTTP verb here is a `method: "POST"` request option, not a
         # protocol message type.
-        message_types.update(
-            m for m in _MSG_TYPE_PATTERN.findall(text)
-            if m.upper() not in _HTTP_VERBS
-        )
+        for pattern in (
+            _MSG_TYPE_PATTERN,
+            _MSG_COMPARE_PATTERN,
+            _MSG_COMPARE_REVERSED,
+            _MSG_SEND_PATTERN,
+        ):
+            message_types.update(
+                m for m in pattern.findall(text) if m.upper() not in _HTTP_VERBS
+            )
 
         for method in _METHOD_HINT.findall(text):
             # Method hints without an adjacent path are recorded as a note by
