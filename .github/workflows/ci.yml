@@ -1,0 +1,89 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: test (py${{ matrix.python }}, ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ["3.10", "3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+
+      - name: Install
+        # Not [all]: python-rtmidi and demucs need build tooling and large
+        # wheels that this suite does not touch. Everything here runs without
+        # hardware, so the optional hardware extras stay out of CI.
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[mcp,ui,match,dev]"
+
+      - name: Test
+        run: pytest -q
+
+      - name: Core imports with no optional dependencies
+        # The package must stay importable for someone who ran a bare
+        # `pip install rigsmith`, which is easy to break with a stray
+        # top-level import of an optional dependency.
+        run: |
+          pip install --force-reinstall --no-deps -e .
+          python -c "import rigsmith, rigsmith.core.rigs, rigsmith.core.workspace, rigsmith.rig.validate, rigsmith.tone.nam, rigsmith.protocol.catalog_extract; print('ok')"
+
+  smoke:
+    name: end-to-end against the simulator
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[mcp,ui,match,dev]"
+
+      - name: Build a rig and write it to a simulated device
+        # The whole user-facing path in one go: if any surface regresses,
+        # this fails even when the unit tests do not.
+        run: |
+          set -euo pipefail
+          rigsmith protocol simulate --port 8123 &
+          for _ in $(seq 1 60); do
+            curl -sf http://127.0.0.1:8123/api/v1/status >/dev/null && break
+            sleep 0.5
+          done
+
+          rigsmith doctor
+          rigsmith --device 127.0.0.1:8123 discover
+          rigsmith --device 127.0.0.1:8123 probe --dump-app
+          rigsmith catalog extract --capture "$(ls -d ~/.rigsmith/captures/*/ | tail -1)"
+          rigsmith catalog status
+
+          rigsmith recipe new "CI Tone" --summary "Built by CI"
+          rigsmith recipe gear ci-tone amp "82 LEAD 800 100W" --category amp \
+            --confidence reported --source "simulator catalog"
+          rigsmith recipe resolve ci-tone amp 82-lead-800-100w
+          rigsmith recipe compile ci-tone
+
+          rigsmith rig validate ci-tone
+          rigsmith --device 127.0.0.1:8123 rig write ci-tone --yes
+          rigsmith workspace status
