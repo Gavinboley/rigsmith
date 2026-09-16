@@ -95,12 +95,32 @@ def test_duplicate_scene_names_rejected():
     assert "duplicate scene name" in messages(result)
 
 
-def test_missing_speaker_warns_but_does_not_block():
+def test_an_amp_with_no_speaker_is_warned_about():
     rig = Rig(name="amp only")
-    rig.add_block(Block(slot=0, category=BlockCategory.NAM, model_id="generic:nam"))
+    rig.add_block(Block(slot=0, category=BlockCategory.AMP, model_id="generic:amp"))
     result = validate_rig(rig, catalog())
     assert result.ok, "a missing cab is a convention, not a hardware error"
     assert "harsh" in messages(result)
+
+
+def test_a_capture_with_no_speaker_gets_the_other_half_of_the_story():
+    """An amp model is the amp alone and always wants a speaker after it. A
+    capture might already contain one, and adding an IR to a full-rig capture
+    is the more common mistake - so this cannot be stated as a fault."""
+    rig = Rig(name="capture only")
+    rig.add_block(Block(slot=0, category=BlockCategory.NAM, model_id="generic:nam"))
+    result = validate_rig(rig, catalog())
+
+    assert result.ok
+    text = messages(result)
+    assert "depends on what was captured" in text
+    assert "cab it twice" in text
+    assert "harsh" not in text, "that is the amp-model answer, not the capture one"
+
+    severities = {
+        f.severity for f in result.findings if "what was captured" in f.message
+    }
+    assert severities == {"info"}, "an unknown is not a warning"
 
 
 def test_cab_before_amp_warns():

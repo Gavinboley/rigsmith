@@ -341,11 +341,33 @@ def validate_rig(rig: Rig, catalog: Catalog | None = None) -> ValidationResult:
         b.category in {BlockCategory.CAB, BlockCategory.IR} for b in rig.blocks
     )
     if rig.tone_sources and not has_speaker:
-        result.add(
-            "warning",
-            "an amp/NAM block with no cab or IR after it will sound harsh "
-            "into a full-range output",
-        )
+        # Amp models and captures need opposite advice here, and saying the
+        # same thing about both gets one of them wrong. A device amp model is
+        # the amp alone, so it always wants a speaker after it. A NAM capture
+        # might be an amp, or might be the whole miked rig - and putting an IR
+        # after a full-rig capture is the more common mistake of the two.
+        modelled = [
+            b for b in rig.tone_sources if b.category in {BlockCategory.AMP,
+                                                          BlockCategory.CLONE}
+        ]
+        captures = [b for b in rig.tone_sources if b.category is BlockCategory.NAM]
+
+        if modelled:
+            result.add(
+                "warning",
+                "an amp block with no cab or IR after it will sound harsh into "
+                "a full-range output",
+                slot=modelled[0].slot,
+            )
+        if captures and not modelled:
+            result.add(
+                "info",
+                "no cab or IR after the capture. Whether that is wrong depends "
+                "on what was captured: an amp-only capture wants one, and a "
+                "full-rig capture already has the cab and mic baked in, where "
+                "adding an IR would cab it twice",
+                slot=captures[0].slot,
+            )
 
     for source in rig.tone_sources:
         later_speaker = any(
