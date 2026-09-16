@@ -177,8 +177,24 @@ class Job:
         return unsubscribe
 
     def cancel(self) -> None:
-        """Request cancellation. The job stops at its next checkpoint."""
+        """Request cancellation. The job stops at its next checkpoint.
+
+        Cooperative, not immediate: work that never calls ``progress.check()``
+        runs to completion regardless. Saying so in the job's own message is
+        the difference between a UI that looks stuck and one that is waiting
+        for a reason somebody can see.
+        """
+        if self.finished or self._cancel.is_set():
+            return
         self._cancel.set()
+        self._record(
+            JobEvent(
+                job_id=self.id,
+                at=time.time(),
+                kind="log",
+                message="cancellation requested - stopping at the next checkpoint",
+            )
+        )
 
     def wait(self, timeout: float | None = None) -> bool:
         """Block until the job finishes. Returns False on timeout."""
@@ -362,12 +378,18 @@ class JobManager:
         try:
             for event in backlog:
                 yield event
-            if job.finished and not backlog:
+                # A job that already finished has its terminal event in the
+                # backlog. Without this the loop below waits on a queue
+                # nothing will ever put to, and streaming a completed job
+                # blocked for a second before returning nothing.
+                if event.kind == "state" and event.state and event.state.finished:
+                    return
+            if job.finished:
                 return
             while True:
                 try:
                     event = pending.get(timeout=timeout if timeout else 1.0)
-                except Exception:
+                except queue.Empty:
                     if job.finished:
                         return
                     continue
