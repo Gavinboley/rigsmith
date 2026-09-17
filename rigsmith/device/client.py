@@ -62,6 +62,28 @@ class WriteReport:
     def completed(self) -> int:
         return sum(1 for step in self.steps if step.ok)
 
+    @property
+    def caveats(self) -> list[str]:
+        """Everything a reader has to be told about this write.
+
+        A property rather than prose inside render(), because a JSON consumer
+        needs the same warnings a terminal gets. ``verified_map: false`` is a
+        boolean that is very easy to skip past; a sentence is not.
+        """
+        notes: list[str] = []
+        if not self.verified_map:
+            notes.append(
+                f"The protocol map '{self.map_name}' is UNVERIFIED - it was "
+                "invented or inferred rather than captured from a real device. "
+                "Check the device before trusting this."
+            )
+        if not self.ok:
+            notes.append(
+                "Stopped at the first refusal rather than pressing on, so the "
+                "device holds a partial rig. Review it before retrying."
+            )
+        return notes
+
     def render(self) -> str:
         header = (
             f"Wrote '{self.rig_name}' to the device"
@@ -72,24 +94,14 @@ class WriteReport:
         if self.rig_id is not None:
             lines.append(f"  device rig id: {self.rig_id}")
         lines.extend(step.render() for step in self.steps)
-
-        if not self.verified_map:
-            lines.append(
-                f"\n  The protocol map '{self.map_name}' is UNVERIFIED - it was "
-                "invented or inferred rather than captured from a real device. "
-                "Check the device before trusting this."
-            )
-        if not self.ok:
-            lines.append(
-                "\n  Stopped at the first refusal rather than pressing on, so "
-                "the device holds a partial rig. Review it before retrying."
-            )
+        lines.extend(f"\n  {note}" for note in self.caveats)
         return "\n".join(lines)
 
     def to_dict(self) -> dict:
         return {
             "rig_name": self.rig_name,
             "rig_id": self.rig_id,
+            "caveats": self.caveats,
             "ok": self.ok,
             "completed": self.completed,
             "verified_map": self.verified_map,

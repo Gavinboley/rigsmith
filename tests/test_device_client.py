@@ -300,3 +300,51 @@ async def test_write_report_serialises(client):
     assert data["ok"] is True
     assert data["verified_map"] is False
     assert len(data["steps"]) == 5
+
+
+def test_a_write_report_carries_its_caveats_as_text_not_just_a_flag():
+    """A JSON consumer needs the same warning a terminal gets. 'verified_map:
+    false' is a boolean anyone can skip past; a sentence is not."""
+    from rigsmith.device.client import Step, WriteReport
+
+    report = WriteReport(
+        rig_name="Cherub Rock",
+        rig_id=3,
+        steps=[Step(operation="create_rig", ok=True, detail="id 3")],
+        verified_map=False,
+        map_name="simulator",
+    )
+
+    assert any("UNVERIFIED" in note for note in report.caveats)
+    assert any("UNVERIFIED" in note for note in report.to_dict()["caveats"])
+    # And the rendered text still says it, for the terminal.
+    assert "UNVERIFIED" in report.render()
+
+
+def test_a_verified_map_that_succeeded_has_nothing_to_warn_about():
+    from rigsmith.device.client import Step, WriteReport
+
+    report = WriteReport(
+        rig_name="R",
+        steps=[Step(operation="create_rig", ok=True)],
+        verified_map=True,
+        map_name="fw-5.1",
+    )
+    assert report.caveats == []
+
+
+def test_a_partial_write_says_the_device_holds_half_a_rig():
+    from rigsmith.device.client import Step, WriteReport
+
+    report = WriteReport(
+        rig_name="R",
+        steps=[
+            Step(operation="create_rig", ok=True),
+            Step(operation="add_block", ok=False, detail="refused"),
+        ],
+        verified_map=True,
+        map_name="fw-5.1",
+    )
+    notes = " ".join(report.caveats)
+    assert "partial rig" in notes
+    assert "Review it before retrying" in notes

@@ -472,6 +472,11 @@ export function onJobs(jobs) {
       kind: result.written ? "ok" : "error",
       timeout: 14000,
     });
+    // The unverified-protocol warning is the most important sentence in a
+    // write, and a boolean in the payload is very easy to skip past.
+    for (const caveat of result.report?.caveats || []) {
+      toast(caveat, { kind: "error", timeout: 18000 });
+    }
     // The device is the new baseline once it has been written to.
     if (result.written) await refreshDrafts(current?.draft_id ?? null);
   });
