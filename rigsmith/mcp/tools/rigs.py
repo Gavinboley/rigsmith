@@ -256,6 +256,13 @@ def validate_rig(draft_id: str) -> str:
     unintended), and the estimated CPU load. The CPU figure is an estimate
     built on community measurements, not a vendor specification - the
     device's own meter is authoritative.
+
+    When a NAM block's capture has been downloaded, its own metadata is read
+    too. The finding worth acting on is the double cab: most TONE3000
+    captures are of a whole miked rig, and an IR after one of those runs the
+    signal through two speakers, which sounds boxy for reasons that are very
+    hard to trace back. Where the file does not say what was captured, the
+    finding is phrased as a question - do not resolve it by guessing.
     """
     result = rigs.validate(draft_id)
     header = "VALID" if result.ok else f"INVALID - {len(result.errors)} error(s)"
@@ -297,6 +304,11 @@ def write_rig(
 
     Validates, backs up, and shows a diff first. Requires confirm=True so the
     diff can be reviewed before anything changes on the hardware.
+
+    The backup is a gate, not a courtesy: if the device's USB storage is not
+    mounted the write is refused. Relay that to the user rather than working
+    around it - putting the Core into Menu > USB Transfer is the fix, and it
+    takes seconds.
 
     Args:
         allow_without_backup: Write even when the device's USB storage is not

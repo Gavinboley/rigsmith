@@ -118,3 +118,39 @@ def test_safety_claims_are_still_true():
 
     source = (ROOT / "rigsmith" / "config.py").read_text(encoding="utf-8")
     assert "RIGSMITH_READONLY" in source
+
+
+def test_the_agent_facing_docstrings_carry_the_caveats_that_matter():
+    """An agent's only interface to this tool is what the tools say about
+    themselves. A caveat that lives only in docs/ does not reach it."""
+    pytest.importorskip("mcp")
+    import asyncio
+
+    from rigsmith.mcp import server
+
+    tools = {t.name: (t.description or "") for t in asyncio.run(server.mcp.list_tools())}
+
+    required = {
+        # The write is the one irreversible action, and the backup gate is
+        # the thing an agent is most likely to try to work around.
+        "write_rig": ["backup", "refused", "confirm"],
+        # Mode choice is the single decision that makes tone numbers
+        # meaningful or meaningless.
+        "score_candidates": ["aligned", "distribution", "ranking"],
+        # An inference presented as a fact is the failure mode here.
+        "inspect_capture": ["evidence", "generation"],
+        # Cooperative cancellation is a contract, not an implementation note.
+        "cancel_job": ["checkpoint"],
+        # A separated stem is not a DI, and agents will treat it as one.
+        "isolate_guitar": ["distribution"],
+    }
+
+    missing: list[str] = []
+    for name, phrases in required.items():
+        assert name in tools, f"{name} is not registered"
+        text = tools[name].lower()
+        missing.extend(
+            f"{name}: '{phrase}'" for phrase in phrases if phrase.lower() not in text
+        )
+
+    assert not missing, "agent-facing docstrings lost a caveat: " + "; ".join(missing)

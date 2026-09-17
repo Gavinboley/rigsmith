@@ -182,6 +182,12 @@ def score_candidates(
     In distribution mode the sample-wise metrics (ESR, STFT loss) are not
     computed at all. Against a different performance they are unstable to
     arbitrary timing offsets and report nonsense.
+
+    The composite runs 0 to 1, lower being closer, and is a ranking rather
+    than a measurement: it is comparable between candidates scored the same
+    way against the same target, and between nothing else. Follow it with
+    explain_difference to find out what is still wrong, and with a blind A/B
+    to decide - a metric win is not a tone win.
     """
     scores = matching.score(
         target_path,
