@@ -128,8 +128,12 @@ def audio_file(directory, name="riff.wav", seconds=3.0):
     rate = 48000
     t = np.arange(int(seconds * rate)) / rate
     tone = np.tanh(np.sin(2 * np.pi * 196 * t) * 4)
+    # Backed off the rails. Saturated to exactly full scale it reads as
+    # clipped, correctly - which would make every fixture here look like a
+    # problem take.
+    tone = tone / np.abs(tone).max() * 0.8
     path = directory / name
-    sf.write(str(path), tone.astype("float32"), rate)
+    sf.write(str(path), tone.astype("float32"), rate, subtype="FLOAT")
     return path
 
 
@@ -840,3 +844,43 @@ def test_the_panel_can_find_the_part_for_you(browser, server, tmp_path):
         # The riff runs 14s to 24s, and that is where it should have landed.
         start = float(label.split("s-")[0])
         assert 12.0 <= start <= 17.0, label
+
+
+def test_the_waveform_says_what_the_file_is(browser, server, tmp_path):
+    """Lossy and clipped both look like tone to every metric here, so they
+    belong next to the audio rather than in a log somewhere."""
+    sf = pytest.importorskip("soundfile")
+    import numpy as np
+    from rigsmith.match.source import readable_formats
+
+    if "MP3" not in readable_formats():
+        pytest.skip("this libsndfile has no mp3 encoder")
+
+    rate = 48000
+    t = np.arange(rate * 3) / rate
+    clipped = np.clip(np.sin(2 * np.pi * 196 * t) * 4, -1, 1)
+    path = tmp_path / "hot.mp3"
+    sf.write(str(path), clipped.astype("float32"), rate, format="MP3")
+
+    with page_at(browser, server) as page:
+        page.click("#tabs .tab[data-panel='match']")
+        page.fill("#target-path", str(path))
+        page.click("#open-target")
+        page.wait_for_selector("#target-wave canvas", timeout=20000)
+
+        tags = page.inner_text("#target-wave-tags")
+        assert "lossy" in tags
+        assert "clipped" in tags
+        assert "hot.mp3" in page.inner_text("#target-wave-name")
+
+
+def test_a_clean_file_says_nothing_extra(browser, server, tmp_path):
+    """Saying something has to mean something."""
+    path = audio_file(tmp_path, "clean.wav")
+
+    with page_at(browser, server) as page:
+        page.click("#tabs .tab[data-panel='match']")
+        page.fill("#target-path", str(path))
+        page.click("#open-target")
+        page.wait_for_selector("#target-wave canvas", timeout=20000)
+        assert page.inner_text("#target-wave-tags").strip() == ""

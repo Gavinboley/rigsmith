@@ -32,9 +32,22 @@ def workspace(tmp_path, monkeypatch):
     config.set_settings(None)
 
 
+def _seed(name: str) -> int:
+    """A stable seed per filename.
+
+    Two takes of the same riff are never byte-identical in real life, and the
+    library refuses an exact duplicate on purpose - so fixtures that differ
+    only by filename would be testing that refusal by accident.
+    """
+    return abs(hash(name)) % (2**31)
+
+
 def recording(directory, name="riff.wav", seconds=2.0, **kwargs):
     t = np.arange(int(seconds * RATE)) / RATE
-    signal = (np.sin(2 * np.pi * 196 * t) * 0.4).astype("float32")
+    rng = np.random.default_rng(_seed(name))
+    signal = (
+        np.sin(2 * np.pi * 196 * t) * 0.4 + 0.01 * rng.standard_normal(len(t))
+    ).astype("float32")
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / name
     sf.write(str(path), signal, RATE, **(kwargs or {"subtype": "FLOAT"}))
@@ -94,12 +107,14 @@ def test_a_take_is_read_before_it_is_filed(workspace):
 
 
 def test_two_takes_cannot_share_a_name(workspace):
-    recording(workspace / "a", "riff.wav")
-    recording(workspace / "b", "riff.wav")
-    takes.add(workspace / "a" / "riff.wav")
+    """Different recordings, same name - which is a different complaint from
+    the same recording twice."""
+    first = recording(workspace / "src", "monday.wav")
+    second = recording(workspace / "src", "tuesday.wav")
+    takes.add(first, take_id="the-riff")
 
     with pytest.raises(Conflict, match="already exists"):
-        takes.add(workspace / "b" / "riff.wav")
+        takes.add(second, take_id="the-riff")
 
 
 def test_an_unknown_kind_lists_the_real_ones(workspace):
@@ -354,7 +369,7 @@ def _guitar(directory, name, *, dark=0.0, bright=0.0):
     scipy_signal = pytest.importorskip("scipy.signal")
 
     t = np.arange(3 * RATE) / RATE
-    rng = np.random.default_rng(4)
+    rng = np.random.default_rng(_seed(name))
     # Harmonically rich on purpose. Two pure sines have nothing above 400 Hz
     # for a shelf to act on, so filtered copies of them come out identical
     # once levels are normalised - and the test would pass on a fixture that
@@ -467,6 +482,7 @@ def test_every_result_carries_where_it_differs(workspace):
 def _played(directory, name, *, base=82.41, cents=0.0):
     """A short riff of plucked notes, so pitch has something to find."""
     directory.mkdir(parents=True, exist_ok=True)
+    rng = np.random.default_rng(_seed(name))
     frames = []
     for frequency in (base, base * 1.5, base * 2, base):
         tuned = frequency * (2 ** (cents / 1200))
@@ -476,6 +492,7 @@ def _played(directory, name, *, base=82.41, cents=0.0):
         )
         frames.append(partials * np.exp(-t * 3))
     signal = np.concatenate(frames * 3)
+    signal = signal + 0.005 * rng.standard_normal(len(signal))
     signal = signal / np.abs(signal).max() * 0.6
 
     path = directory / f"{name}.wav"
@@ -544,3 +561,100 @@ def test_a_take_with_nothing_pitched_in_it_claims_nothing(workspace):
     )
     take = takes.add(path, kind="di", guitar="Strat")
     assert take.in_concert_pitch in (None, True)
+
+
+# --------------------------------------------------------------------------
+# the same recording, twice
+# --------------------------------------------------------------------------
+
+
+def test_the_same_file_added_twice_is_refused_with_the_first_one(workspace):
+    """Pulling loops off the pedal twice is the normal way this happens."""
+    source = recording(workspace / "src")
+    first = takes.add(source, take_id="first", guitar="Strat")
+
+    with pytest.raises(Conflict) as caught:
+        takes.add(source, take_id="second", guitar="Strat")
+
+    assert "already in the library as 'first'" in caught.value.message
+    assert first.describe() in caught.value.hint
+    assert [t.take_id for t in takes.list_takes()] == ["first"]
+
+
+def test_a_copy_under_a_different_name_is_still_the_same_recording(workspace):
+    import shutil
+
+    source = recording(workspace / "src")
+    takes.add(source, guitar="Strat")
+
+    copy = workspace / "src" / "renamed.wav"
+    shutil.copy2(source, copy)
+    with pytest.raises(Conflict, match="already in the library"):
+        takes.add(copy)
+
+
+def test_a_different_recording_of_the_same_part_is_keepable(workspace):
+    """Two takes of the same riff are two takes, not a duplicate."""
+    first = recording(workspace / "src", "take1.wav", seconds=2.0)
+    second = recording(workspace / "src", "take2.wav", seconds=2.5)
+
+    takes.add(first, guitar="Strat")
+    takes.add(second, guitar="Strat")
+    assert len(takes.list_takes()) == 2
+
+
+# --------------------------------------------------------------------------
+# recording straight into the library
+# --------------------------------------------------------------------------
+
+
+def test_recording_files_both_halves_of_the_performance(workspace, monkeypatch):
+    """The Core sends the wet tone and the dry DI at once, and they are two
+    different things: one reamps, the other is the reference."""
+    from rigsmith.core import matching
+
+    wet = recording(workspace / "src", "captured-wet.wav")
+    dry = recording(workspace / "src", "captured-dry.wav")
+
+    class FakeCapture:
+        def describe(self):
+            return "captured 2.0s"
+
+    monkeypatch.setattr(
+        matching,
+        "capture_di",
+        lambda duration, name="take": (FakeCapture(), {"wet": wet, "dry": dry}),
+    )
+
+    di, wet_take, message = takes.record(
+        2.0, take_id="cherub", guitar="Les Paul", pickup="bridge"
+    )
+
+    assert di.take_id == "cherub-di" and di.kind == "di" and di.reamps
+    assert wet_take.take_id == "cherub-wet" and not wet_take.reamps
+    assert di.guitar == wet_take.guitar == "Les Paul"
+    assert di.origin == "usb"
+    assert "captured 2.0s" in message
+
+
+def test_recording_without_a_dry_channel_says_what_that_costs(workspace, monkeypatch):
+    from rigsmith.core import matching
+
+    wet = recording(workspace / "src", "only-wet.wav")
+
+    class FakeCapture:
+        def describe(self):
+            return "captured"
+
+    monkeypatch.setattr(
+        matching,
+        "capture_di",
+        lambda duration, name="take": (FakeCapture(), {"wet": wet}),
+    )
+
+    di, wet_take, message = takes.record(2.0, guitar="Strat")
+
+    assert di is None
+    assert wet_take is not None
+    assert "cannot be rendered through other rigs" in message
+    assert "channel 5" in message, "and how to fix it"

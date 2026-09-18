@@ -380,8 +380,8 @@ def import_device_audio(
                     note=note,
                 )
             )
-        except Conflict:
-            skipped.append(f"{source.name}: already in the library")
+        except Conflict as exc:
+            skipped.append(f"{source.name}: {exc.message}")
         except (Invalid, NotFound) as exc:
             skipped.append(f"{source.name}: {exc.message}")
     return imported, skipped

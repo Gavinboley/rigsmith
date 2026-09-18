@@ -143,9 +143,41 @@ async function openInto(which, path) {
   const wave = ensureWaves()[which];
   const info = await wave.load(path);
   $(`#${which}-wave-block`).hidden = false;
-  $(`#${which}-wave-name`).textContent = info.duration
-    ? `${info.name}  ${info.duration.toFixed(1)}s  ${info.sample_rate} Hz`
-    : info.name;
+
+  const bits = [info.name];
+  if (info.duration) bits.push(`${info.duration.toFixed(1)}s`);
+  if (info.sample_rate) bits.push(`${info.sample_rate} Hz`);
+  if (info.channels > 1) bits.push(`${info.channels}ch`);
+  $(`#${which}-wave-name`).textContent = bits.join("  ");
+
+  // What the file makes of being compared. Empty most of the time, which is
+  // what makes it worth reading when it is not.
+  const tags = clear($(`#${which}-wave-tags`));
+  if (info.lossy) {
+    tags.append(
+      el("span", {
+        class: "tag warn",
+        text: "lossy",
+        title:
+          "Fine as something to chase. Not something to reamp through - the " +
+          "encoder's artefacts get printed into every candidate equally.",
+      })
+    );
+  }
+  if (info.clipped) {
+    tags.append(
+      el("span", {
+        class: "tag bad",
+        text: "clipped",
+        title:
+          "Clipping is distortion, and distortion is what these metrics " +
+          "measure. It will look like tone.",
+      })
+    );
+  }
+  for (const concern of info.concerns || []) {
+    tags.append(el("div", { class: "hint", text: concern }));
+  }
   return info;
 }
 

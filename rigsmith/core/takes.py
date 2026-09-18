@@ -50,6 +50,35 @@ ORIGINS = {
 }
 
 
+def digest_of(path: Path) -> str | None:
+    """A short content hash, or ``None`` if the file cannot be read.
+
+    Bytes rather than decoded samples: two encodes of the same performance
+    are different recordings and should both be keepable, while the same file
+    imported twice is just the same file.
+    """
+    import hashlib
+
+    try:
+        hasher = hashlib.sha256()
+        with open(path, "rb") as handle:
+            for block in iter(lambda: handle.read(1 << 20), b""):
+                hasher.update(block)
+        return hasher.hexdigest()[:32]
+    except OSError:
+        return None
+
+
+def find_duplicate(path: Path) -> "Take | None":
+    """A take already holding this exact file, if there is one."""
+    fingerprint = digest_of(path)
+    if not fingerprint:
+        return None
+    return next(
+        (take for take in _load_index().values() if take.digest == fingerprint), None
+    )
+
+
 def slugify(name: str) -> str:
     slug = re.sub(r"[^a-z0-9]+", "-", str(name).lower()).strip("-")
     return slug or "take"
@@ -75,6 +104,11 @@ class Take:
     note: str | None = None
     """What you played, in your own words. 'the Cherub Rock riff, twice.'"""
     tags: list[str] = field(default_factory=list)
+
+    digest: str | None = None
+    """Hash of the file's bytes. Only for spotting the same recording added
+    twice - which happens constantly when loops are pulled off the pedal
+    more than once."""
 
     duration: float = 0.0
     sample_rate: int = 0
@@ -282,6 +316,17 @@ def add(
     # looking usable until the day you reach for it.
     described = inspect_audio(source)
 
+    existing = find_duplicate(source)
+    if existing is not None:
+        raise Conflict(
+            f"this recording is already in the library as '{existing.take_id}'",
+            hint=(
+                f"{existing.describe()}\n"
+                "Same bytes, so nothing new to add. Rename or re-export it "
+                "first if you meant to keep a second copy."
+            ),
+        )
+
     identifier = slugify(take_id or source.stem)
     takes = _load_index()
     if identifier in takes:
@@ -322,6 +367,7 @@ def add(
         sample_rate=described.sample_rate,
         channels=described.channels,
         lossy=described.lossy,
+        digest=digest_of(destination),
         concerns=described.concerns(as_di=kind == "di"),
         lowest_note=report.lowest_note if report and report.measured else None,
         cents_offset=report.cents_offset if report and report.measured else None,
@@ -437,6 +483,68 @@ def _did_you_mean(text: str, index: dict[str, Take]) -> str | None:
     if close:
         return "Did you mean:  " + ", ".join(close)
     return "The library holds:  " + ", ".join(sorted(index))
+
+
+def record(
+    duration_s: float = 15.0,
+    *,
+    take_id: str | None = None,
+    guitar: str | None = None,
+    pickup: str | None = None,
+    tuning: str | None = None,
+    note: str | None = None,
+) -> tuple["Take | None", "Take | None", str]:
+    """Record one performance over USB and file both halves of it.
+
+    The Core sends the wet tone and the dry DI at once, on different
+    channels, and they are two different things: the DI can be rendered
+    through any candidate rig, the wet take is the reference to match against.
+    Recording them as one action and filing them as two is the shape the
+    hardware already has - asking somebody to record twice would be asking
+    them to play it differently twice.
+
+    Returns ``(di, wet, message)``. The DI is ``None`` when the device did not
+    expose channel 5, which is a USB audio mode setting rather than a fault.
+    """
+    from . import matching
+
+    require_writable("record a take")
+    capture, paths = matching.capture_di(duration_s, name=take_id or "take")
+
+    stem = slugify(take_id or "take")
+    labels = {
+        "guitar": guitar, "pickup": pickup, "tuning": tuning, "note": note,
+    }
+
+    wet = None
+    if paths.get("wet"):
+        wet = add(
+            paths["wet"],
+            take_id=f"{stem}-wet",
+            kind="wet",
+            origin="usb",
+            **labels,
+        )
+
+    di = None
+    if paths.get("dry"):
+        di = add(
+            paths["dry"],
+            take_id=f"{stem}-di",
+            kind="di",
+            origin="usb",
+            **labels,
+        )
+
+    lines = [capture.describe()]
+    lines.extend(filter(None, [di.render() if di else None, wet.render() if wet else None]))
+    if di is None:
+        lines.append(
+            "\nNo dry DI was captured, so this take cannot be rendered through "
+            "other rigs - only listened to. The Core has to expose channel 5, "
+            "which is a USB audio mode setting on the device."
+        )
+    return di, wet, "\n".join(lines)
 
 
 def render_list(takes: list[Take]) -> str:

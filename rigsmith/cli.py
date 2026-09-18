@@ -925,6 +925,29 @@ def take_rm(take_id, delete_file) -> None:
     click.echo(takes.delete(take_id, remove_file=delete_file))
 
 
+@take.command("record")
+@click.option("--seconds", default=15.0, show_default=True)
+@click.option("--id", "take_id", help="Name it. Defaults to 'take'.")
+@click.option("--guitar", help="Which instrument.")
+@click.option("--pickup")
+@click.option("--tuning")
+@click.option("--note")
+@handled
+def take_record(seconds, take_id, guitar, pickup, tuning, note) -> None:
+    """Record a performance over USB and keep both halves of it.
+
+    The Core sends the wet tone and the dry DI at once. Play the part once;
+    the DI then reamps through as many candidates as you like.
+    """
+    from .core import takes
+
+    _, _, message = takes.record(
+        seconds, take_id=take_id, guitar=guitar, pickup=pickup,
+        tuning=tuning, note=note,
+    )
+    click.echo(message)
+
+
 @take.command("compare")
 @click.argument("target", metavar="AUDIO")
 @click.option("--nam", "nam_path", type=click.Path(exists=True, path_type=Path),

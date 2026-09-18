@@ -502,3 +502,9 @@ input:focus, select:focus { outline: 1px solid var(--amber-dim); border-color: v
 .band-fill.hot { background: var(--amber); }
 .band-value { font-family: var(--mono); text-align: right; color: var(--text-dim); }
 .band.quiet { opacity: .45; }
+
+/* What a file makes of being compared - empty most of the time, which is
+   what makes it worth reading when it is not. */
+.wave-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.wave-tags:empty { display: none; }
+.wave-tags .hint { flex-basis: 100%; }

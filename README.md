@@ -11,7 +11,7 @@ pip install -e ".[all]"
 rigsmith ui
 ```
 
-> **Status: works without hardware; one thing needs it.** Rig authoring, validation, NAM analysis, tone matching, catalog extraction, USB backup, MIDI and the web UI are all done and covered by 705 tests. The Remote Editor's wire protocol still has to be captured against a powered-on Core before `write_rig` can write — everything else runs today. See [docs/PROTOCOL.md](docs/PROTOCOL.md).
+> **Status: works without hardware; one thing needs it.** Rig authoring, validation, NAM analysis, tone matching, catalog extraction, USB backup, MIDI and the web UI are all done and covered by 712 tests. The Remote Editor's wire protocol still has to be captured against a powered-on Core before `write_rig` can write — everything else runs today. See [docs/PROTOCOL.md](docs/PROTOCOL.md).
 
 ---
 
@@ -136,6 +136,9 @@ The one variable you can remove is yours.
 rigsmith take add riff.wav --kind di --guitar "Les Paul Standard" \
   --pickup bridge --tuning "E standard" --note "the riff, twice"
 
+rigsmith take record --seconds 20 --guitar "Les Paul Standard" --pickup bridge
+    # plays once, keeps both halves: the wet tone and the dry DI
+
 rigsmith take pull --list            # what is on the pedal's USB storage
 rigsmith take pull --guitar "Les Paul Standard"   # import loops off it
 
@@ -216,7 +219,7 @@ Ask for a tone. The agent researches the gear, finds an A2 capture, builds the r
     +---------------+---------------+
     |               |               |
   cli.py       mcp/tools/*      web/api.py
-  (click)       (73 tools)       (FastAPI)
+  (click)       (74 tools)       (FastAPI)
 ```
 
 Each surface is a thin adapter: parse input, call core, format output. That rule exists because the first version broke it — orchestration lived inside the MCP tools, so anything not reachable from a tool was reachable from nowhere, and whole subsystems ended up built and unwired.

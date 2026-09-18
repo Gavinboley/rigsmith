@@ -199,3 +199,33 @@ def compare_guitars(
     return matching.render_guitar_comparison(
         results, through_a_rig=bool(nam_path or ir_path)
     )
+
+
+@tool
+def record_take(
+    duration_s: float = 15.0,
+    take_id: str | None = None,
+    guitar: str | None = None,
+    pickup: str | None = None,
+    tuning: str | None = None,
+    note: str | None = None,
+) -> str:
+    """Record one performance over USB and file both halves of it.
+
+    Prefer this over capture_di when the recording is worth keeping, which is
+    almost always: it lands in the library labelled, so it can be referred to
+    by name afterwards instead of by path.
+
+    Ask which guitar and pickup first. The user is about to play something -
+    that is the moment they know the answer, and the label is the reason the
+    library is worth having.
+    """
+    _, _, message = takes.record(
+        duration_s,
+        take_id=take_id,
+        guitar=guitar,
+        pickup=pickup,
+        tuning=tuning,
+        note=note,
+    )
+    return message
