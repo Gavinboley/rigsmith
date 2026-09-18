@@ -656,6 +656,23 @@ export function init() {
       await openInto("target", path);
     });
 
+  // Finding the solo by hand means scrubbing and reading a clock, which is
+  // a thing people do once and then stop doing.
+  for (const which of ["target", "candidate"]) {
+    $(`#${which}-auto`).onclick = () =>
+      attempt(async () => {
+        const info = waves?.[which]?.info();
+        if (!info) throw new Error("Open a file here first");
+        const { region, reason } = await api.suggestRegion(info.path);
+        if (!region) {
+          toast(reason || "No obvious passage to pick", { timeout: 6000 });
+          return;
+        }
+        waves[which].setRegion(region);
+        onRegionChanged(which, region);
+      });
+  }
+
   $("#target-play").onclick = () => ensureWaves().target.playPause();
   $("#target-clear").onclick = () => ensureWaves().target.clear();
   $("#candidate-play").onclick = () => ensureWaves().candidate.playPause();

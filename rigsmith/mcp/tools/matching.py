@@ -169,15 +169,18 @@ def score_candidates(
             performance - your own DI reamped through each rig, against your
             own reference. Use 'distribution' against anything separated from
             a record, which is a different performance.
-        target_region: 'start:end' in seconds, to score one passage of the
-            target instead of all of it. Worth setting whenever the tone you
+        target_region: 'start:end' in seconds, or the word 'auto' to use the
+            busiest passage of the file. Worth setting whenever the tone you
             are chasing is one section - a whole track averages its clean
             intro together with its solo, and a candidate matching neither
-            can win that way.
+            can win that way. 'auto' is a good default when the user has not
+            said which part they mean; tell them which span it chose.
         candidate_region: The matching passage of each candidate. Usually
             different from target_region, because the same riff sits at a
-            different time code in a DI than it does on the record. In
-            aligned mode it must equal target_region.
+            different time code in a DI than it does on the record. 'auto'
+            here is resolved separately for every candidate, which is what
+            you want when they were recorded at different times. In aligned
+            mode it must equal target_region.
 
     In distribution mode the sample-wise metrics (ESR, STFT loss) are not
     computed at all. Against a different performance they are unstable to

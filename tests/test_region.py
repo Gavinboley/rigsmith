@@ -173,3 +173,80 @@ def test_aligned_mode_accepts_one_region_applied_to_both(clip_files):
         candidate_region="0:2",
     )
     assert scores[0].label == "bright"
+
+
+# --------------------------------------------------------------------------
+# picking the passage without making anyone find it
+# --------------------------------------------------------------------------
+
+
+def _song(path, rate=SR):
+    """Thirty seconds: silence, quiet noodling, the riff, silence."""
+    sf = pytest.importorskip("soundfile")
+    t = np.arange(rate * 30) / rate
+    signal = np.zeros_like(t)
+    signal[4 * rate : 10 * rate] = np.sin(2 * np.pi * 196 * t[: 6 * rate]) * 0.08
+    signal[14 * rate : 24 * rate] = np.sin(2 * np.pi * 196 * t[: 10 * rate]) * 0.8
+    sf.write(str(path), signal.astype("float32"), rate, subtype="FLOAT")
+    return path
+
+
+def test_the_busiest_passage_is_the_one_chosen(tmp_path):
+    """Scrubbing a waveform and reading a clock is a thing people do once."""
+    from rigsmith.core.matching import suggest_region
+
+    region = suggest_region(_song(tmp_path / "song.wav"))
+
+    assert region is not None
+    assert 13.0 <= region.start <= 16.0, region.describe()
+    assert region.end <= 24.5
+
+
+def test_a_file_shorter_than_the_window_needs_no_region(tmp_path):
+    """Not a failure - the whole thing already is the passage."""
+    sf = pytest.importorskip("soundfile")
+    from rigsmith.core.matching import suggest_region
+
+    path = tmp_path / "short.wav"
+    sf.write(str(path), np.zeros(SR * 3, dtype="float32"), SR, subtype="FLOAT")
+    assert suggest_region(path) is None
+
+
+def test_auto_resolves_against_the_file_it_applies_to(tmp_path):
+    from rigsmith.core.matching import resolve_region, suggest_region
+
+    song = _song(tmp_path / "song.wav")
+    assert resolve_region("auto", song) == suggest_region(song)
+    assert resolve_region("AUTO", song) is not None
+    assert resolve_region("1:2", song) == Region(1.0, 2.0)
+    assert resolve_region(None, song) is None
+
+
+def test_auto_picks_a_different_passage_for_each_candidate(tmp_path):
+    """Resolving it once and applying that to everything would compare the
+    wrong seconds of every candidate after the first."""
+    sf = pytest.importorskip("soundfile")
+    from rigsmith.core.matching import score
+
+    rate = SR
+    t = np.arange(rate * 30) / rate
+    tone = np.sin(2 * np.pi * 196 * t[: 10 * rate])
+
+    early = np.zeros_like(t)
+    early[: 10 * rate] = tone
+    late = np.zeros_like(t)
+    late[20 * rate : 30 * rate] = tone
+
+    for name, signal in (("early.wav", early), ("late.wav", late)):
+        sf.write(str(tmp_path / name), signal.astype("float32"), rate, subtype="FLOAT")
+
+    # Both candidates hold the same ten seconds of audio in different places.
+    # With per-candidate auto they both find it and score identically.
+    scores = score(
+        tmp_path / "early.wav",
+        {"early": tmp_path / "early.wav", "late": tmp_path / "late.wav"},
+        target_region="auto",
+        candidate_region="auto",
+    )
+    composites = {s.label: s.composite for s in scores}
+    assert composites["late"] == pytest.approx(composites["early"], abs=0.02), composites

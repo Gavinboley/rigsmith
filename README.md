@@ -11,7 +11,7 @@ pip install -e ".[all]"
 rigsmith ui
 ```
 
-> **Status: works without hardware; one thing needs it.** Rig authoring, validation, NAM analysis, tone matching, catalog extraction, USB backup, MIDI and the web UI are all done and covered by 665 tests. The Remote Editor's wire protocol still has to be captured against a powered-on Core before `write_rig` can write — everything else runs today. See [docs/PROTOCOL.md](docs/PROTOCOL.md).
+> **Status: works without hardware; one thing needs it.** Rig authoring, validation, NAM analysis, tone matching, catalog extraction, USB backup, MIDI and the web UI are all done and covered by 670 tests. The Remote Editor's wire protocol still has to be captured against a powered-on Core before `write_rig` can write — everything else runs today. See [docs/PROTOCOL.md](docs/PROTOCOL.md).
 
 ---
 
@@ -180,6 +180,7 @@ rigsmith match isolate song.wav                   # guitar stem via Demucs
 rigsmith match capture-di --seconds 20            # play the riff once
 rigsmith match search di.wav stem.wav ./captures  # render every capture, rank them
 rigsmith match score stem.wav a.wav b.wav --region 41.2:58.0   # just the solo
+rigsmith match score stem.wav a.wav b.wav --region auto        # or let it find the part
 rigsmith match explain stem.wav a.wav --region 41.2:58.0   # what is still wrong
 rigsmith match ab start s1 "Cherub Rock" a.wav b.wav c.wav
 ```

@@ -1025,6 +1025,26 @@ def match_bands(body: BandsBody) -> dict:
     }
 
 
+@router.get("/match/suggest-region")
+def suggest_region(path: str, seconds: float = 8.0) -> dict:
+    """The busiest continuous passage of a file.
+
+    A starting point rather than a judgement - the waveform is there to drag
+    when it chooses wrong.
+    """
+    _allow_audio(path)
+    region = matching.suggest_region(path, seconds=seconds)
+    return {
+        "region": None if region is None else [region.start, region.end],
+        "describe": region.describe() if region else None,
+        "reason": (
+            None
+            if region
+            else "the file is short enough that all of it is the passage"
+        ),
+    }
+
+
 @router.get("/match/spectrum")
 def match_spectrum(
     path: str,

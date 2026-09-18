@@ -386,6 +386,69 @@ def audio_path(reference) -> Path:
     return takes.resolve(reference)
 
 
+#: How long an automatically chosen passage is, in seconds. Long enough to
+#: average over several notes, short enough not to wander into a different
+#: part of the song.
+AUTO_REGION_SECONDS = 8.0
+
+#: Hop between the windows the search walks, in seconds.
+_AUTO_HOP = 0.1
+
+
+def suggest_region(path, *, seconds: float = AUTO_REGION_SECONDS) -> Region | None:
+    """The busiest continuous passage of a file.
+
+    Finding the solo by hand means scrubbing a waveform and reading a clock,
+    which is a thing people do once and then stop doing. This picks the window
+    carrying the most energy - in practice the part that is actually being
+    played rather than a count-in, a held note, or the tail of a fade.
+
+    It is a starting point, not a judgement. Drag the region if it chose
+    wrong; that is why the waveform is there.
+
+    Returns ``None`` when the file is shorter than the window, which is not a
+    failure - it means the whole thing already is the passage.
+    """
+    import numpy as np
+
+    from ..match.render_offline import load_audio
+
+    audio, sample_rate = load_audio(audio_path(path))
+    total = len(audio) / sample_rate
+    if total <= seconds + MIN_REGION_SECONDS:
+        return None
+
+    hop = max(1, int(_AUTO_HOP * sample_rate))
+    window = max(1, int(seconds * sample_rate))
+
+    # Energy per hop, then a running sum over the window. Summing squares
+    # rather than amplitudes so a loud passage counts for more than a long
+    # quiet one, which is the distinction that matters here.
+    squares = np.asarray(audio, dtype=np.float64) ** 2
+    usable = (len(squares) // hop) * hop
+    per_hop = squares[:usable].reshape(-1, hop).sum(axis=1)
+    hops_per_window = max(1, window // hop)
+    if len(per_hop) <= hops_per_window:
+        return None
+
+    cumulative = np.concatenate([[0.0], np.cumsum(per_hop)])
+    totals = cumulative[hops_per_window:] - cumulative[:-hops_per_window]
+    best = int(np.argmax(totals))
+
+    start = best * hop / sample_rate
+    end = min(total, start + seconds)
+    if end - start < MIN_REGION_SECONDS:
+        return None
+    return Region(round(start, 3), round(end, 3))
+
+
+def resolve_region(value, path):
+    """Parse a region, resolving the literal ``auto`` against a file."""
+    if isinstance(value, str) and value.strip().lower() == "auto":
+        return suggest_region(path)
+    return Region.parse(value)
+
+
 def parse_mode(value: str):
     from ..match.metrics import ComparisonMode
 
@@ -429,10 +492,28 @@ def score(
         raise Invalid("no candidates given")
 
     comparison = parse_mode(mode)
-    target_region = Region.parse(target_region)
-    candidate_region = Region.parse(candidate_region)
+    target_path = audio_path(target_path)
+    candidate_paths = {
+        label: audio_path(path) for label, path in candidate_paths.items()
+    }
 
-    if comparison.value == "aligned" and target_region != candidate_region:
+    target_region = resolve_region(target_region, target_path)
+    # "auto" means "the busiest passage of this file", which is a different
+    # answer for each candidate. Resolving it once against the first one and
+    # applying that to all of them would silently compare the wrong seconds
+    # of every candidate after the first.
+    per_candidate_auto = (
+        isinstance(candidate_region, str)
+        and candidate_region.strip().lower() == "auto"
+    )
+    if not per_candidate_auto:
+        candidate_region = Region.parse(candidate_region)
+
+    if (
+        comparison.value == "aligned"
+        and not per_candidate_auto
+        and target_region != candidate_region
+    ):
         # Trimming the two signals differently shifts one against the other,
         # which is exactly the contamination aligned mode exists to avoid.
         raise Invalid(
@@ -446,11 +527,6 @@ def score(
             ),
         )
 
-    target_path = audio_path(target_path)
-    candidate_paths = {
-        label: audio_path(path) for label, path in candidate_paths.items()
-    }
-
     target, sample_rate = load_audio(target_path)
     if target_region:
         target = target_region.slice(target, sample_rate, label="the target")
@@ -460,8 +536,9 @@ def score(
         audio, rate = load_audio(path)
         if rate != sample_rate:
             audio = resample(audio, rate, sample_rate)
-        if candidate_region:
-            audio = candidate_region.slice(audio, sample_rate, label=label)
+        span = suggest_region(path) if per_candidate_auto else candidate_region
+        if span:
+            audio = span.slice(audio, sample_rate, label=label)
         loaded[label] = audio
 
     scores = rank_candidates(target, loaded, sample_rate, mode=comparison)
@@ -513,8 +590,8 @@ def compare_bands(
 
     target_path = audio_path(target_path)
     candidate_path = audio_path(candidate_path)
-    target_region = Region.parse(target_region)
-    candidate_region = Region.parse(candidate_region)
+    target_region = resolve_region(target_region, target_path)
+    candidate_region = resolve_region(candidate_region, candidate_path)
 
     target, sample_rate = load_audio(target_path)
     if target_region:
@@ -642,7 +719,8 @@ def run_offline_search(
     # they get measured as tone. Worth saying before minutes of rendering.
     from ..match.source import concerns_for
 
-    described = Region.parse(target_region)
+    described = resolve_region(target_region, target_path)
+    target_region = described
     result = SearchResult(
         target_path=Path(target_path),
         mode=mode,

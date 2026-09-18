@@ -809,3 +809,34 @@ def test_a_take_with_no_guitar_is_called_out(browser, server, tmp_path):
         assert "the reason this library is worth keeping" in page.inner_text(
             "#takes-summary"
         )
+
+
+def test_the_panel_can_find_the_part_for_you(browser, server, tmp_path):
+    """Scrubbing a waveform and reading a clock is a thing people do once."""
+    sf = pytest.importorskip("soundfile")
+    import numpy as np
+
+    rate = 48000
+    t = np.arange(rate * 30) / rate
+    signal = np.zeros_like(t)
+    signal[14 * rate : 24 * rate] = np.sin(2 * np.pi * 196 * t[: 10 * rate]) * 0.8
+    path = tmp_path / "song.wav"
+    sf.write(str(path), signal.astype("float32"), rate, subtype="FLOAT")
+
+    with page_at(browser, server) as page:
+        page.click("#tabs .tab[data-panel='match']")
+        page.fill("#target-path", str(path))
+        page.click("#open-target")
+        page.wait_for_selector("#target-wave canvas", timeout=20000)
+        assert page.inner_text("#target-region-label") == "whole file"
+
+        page.click("#target-auto")
+        page.wait_for_function(
+            "() => document.querySelector('#target-region-label').textContent "
+            "!== 'whole file'",
+            timeout=15000,
+        )
+        label = page.inner_text("#target-region-label")
+        # The riff runs 14s to 24s, and that is where it should have landed.
+        start = float(label.split("s-")[0])
+        assert 12.0 <= start <= 17.0, label

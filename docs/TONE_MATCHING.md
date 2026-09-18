@@ -178,6 +178,13 @@ else. That mode compares sample against sample, so trimming the two signals
 differently would shift one against the other — reintroducing exactly the
 offset contamination the mode exists to avoid.
 
+`auto` picks the busiest continuous eight seconds instead of making you find
+them - in practice the part actually being played rather than a count-in, a
+held note, or the tail of a fade. It is a starting point, not a judgement,
+which is why the waveform is there to drag. For candidates it is resolved
+separately for each one, because the same riff sits at a different time code
+in every take of it.
+
 A region shorter than 0.25 s is refused outright: at a 2048-sample window
 there is almost nothing left to average, and a number computed from two
 frames looks as authoritative as one computed from two thousand.

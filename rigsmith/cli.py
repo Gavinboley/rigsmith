@@ -1057,7 +1057,7 @@ def match_render(di, nam_path, ir_path, truncate, name) -> None:
 @click.option(
     "--region",
     metavar="START:END",
-    help="Rank against this span of the target, in seconds - e.g. 41.2:58.0",
+    help="Span of the target to rank against (41.2:58.0), or 'auto'.",
 )
 @click.option(
     "--di-region",
@@ -1122,7 +1122,7 @@ def match_search(di, target, captures_dir, ir_path, mode, region, di_region) -> 
 @click.option(
     "--region",
     metavar="START:END",
-    help="Score only this span of the target, in seconds - e.g. 41.2:58.0",
+    help="Span of the target to score, in seconds (41.2:58.0), or 'auto' to use its busiest passage.",
 )
 @click.option(
     "--candidate-region",
@@ -1164,7 +1164,7 @@ def match_score(
 @match.command("explain")
 @click.argument("target", metavar="AUDIO")
 @click.argument("candidate", metavar="AUDIO")
-@click.option("--region", metavar="START:END", help="Compare this span of the target.")
+@click.option("--region", metavar="START:END", help="Span of the target to compare (41.2:58.0), or 'auto'.")
 @click.option("--candidate-region", metavar="START:END")
 @handled
 def match_explain(target, candidate, region, candidate_region) -> None:
