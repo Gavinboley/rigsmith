@@ -172,11 +172,34 @@ def test_research_a_tone_build_it_write_it_and_check_it(client, tmp_path):
     # The map is invented, and every surface has to say so.
     assert any("UNVERIFIED" in note for note in result["report"]["caveats"])
 
-    # -- measure -----------------------------------------------------------
+    # -- your own playing --------------------------------------------------
     media = tmp_path / "media"
     target = tone(media / "stem.wav", "bright")
     near = tone(media / "near.wav", "bright")
     far = tone(media / "far.wav", "dark")
+
+    added = client.post(
+        "/api/takes",
+        json={
+            "path": str(near),
+            "take_id": "my-riff",
+            "kind": "di",
+            "guitar": "Les Paul Standard",
+            "pickup": "bridge",
+        },
+    ).json()
+    assert added["take_id"] == "my-riff"
+    assert added["reamps"] is True
+
+    # The same file again is the same recording, not a second take.
+    assert client.post("/api/takes", json={"path": str(near)}).status_code == 409
+
+    # And a take id now works anywhere a path does.
+    by_name = client.post(
+        "/api/match/score",
+        json={"target_path": str(target), "candidate_paths": {"mine": "my-riff"}},
+    ).json()
+    assert by_name["ranking"][0]["label"] == "mine"
 
     scored = client.post(
         "/api/match/score",
@@ -195,6 +218,23 @@ def test_research_a_tone_build_it_write_it_and_check_it(client, tmp_path):
         json={"target_path": str(target), "candidate_path": str(far)},
     ).json()
     assert any(band["audible"] for band in bands["bands"]), bands["rendered"]
+
+    # Which of the instruments is closest, rather than which capture.
+    client.post(
+        "/api/takes",
+        json={
+            "path": str(far),
+            "take_id": "the-other-one",
+            "kind": "di",
+            "guitar": "Telecaster",
+        },
+    )
+    started = client.post(
+        "/api/takes/compare", json={"target_path": str(target)}
+    ).json()
+    compared = finished(client, started["job_id"])["result"]
+    assert [r["guitar"] for r in compared["results"]][0] == "Les Paul Standard"
+    assert compared["through_a_rig"] is False, "no capture was given"
 
     # -- listen ------------------------------------------------------------
     session = client.post(
