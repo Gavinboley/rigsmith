@@ -884,3 +884,22 @@ def test_a_clean_file_says_nothing_extra(browser, server, tmp_path):
         page.click("#open-target")
         page.wait_for_selector("#target-wave canvas", timeout=20000)
         assert page.inner_text("#target-wave-tags").strip() == ""
+
+
+def test_the_takes_panel_offers_to_record(browser, server):
+    """Three steps - record, find the file, add it - collapsed into one."""
+    with page_at(browser, server) as page:
+        page.click("#tabs .tab[data-panel='takes']")
+        page.click("#take-record")
+        page.wait_for_selector("#modal[open]", timeout=10000)
+
+        body = page.inner_text("#modal-body")
+        assert "Play the part once" in body
+        assert "dry DI" in body, "the two halves have to be explained"
+
+        # Cancelling records nothing. Asserted as "no job row" rather than
+        # "no text": the strip is also where a job's own progress lands, and
+        # the claim here is that nothing was started.
+        page.click("#modal-form button[value='cancel']")
+        page.wait_for_selector("#modal[open]", state="detached", timeout=5000)
+        assert page.locator("#take-record-progress .item").count() == 0

@@ -348,6 +348,7 @@ async function compareGuitars() {
 }
 
 export function onJobs(jobs) {
+  watchRecording(jobs);
   if (!compareJob) return;
   const job = jobs.find((candidate) => candidate.id === compareJob);
   if (!job) return;
@@ -405,6 +406,76 @@ export function onJobs(jobs) {
   });
 }
 
+/* ------------------------------------------------------------ recording */
+
+/* The Core sends the wet tone and the dry DI at once, on different channels.
+ * Recording them as one action and filing them as two is the shape the
+ * hardware already has - asking somebody to play it twice would be asking
+ * them to play it differently twice. */
+
+let recordJob = null;
+
+async function recordTake() {
+  const values = await prompt("Record a take", [
+    {
+      type: "note",
+      text:
+        "Play the part once. The Core sends the dry DI and the wet tone " +
+        "together, and both get kept - the DI is the one that can be " +
+        "rendered through other rigs afterwards.",
+    },
+    { name: "seconds", label: "How long?", type: "number", value: "15" },
+    { name: "guitar", label: "Which guitar?", placeholder: "Les Paul Standard" },
+    { name: "pickup", label: "Pickup", placeholder: "bridge" },
+    { name: "tuning", label: "Tuning", placeholder: "E standard" },
+    { name: "note", label: "What are you playing?" },
+    { name: "take_id", label: "Name it", placeholder: "take" },
+  ]);
+  if (!values) return;
+
+  const { job_id } = await api.recordTake({
+    duration_s: Number(values.seconds) || 15,
+    take_id: values.take_id || null,
+    guitar: values.guitar || null,
+    pickup: values.pickup || null,
+    tuning: values.tuning || null,
+    note: values.note || null,
+  });
+  recordJob = job_id;
+  clear($("#take-record-progress")).append(
+    el("div", { class: "notice", text: "Recording - play now." })
+  );
+}
+
+function watchRecording(jobs) {
+  if (!recordJob) return;
+  const job = jobs.find((candidate) => candidate.id === recordJob);
+  if (!job) return;
+
+  clear($("#take-record-progress")).append(jobRow(job));
+  if (!job.finished) return;
+
+  const id = recordJob;
+  recordJob = null;
+  attempt(async () => {
+    const { result, state, error } = await api.job(id);
+    clear($("#take-record-progress"));
+    if (state !== "succeeded") {
+      toast(error || "Recording did not complete", { kind: "error", timeout: 12000 });
+      return;
+    }
+    if (!result.di) {
+      toast(
+        "No dry DI was captured, so this take cannot be rendered through " +
+          "other rigs. The Core has to expose channel 5 - that is a USB " +
+          "audio mode setting on the device.",
+        { kind: "error", timeout: 16000 }
+      );
+    }
+    await refresh();
+  });
+}
+
 /* ------------------------------------------------------------------- init */
 
 export function init() {
@@ -413,6 +484,7 @@ export function init() {
   $("#take-add").onclick = () => attempt(addTake);
   $("#device-audio-scan").onclick = () => attempt(lookOnDevice);
   $("#guitar-compare").onclick = () => attempt(compareGuitars);
+  $("#take-record").onclick = () => attempt(recordTake);
   attachPicker("#guitar-target", { kind: "audio", title: "The record" });
   attachPicker("#guitar-nam", { kind: "capture", title: "A capture" });
 

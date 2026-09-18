@@ -929,3 +929,20 @@ def test_the_picker_only_offers_what_this_install_can_read(client, tmp_path):
     names = [entry["name"] for entry in payload["files"]]
     assert "riff.wav" in names
     assert "voice.m4a" not in names, "offering a file that cannot be opened is a trap"
+
+
+def test_recording_a_take_is_a_job_that_reports_a_missing_interface(client):
+    """It waits on somebody playing, so it cannot be a request - and with no
+    audio interface it has to fail with a reason rather than hang."""
+    response = client.post("/api/takes/record", json={"duration_s": 1.0})
+    assert response.status_code == 200
+    job_id = response.json()["job_id"]
+
+    for _ in range(200):
+        job = client.get(f"/api/jobs/{job_id}").json()
+        if job["finished"]:
+            break
+        time.sleep(0.05)
+    assert job["finished"]
+    if job["state"] == "failed":
+        assert job["error"], "a failure has to say what went wrong"

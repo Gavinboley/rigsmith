@@ -182,6 +182,15 @@ class TakeEdit(BaseModel):
     note: str | None = None
 
 
+class RecordTake(BaseModel):
+    duration_s: float = 15.0
+    take_id: str | None = None
+    guitar: str | None = None
+    pickup: str | None = None
+    tuning: str | None = None
+    note: str | None = None
+
+
 class CompareGuitars(BaseModel):
     target_path: str
     nam_path: str | None = None
@@ -1433,6 +1442,31 @@ def add_take(body: TakeBody) -> dict:
     )
     _allow_audio(take.path)
     return take.to_dict()
+
+
+@router.post("/takes/record")
+def record_take(body: RecordTake) -> dict:
+    """Record over USB and file both halves - a job, since it waits on playing."""
+    from ..core import takes
+
+    def run(progress):
+        progress.update(0.1, f"recording {body.duration_s:.0f}s - play now")
+        di, wet, message = takes.record(
+            body.duration_s,
+            take_id=body.take_id,
+            guitar=body.guitar,
+            pickup=body.pickup,
+            tuning=body.tuning,
+            note=body.note,
+        )
+        return {
+            "di": di.to_dict() if di else None,
+            "wet": wet.to_dict() if wet else None,
+            "message": message,
+        }
+
+    job = get_manager().submit("record a take", run)
+    return {"job_id": job.id, "name": job.name}
 
 
 @router.post("/takes/compare")
