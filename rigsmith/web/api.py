@@ -158,6 +158,38 @@ class DownloadCapture(BaseModel):
     install_to_device: bool = False
 
 
+class TakeBody(BaseModel):
+    path: str
+    take_id: str | None = None
+    kind: str = "di"
+    origin: str = "file"
+    guitar: str | None = None
+    pickup: str | None = None
+    strings: str | None = None
+    tuning: str | None = None
+    capo: int | None = None
+    note: str | None = None
+    tags: list[str] = []
+
+
+class TakeEdit(BaseModel):
+    kind: str | None = None
+    guitar: str | None = None
+    pickup: str | None = None
+    strings: str | None = None
+    tuning: str | None = None
+    capo: int | None = None
+    note: str | None = None
+
+
+class ImportDeviceAudio(BaseModel):
+    kind: str = "loop"
+    guitar: str | None = None
+    pickup: str | None = None
+    note: str | None = None
+    only: list[str] | None = None
+
+
 class OpenAudio(BaseModel):
     path: str
 
@@ -1250,10 +1282,15 @@ def browse(path: str | None = None, kind: str = "audio") -> dict:
     """
     from ..config import get_settings
 
+    from ..match.source import readable_suffixes
+
+    readable = set(readable_suffixes())
     suffixes = {
-        "audio": {".wav", ".flac", ".aiff", ".aif", ".mp3", ".ogg", ".m4a"},
+        # Asked of libsndfile rather than guessed, so the picker never offers
+        # a file this install cannot open.
+        "audio": readable,
         "capture": {".nam"},
-        "ir": {".wav", ".aiff", ".aif"},
+        "ir": readable & {".wav", ".aiff", ".aif", ".flac"},
         "any": set(),
     }.get(kind)
     if suffixes is None:
@@ -1330,6 +1367,106 @@ def _browse_roots() -> list[dict]:
     return unique
 
 
+# --------------------------------------------------------------------------
+# takes - the user's own recordings
+# --------------------------------------------------------------------------
+
+
+@router.get("/takes")
+def list_takes(kind: str | None = None, guitar: str | None = None) -> dict:
+    from ..core import takes
+
+    found = takes.list_takes(kind=kind, guitar=guitar)
+    return {
+        "takes": [take.to_dict() for take in found],
+        "guitars": takes.guitars(),
+        "kinds": takes.KINDS,
+        "origins": takes.ORIGINS,
+        "rendered": takes.render_list(found),
+    }
+
+
+@router.post("/takes")
+def add_take(body: TakeBody) -> dict:
+    from ..core import takes
+
+    take = takes.add(
+        body.path,
+        take_id=body.take_id,
+        kind=body.kind,
+        origin=body.origin,
+        guitar=body.guitar,
+        pickup=body.pickup,
+        strings=body.strings,
+        tuning=body.tuning,
+        capo=body.capo,
+        note=body.note,
+        tags=body.tags,
+    )
+    _allow_audio(take.path)
+    return take.to_dict()
+
+
+@router.get("/takes/{take_id}")
+def get_take(take_id: str) -> dict:
+    from ..core import takes
+
+    take = takes.get(take_id)
+    _allow_audio(take.path)
+    return {**take.to_dict(), "url": _audio_url(take.path)}
+
+
+@router.patch("/takes/{take_id}")
+def edit_take(take_id: str, body: TakeEdit) -> dict:
+    from ..core import takes
+
+    changes = {k: v for k, v in body.model_dump().items() if v is not None}
+    return takes.update(take_id, **changes).to_dict()
+
+
+@router.delete("/takes/{take_id}")
+def delete_take(take_id: str, delete_file: bool = False) -> dict:
+    from ..core import takes
+
+    return {"message": takes.delete(take_id, remove_file=delete_file)}
+
+
+@router.get("/device/audio")
+def device_audio() -> dict:
+    """Audio sitting on the device's USB storage."""
+    from ..device.usbmsc import DeviceStorageError
+
+    try:
+        volume, found = devices.list_device_audio()
+    except DeviceStorageError as exc:
+        return {"files": [], "error": exc.message, "hint": exc.hint}
+    return {
+        "root": str(volume.root),
+        "files": [
+            {"name": path.name, "path": str(path), "size": path.stat().st_size}
+            for path in found
+        ],
+        "rendered": devices.render_device_audio(volume, found),
+        "error": None,
+    }
+
+
+@router.post("/device/audio/import")
+def import_device_audio(body: ImportDeviceAudio) -> dict:
+    imported, skipped = devices.import_device_audio(
+        kind=body.kind,
+        guitar=body.guitar,
+        pickup=body.pickup,
+        note=body.note,
+        only=body.only,
+    )
+    return {
+        "imported": [take.to_dict() for take in imported],
+        "skipped": skipped,
+        "rendered": devices.render_import(imported, skipped),
+    }
+
+
 @router.post("/match/open")
 def open_audio(body: OpenAudio) -> dict:
     """Name a file for the waveform view, and report what is in it.
@@ -1343,28 +1480,13 @@ def open_audio(body: OpenAudio) -> dict:
     if not target.is_file():
         raise NotFound(f"no audio file at {body.path}")
 
-    try:
-        import soundfile as sf
+    from ..match.source import inspect_audio
 
-        info = sf.info(str(target))
-        duration, sample_rate, channels = (
-            float(info.duration),
-            int(info.samplerate),
-            int(info.channels),
-        )
-    except ImportError:
-        duration, sample_rate, channels = 0.0, 0, 0
-    except Exception as exc:  # a real file that soundfile cannot read
-        raise HTTPException(400, f"could not read {target.name}: {exc}") from exc
-
+    described = inspect_audio(target)
     _allow_audio(target)
     return {
-        "path": str(target),
-        "name": target.name,
+        **described.to_dict(),
         "url": f"/api/audio?path={quote(str(target))}",
-        "duration": duration,
-        "sample_rate": sample_rate,
-        "channels": channels,
         "min_region": MIN_REGION_SECONDS,
     }
 

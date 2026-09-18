@@ -56,19 +56,15 @@ class RenderResult:
 
 
 def load_audio(path: str | Path, *, mono: bool = True) -> tuple[np.ndarray, int]:
-    """Load an audio file. Requires ``soundfile``."""
-    try:
-        import soundfile as sf
-    except ImportError as exc:
-        raise RenderUnavailable(
-            "soundfile is required to read audio. Install with: "
-            "pip install 'rigsmith[audio]'"
-        ) from exc
+    """Load an audio file.
 
-    data, sample_rate = sf.read(str(path), always_2d=False)
-    if mono:
-        data = to_mono(data)
-    return np.asarray(data, dtype=np.float64), int(sample_rate)
+    Delegates to :mod:`rigsmith.match.source`, which refuses an unreadable
+    file by naming what this install *can* read rather than passing a
+    libsndfile error up through four layers.
+    """
+    from .source import load
+
+    return load(path, mono=mono)
 
 
 def save_audio(

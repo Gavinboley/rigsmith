@@ -1,0 +1,422 @@
+"""Your own playing, kept and labelled.
+
+Every comparison in this tool is against a record made by somebody else on
+somebody else's guitar. The one variable you can remove is the instrument:
+play the part yourself, keep the recording, and render candidates through
+that. Then a capture that scores well scores well *through your pickups*,
+which is the only version of the question that has a useful answer.
+
+A take is a file plus what you were holding when you made it. The metadata
+is the point - "which of my guitars was this" is not a detail, it is the
+difference between a library and a folder of wav files. Six months later,
+`bridge-humbucker-drop-d.wav` is a guess and this is not.
+
+Takes come from anywhere: a DI box, the Core's USB audio, a loop played into
+the pedal and pulled off its storage, a phone in front of an amp. Where it
+came from changes what it is good for, so that is recorded too.
+"""
+
+from __future__ import annotations
+
+import json
+import re
+import shutil
+from dataclasses import asdict, dataclass, field
+from datetime import datetime, timezone
+from pathlib import Path
+
+from ..config import get_settings, require_writable
+from .errors import Conflict, Invalid, NotFound
+
+#: What a take can be used for. The distinction that matters is whether the
+#: signal has been through an amp: a DI has not, so it can be rendered
+#: through anything, and everything else can only be listened to or matched
+#: against.
+KINDS = {
+    "di": "dry, straight from the guitar - the one you can reamp through anything",
+    "wet": "already through an amp or the device - a reference to match, not a source",
+    "loop": "recorded on the pedal's looper - usually wet, sometimes both",
+    "reference": "someone else's recording you are chasing",
+}
+
+#: Where a take came from, which is mostly about how much to trust its level
+#: and its top end.
+ORIGINS = {
+    "di-box": "a DI box or interface input",
+    "usb": "the Core's USB audio, channel 5 dry or 1-2 wet",
+    "looper": "played into the pedal and pulled off its storage",
+    "file": "an existing file from somewhere else",
+    "mic": "a microphone in front of something",
+}
+
+
+def slugify(name: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", str(name).lower()).strip("-")
+    return slug or "take"
+
+
+@dataclass
+class Take:
+    """One recording of yours, and the instrument that made it."""
+
+    take_id: str
+    path: str
+    kind: str = "di"
+    origin: str = "file"
+
+    guitar: str | None = None
+    """Which instrument. The reason this library exists."""
+    pickup: str | None = None
+    """bridge, neck, middle, both - the second-biggest variable after the guitar."""
+    strings: str | None = None
+    tuning: str | None = None
+    capo: int | None = None
+
+    note: str | None = None
+    """What you played, in your own words. 'the Cherub Rock riff, twice.'"""
+    tags: list[str] = field(default_factory=list)
+
+    duration: float = 0.0
+    sample_rate: int = 0
+    channels: int = 1
+    lossy: bool = False
+    concerns: list[str] = field(default_factory=list)
+
+    added_at: str = field(
+        default_factory=lambda: datetime.now(timezone.utc).isoformat(timespec="seconds")
+    )
+
+    @property
+    def file(self) -> Path:
+        return Path(self.path)
+
+    @property
+    def exists(self) -> bool:
+        return self.file.is_file()
+
+    @property
+    def reamps(self) -> bool:
+        """Can this be rendered through a candidate rig?
+
+        Only a dry signal can. Rendering a wet take through an amp model
+        stacks two amps, which sounds like neither and measures like nothing.
+        """
+        return self.kind == "di"
+
+    def describe(self) -> str:
+        bits = [self.take_id, f"[{self.kind}]"]
+        gear = " ".join(p for p in (self.guitar, self.pickup) if p)
+        if gear:
+            bits.append(gear)
+        if self.tuning:
+            bits.append(self.tuning)
+        if self.duration:
+            bits.append(f"{self.duration:.1f}s")
+        if self.lossy:
+            bits.append("lossy")
+        if not self.exists:
+            bits.append("MISSING")
+        return "  ".join(bits)
+
+    def render(self) -> str:
+        lines = [self.describe()]
+        if self.note:
+            lines.append(f"  {self.note}")
+        lines.append(f"  {self.path}")
+        lines.extend(f"  note: {c}" for c in self.concerns)
+        return "\n".join(lines)
+
+    def to_dict(self) -> dict:
+        data = asdict(self)
+        data["exists"] = self.exists
+        data["reamps"] = self.reamps
+        data["describe"] = self.describe()
+        return data
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "Take":
+        known = {f for f in cls.__dataclass_fields__}
+        return cls(**{k: v for k, v in data.items() if k in known})
+
+
+# --------------------------------------------------------------------------
+# storage
+# --------------------------------------------------------------------------
+
+
+def _dir() -> Path:
+    settings = get_settings()
+    settings.ensure_workspace()
+    directory = settings.takes_dir
+    directory.mkdir(parents=True, exist_ok=True)
+    return directory
+
+
+def _index_path() -> Path:
+    return _dir() / "index.json"
+
+
+def _load_index() -> dict[str, Take]:
+    path = _index_path()
+    if not path.is_file():
+        return {}
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {}
+    takes = {}
+    for entry in raw.get("takes", []):
+        try:
+            take = Take.from_dict(entry)
+        except TypeError:
+            continue
+        takes[take.take_id] = take
+    return takes
+
+
+def _save_index(takes: dict[str, Take]) -> None:
+    payload = {"takes": [take.to_dict() for take in takes.values()]}
+    # to_dict adds derived keys; strip them so the file stays the record and
+    # not a cache of things that can change.
+    for entry in payload["takes"]:
+        for derived in ("exists", "reamps", "describe"):
+            entry.pop(derived, None)
+    _index_path().write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+
+def list_takes(*, kind: str | None = None, guitar: str | None = None) -> list[Take]:
+    """Every take, newest first, optionally filtered."""
+    takes = sorted(_load_index().values(), key=lambda t: t.added_at, reverse=True)
+    if kind:
+        takes = [t for t in takes if t.kind == kind]
+    if guitar:
+        lowered = guitar.lower()
+        takes = [t for t in takes if (t.guitar or "").lower() == lowered]
+    return takes
+
+
+def get(take_id: str) -> Take:
+    takes = _load_index()
+    if take_id not in takes:
+        known = ", ".join(sorted(takes)) or "none yet"
+        raise NotFound(f"no take '{take_id}'", hint=f"Known takes: {known}")
+    return takes[take_id]
+
+
+def guitars() -> list[str]:
+    """Every instrument that appears in the library."""
+    names = {t.guitar for t in _load_index().values() if t.guitar}
+    return sorted(names)
+
+
+# --------------------------------------------------------------------------
+# adding
+# --------------------------------------------------------------------------
+
+
+def add(
+    source_path: str | Path,
+    *,
+    take_id: str | None = None,
+    kind: str = "di",
+    origin: str = "file",
+    guitar: str | None = None,
+    pickup: str | None = None,
+    strings: str | None = None,
+    tuning: str | None = None,
+    capo: int | None = None,
+    note: str | None = None,
+    tags: list[str] | None = None,
+    copy: bool = True,
+) -> Take:
+    """Add a recording to the library, reading it to check it is usable.
+
+    Args:
+        copy: Bring the file into the workspace. Left on, because a library
+            that points at files on a drive you unplug is not a library.
+    """
+    from ..match.source import inspect_audio
+
+    require_writable("add a take")
+    if kind not in KINDS:
+        raise Invalid(
+            f"unknown take kind '{kind}'",
+            hint="Use one of: " + ", ".join(f"{k} ({v})" for k, v in KINDS.items()),
+        )
+    if origin not in ORIGINS:
+        raise Invalid(
+            f"unknown origin '{origin}'", hint="Use one of: " + ", ".join(ORIGINS)
+        )
+
+    source = Path(source_path)
+    # Read it before filing it. A take that turns out to be unreadable is
+    # worse than one that was never added, because it sits in the library
+    # looking usable until the day you reach for it.
+    described = inspect_audio(source)
+
+    identifier = slugify(take_id or source.stem)
+    takes = _load_index()
+    if identifier in takes:
+        raise Conflict(
+            f"a take called '{identifier}' already exists",
+            hint="Pass a different take_id, or delete the old one first.",
+        )
+
+    destination = source
+    if copy:
+        destination = _dir() / f"{identifier}{source.suffix.lower()}"
+        if destination.resolve() != source.resolve():
+            shutil.copy2(source, destination)
+
+    take = Take(
+        take_id=identifier,
+        path=str(destination),
+        kind=kind,
+        origin=origin,
+        guitar=guitar,
+        pickup=pickup,
+        strings=strings,
+        tuning=tuning,
+        capo=capo,
+        note=note,
+        tags=list(tags or []),
+        duration=described.duration,
+        sample_rate=described.sample_rate,
+        channels=described.channels,
+        lossy=described.lossy,
+        concerns=described.concerns(as_di=kind == "di"),
+    )
+    takes[identifier] = take
+    _save_index(takes)
+    return take
+
+
+def update(take_id: str, **changes) -> Take:
+    """Change a take's labels. The audio itself is never edited."""
+    require_writable("edit a take")
+    takes = _load_index()
+    take = takes.get(take_id)
+    if take is None:
+        raise NotFound(f"no take '{take_id}'")
+
+    editable = {
+        "kind", "origin", "guitar", "pickup", "strings", "tuning", "capo",
+        "note", "tags",
+    }
+    unknown = set(changes) - editable
+    if unknown:
+        raise Invalid(
+            f"cannot change {', '.join(sorted(unknown))} on a take",
+            hint="Editable: " + ", ".join(sorted(editable)),
+        )
+    if "kind" in changes and changes["kind"] not in KINDS:
+        raise Invalid(f"unknown take kind '{changes['kind']}'")
+
+    for name, value in changes.items():
+        if value is not None:
+            setattr(take, name, value)
+    _save_index(takes)
+    return take
+
+
+def delete(take_id: str, *, remove_file: bool = False) -> str:
+    """Forget a take. The audio stays unless you say otherwise."""
+    require_writable("delete a take")
+    takes = _load_index()
+    take = takes.pop(take_id, None)
+    if take is None:
+        raise NotFound(f"no take '{take_id}'")
+    _save_index(takes)
+
+    if remove_file and take.file.is_file():
+        # Only files this library brought in - never one it was pointed at.
+        try:
+            take.file.relative_to(_dir())
+        except ValueError:
+            return f"Forgot '{take_id}'. Its file was outside the library, so it stays."
+        take.file.unlink()
+        return f"Forgot '{take_id}' and deleted {take.file.name}."
+    return f"Forgot '{take_id}'. The file stays at {take.path}."
+
+
+# --------------------------------------------------------------------------
+# using them
+# --------------------------------------------------------------------------
+
+
+def default_di(guitar: str | None = None) -> Take | None:
+    """The take to reamp through, if the library has an obvious one.
+
+    The most recent DI, optionally for one instrument. Being able to say
+    "search these captures" without naming a file every time is most of what
+    a library is for.
+    """
+    candidates = [t for t in list_takes(kind="di", guitar=guitar) if t.exists]
+    return candidates[0] if candidates else None
+
+
+def resolve(reference: str | Path) -> Path:
+    """Accept a take id or a path, and return a path.
+
+    Every surface that takes audio can then take either, which means a take
+    id works anywhere a filename does.
+    """
+    text = str(reference)
+    if not text:
+        raise Invalid("no audio given")
+
+    candidate = Path(text)
+    if candidate.exists():
+        return candidate
+
+    index = _load_index()
+    take = index.get(slugify(text))
+    if take is None:
+        raise NotFound(
+            f"'{reference}' is neither a file nor a take",
+            hint=_did_you_mean(text, index) or
+            "List what the library holds with:  rigsmith take list",
+        )
+    if not take.exists:
+        raise NotFound(
+            f"take '{take.take_id}' points at {take.path}, which is gone",
+            hint="Add it again, or delete the entry.",
+        )
+    return take.file
+
+
+def _did_you_mean(text: str, index: dict[str, Take]) -> str | None:
+    """Closest take ids, because a typo is likelier than a missing file."""
+    import difflib
+
+    if not index:
+        return None
+    close = difflib.get_close_matches(slugify(text), list(index), n=3, cutoff=0.5)
+    if close:
+        return "Did you mean:  " + ", ".join(close)
+    return "The library holds:  " + ", ".join(sorted(index))
+
+
+def render_list(takes: list[Take]) -> str:
+    if not takes:
+        return (
+            "No takes yet.\n\n"
+            "This is where your own playing goes. Record the part once - a DI "
+            "box, the Core's USB channel 5, or a loop played into the pedal - "
+            "and every candidate afterwards gets rendered through your guitar "
+            "rather than through a stranger's."
+        )
+    lines = [f"{len(takes)} take(s):"]
+    lines.extend(f"  {take.describe()}" for take in takes)
+
+    instruments = sorted({t.guitar for t in takes if t.guitar})
+    if instruments:
+        lines.append("\nguitars: " + ", ".join(instruments))
+    unlabelled = [t.take_id for t in takes if not t.guitar]
+    if unlabelled:
+        lines.append(
+            f"\n{len(unlabelled)} take(s) have no guitar recorded: "
+            + ", ".join(unlabelled)
+            + "\nWhich instrument it was is the whole point of keeping these."
+        )
+    return "\n".join(lines)

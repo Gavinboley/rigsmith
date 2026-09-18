@@ -326,3 +326,72 @@ def install_nam(
         "the file is on the storage but not in the device's index."
     )
     return "\n".join(lines)
+
+
+#: Folders a loop or recording has been seen in, or would plausibly be in.
+#: Searched first; the whole volume is searched after, because guessing a
+#: folder name for a feature nobody has documented is how a tool ends up
+#: confidently finding nothing.
+LIKELY_AUDIO_FOLDERS = (
+    "Loops",
+    "Looper",
+    "Recordings",
+    "Audio",
+    "Impulse Responses/User",
+)
+
+
+def find_audio(
+    volume: DeviceVolume | None = None, *, suffixes: tuple[str, ...] = (".wav", ".aiff", ".aif", ".flac", ".mp3")
+) -> list[Path]:
+    """Every audio file on the device's storage, likeliest places first.
+
+    HeadRush has not documented where the looper writes, and inventing a path
+    would mean confidently reporting that a feature does not work. So this
+    looks where it plausibly is, then everywhere, and lets the person decide
+    what they are looking at.
+    """
+    volume = volume or find_device_volume()
+    found: list[Path] = []
+    seen: set[Path] = set()
+
+    def collect(root: Path) -> None:
+        if not root.is_dir():
+            return
+        for path in sorted(root.rglob("*")):
+            if not path.is_file() or path.suffix.lower() not in suffixes:
+                continue
+            resolved = path.resolve()
+            if resolved in seen:
+                continue
+            seen.add(resolved)
+            found.append(path)
+
+    for name in LIKELY_AUDIO_FOLDERS:
+        collect(volume.folder(name))
+    collect(volume.root)
+    return found
+
+
+def render_audio_listing(paths: list[Path], volume: DeviceVolume | None = None) -> str:
+    if not paths:
+        return (
+            "No audio files on the device's storage.\n\n"
+            "If you recorded a loop, check whether the Core exports it - the "
+            "looper's storage is not documented, and it may keep loops "
+            "somewhere this cannot see. Recording the same part over USB "
+            "audio always works: rigsmith match capture-di."
+        )
+    root = volume.root if volume else None
+    lines = [f"{len(paths)} audio file(s) on the device:"]
+    for path in paths:
+        try:
+            shown = path.relative_to(root) if root else path
+        except (ValueError, TypeError):
+            shown = path
+        lines.append(f"  {shown}  ({path.stat().st_size // 1024} KB)")
+    lines.append(
+        "\nImpulse responses live here too - not everything listed is a "
+        "recording of you playing."
+    )
+    return "\n".join(lines)

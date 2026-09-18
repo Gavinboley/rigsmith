@@ -53,6 +53,23 @@ In this mode the sample-wise metrics are **not computed at all**. Not computed a
 
 The output of distribution mode is a **ranking**. The ordering is informative; the absolute numbers are not. Every rendered ranking says so.
 
+## Your guitar is a variable too
+
+A capture that matches a record through a maple-necked Strat may not match it
+through a Les Paul, and no metric here can tell you which of those you own.
+So the DI matters: render candidates through *your* playing on *your*
+instrument, and the ranking answers the question you actually asked.
+
+The library keeps those takes with the instrument attached - guitar, pickup,
+tuning - because six months later the filename is a guess and the label is
+not. A take id works anywhere a path does.
+
+One rule the library enforces: only a **DI** can be rendered through a
+candidate rig. Anything already through an amp - a loop off the pedal, a wet
+USB capture - is a reference to match against, never a source to render from.
+Rendering a wet signal through an amp model stacks two amps, which sounds
+like neither and measures like nothing.
+
 ## The composite, and why its weights are scaled
 
 Each mode blends several metrics into one number for ranking. Aligned mode

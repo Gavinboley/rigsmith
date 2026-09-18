@@ -165,6 +165,7 @@ def render_offline(
     from ..match.render_offline import load_audio, render_chain, save_audio
 
     require_writable("write rendered audio")
+    di_path = audio_path(di_path)
     if not nam_path and not ir_path:
         raise Invalid(
             "nothing to render through",
@@ -349,6 +350,42 @@ class Region:
         return f"{self.start:.2f}s-{end}"
 
 
+def _di_or_default(reference) -> Path:
+    """The DI to render through, falling back to the library's own.
+
+    Naming a file every time is the friction the takes library exists to
+    remove: once your playing is in there, "render these captures" needs no
+    filename at all.
+    """
+    from . import takes
+
+    if reference:
+        return takes.resolve(reference)
+
+    default = takes.default_di()
+    if default is None:
+        raise Invalid(
+            "no DI given, and the takes library has none to fall back on",
+            hint=(
+                "Add one with:  rigsmith take add <file> --kind di --guitar '...'"
+                "\nOr record one over USB:  rigsmith match capture-di"
+            ),
+        )
+    return default.file
+
+
+def audio_path(reference) -> Path:
+    """Accept a take id or a path, and return a path.
+
+    Applied at every entry point that takes audio, so "cherub-riff" works
+    wherever "C:/takes/cherub-riff.wav" does. The alternative is remembering
+    where you put a file, which is the thing the library exists to stop.
+    """
+    from . import takes
+
+    return takes.resolve(reference)
+
+
 def parse_mode(value: str):
     from ..match.metrics import ComparisonMode
 
@@ -409,6 +446,11 @@ def score(
             ),
         )
 
+    target_path = audio_path(target_path)
+    candidate_paths = {
+        label: audio_path(path) for label, path in candidate_paths.items()
+    }
+
     target, sample_rate = load_audio(target_path)
     if target_region:
         target = target_region.slice(target, sample_rate, label="the target")
@@ -422,7 +464,35 @@ def score(
             audio = candidate_region.slice(audio, sample_rate, label=label)
         loaded[label] = audio
 
-    return rank_candidates(target, loaded, sample_rate, mode=comparison)
+    scores = rank_candidates(target, loaded, sample_rate, mode=comparison)
+
+    # What the files themselves make of this comparison - lossy encoding, a
+    # sample rate below the device's, clipping. None of it stops a score; all
+    # of it changes how much to believe one, so it rides along with the result
+    # rather than being something the caller has to go and ask about.
+    from ..match.source import concerns_for
+
+    notes = concerns_for(
+        [target_path, *candidate_paths.values()],
+        aligned=comparison.value == "aligned",
+    )
+    if notes and scores:
+        scores[0].notes.extend(notes)
+    return scores
+
+
+def source_concerns(paths, *, aligned: bool = False, di_paths=()) -> list[str]:
+    """What the input files themselves make of a comparison."""
+    from ..match.source import concerns_for
+
+    return concerns_for(paths, aligned=aligned, di_paths=di_paths)
+
+
+def inspect_source(path: str | Path):
+    """Read an audio file's shape and levels without keeping the samples."""
+    from ..match.source import inspect_audio
+
+    return inspect_audio(path)
 
 
 def compare_bands(
@@ -441,6 +511,8 @@ def compare_bands(
     from ..match.metrics import band_differences
     from ..match.render_offline import load_audio, resample
 
+    target_path = audio_path(target_path)
+    candidate_path = audio_path(candidate_path)
     target_region = Region.parse(target_region)
     candidate_region = Region.parse(candidate_region)
 
@@ -486,6 +558,8 @@ class SearchResult:
     rendered: list[RenderedCandidate] = field(default_factory=list)
     scores: list[Any] = field(default_factory=list)
     failures: list[str] = field(default_factory=list)
+    concerns: list[str] = field(default_factory=list)
+    """What the input files themselves make of this sweep."""
 
     def render(self) -> str:
         from ..match.score import render_ranking as _render
@@ -497,6 +571,9 @@ class SearchResult:
             "",
             _render(self.scores),
         ]
+        if self.concerns:
+            lines.append("\nabout the input:")
+            lines.extend(f"  {note}" for note in self.concerns)
         if self.failures:
             lines.append("\nfailed to render:")
             lines.extend(f"  {f}" for f in self.failures)
@@ -511,6 +588,7 @@ class SearchResult:
             "target_path": str(self.target_path),
             "mode": self.mode,
             "region": self.region,
+            "concerns": self.concerns,
             "rendered": [r.to_dict() for r in self.rendered],
             "failures": self.failures,
             "ranking": [
@@ -525,7 +603,7 @@ class SearchResult:
 
 
 def run_offline_search(
-    di_path: str | Path,
+    di_path: str | Path | None,
     target_path: str | Path,
     captures: dict[str, str | Path],
     *,
@@ -542,7 +620,8 @@ def run_offline_search(
     so a user had to render and score each candidate by hand.
 
     Args:
-        di_path: A dry DI recording.
+        di_path: A dry DI recording, a take id, or nothing at all - in which
+            case the takes library's most recent DI is used.
         target_path: What to match - usually a separated guitar stem.
         captures: ``{label: path to .nam}``.
         ir_path: A cabinet IR applied to every candidate, for fairness.
@@ -555,6 +634,13 @@ def run_offline_search(
     """
     if not captures:
         raise Invalid("no captures to try")
+
+    di_path = _di_or_default(di_path)
+    target_path = audio_path(target_path)
+
+    # A lossy DI prints its artefacts into every candidate equally, and then
+    # they get measured as tone. Worth saying before minutes of rendering.
+    from ..match.source import concerns_for
 
     described = Region.parse(target_region)
     result = SearchResult(
@@ -602,6 +688,9 @@ def run_offline_search(
         mode=mode,
         target_region=target_region,
         candidate_region=candidate_region,
+    )
+    result.concerns = concerns_for(
+        [di_path, target_path], aligned=mode == "aligned", di_paths=[di_path]
     )
     if progress:
         progress.update(1.0, "done")

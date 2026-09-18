@@ -20,6 +20,7 @@
   <nav class="tabs" id="tabs">
     <button class="tab" data-panel="recipes">Research</button>
     <button class="tab" data-panel="rig">Rig</button>
+    <button class="tab" data-panel="takes">My playing</button>
     <button class="tab" data-panel="captures">Captures</button>
     <button class="tab" data-panel="match">Match</button>
     <button class="tab" data-panel="device">Device</button>
@@ -175,6 +176,39 @@
         </div>
         <div id="compile-out"></div>
       </div>
+    </div>
+  </section>
+
+  <!-- ================= TAKES ================= -->
+  <section class="panel" data-panel="takes" hidden>
+    <div class="panel-head">
+      <h2>My playing</h2>
+      <span class="hint">
+        Every comparison here is against a record made on someone else's
+        guitar. This is the variable you can remove.
+      </span>
+    </div>
+
+    <div class="card">
+      <div class="row">
+        <input type="text" id="take-path" placeholder="A recording of yours" class="grow">
+        <button class="btn primary" id="take-add">Add</button>
+      </div>
+      <div id="takes-summary"></div>
+      <div id="takes-list" class="list"></div>
+    </div>
+
+    <div class="card">
+      <div class="scenes-head">
+        <h3>On the pedal</h3>
+        <button class="btn small" id="device-audio-scan">Look</button>
+      </div>
+      <p class="hint">
+        Loops and recordings on the Core's USB storage. Put it into
+        Menu &rsaquo; USB Transfer first. Where the looper writes is not
+        documented, so this looks in the likely places and then everywhere.
+      </p>
+      <div id="device-audio" class="list"></div>
     </div>
   </section>
 

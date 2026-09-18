@@ -21,6 +21,8 @@ import click
 from . import __version__
 from .config import Settings, get_settings, set_settings
 from .core.errors import RigsmithError
+from .core.takes import KINDS as TAKE_KINDS
+from .core.takes import ORIGINS as TAKE_ORIGINS
 
 
 def _run(coro):
@@ -41,6 +43,13 @@ def handled(func):
             sys.exit(exc.exit_code)
 
     return wrapper
+
+
+def _audio_label(reference) -> str:
+    """A short name for something that may be a path or a take id."""
+    text = str(reference)
+    stem = Path(text).stem
+    return stem or text
 
 
 def _emit(text: str, *, as_json: bool = False, payload=None) -> None:
@@ -812,6 +821,138 @@ def tone3000_download(tone_id, architecture, out, limit, any_size, install) -> N
 
 
 # ==========================================================================
+# your own recordings
+# ==========================================================================
+
+
+@main.group()
+def take() -> None:
+    """Your own playing: DIs, wet references, loops off the pedal.
+
+    Every comparison here is against a record made on somebody else's guitar.
+    The one variable you can remove is the instrument - play the part
+    yourself, keep it, and render candidates through that.
+    """
+
+
+@take.command("add")
+@click.argument("path", type=click.Path(exists=True, path_type=Path))
+@click.option("--id", "take_id", help="Name it. Defaults to the filename.")
+@click.option(
+    "--kind",
+    default="di",
+    type=click.Choice(sorted(TAKE_KINDS)),
+    show_default=True,
+    help="di reamps through anything; everything else is a reference.",
+)
+@click.option("--origin", default="file", type=click.Choice(sorted(TAKE_ORIGINS)), show_default=True)
+@click.option("--guitar", help="Which instrument. The reason this library exists.")
+@click.option("--pickup", help="bridge, neck, middle, both.")
+@click.option("--strings", help="e.g. '10-46 nickel'.")
+@click.option("--tuning", help="e.g. 'E standard', 'drop D'.")
+@click.option("--capo", type=int)
+@click.option("--note", help="What you played, in your own words.")
+@click.option("--tag", "tags", multiple=True)
+@click.option("--no-copy", is_flag=True, help="Leave the file where it is.")
+@handled
+def take_add(path, take_id, kind, origin, guitar, pickup, strings, tuning, capo, note, tags, no_copy) -> None:
+    """Add a recording to the library."""
+    from .core import takes
+
+    added = takes.add(
+        path, take_id=take_id, kind=kind, origin=origin, guitar=guitar,
+        pickup=pickup, strings=strings, tuning=tuning, capo=capo, note=note,
+        tags=list(tags), copy=not no_copy,
+    )
+    click.echo(added.render())
+    if not guitar:
+        click.echo(
+            click.style(
+                "\nNo guitar recorded. Which instrument it was is the whole "
+                "point of keeping these - add it with:  rigsmith take edit "
+                f"{added.take_id} --guitar '...'",
+                fg="yellow",
+            )
+        )
+
+
+@take.command("list")
+@click.option("--kind", type=click.Choice(sorted(TAKE_KINDS)))
+@click.option("--guitar")
+@handled
+def take_list(kind, guitar) -> None:
+    """List your recordings."""
+    from .core import takes
+
+    click.echo(takes.render_list(takes.list_takes(kind=kind, guitar=guitar)))
+
+
+@take.command("show")
+@click.argument("take_id")
+@handled
+def take_show(take_id) -> None:
+    """Show one take in full."""
+    from .core import takes
+
+    click.echo(takes.get(take_id).render())
+
+
+@take.command("edit")
+@click.argument("take_id")
+@click.option("--kind", type=click.Choice(sorted(TAKE_KINDS)))
+@click.option("--guitar")
+@click.option("--pickup")
+@click.option("--strings")
+@click.option("--tuning")
+@click.option("--capo", type=int)
+@click.option("--note")
+@handled
+def take_edit(take_id, **changes) -> None:
+    """Change a take's labels. The audio is never touched."""
+    from .core import takes
+
+    click.echo(takes.update(take_id, **{k: v for k, v in changes.items() if v is not None}).render())
+
+
+@take.command("rm")
+@click.argument("take_id")
+@click.option("--delete-file", is_flag=True, help="Also delete the audio.")
+@handled
+def take_rm(take_id, delete_file) -> None:
+    """Forget a take."""
+    from .core import takes
+
+    click.echo(takes.delete(take_id, remove_file=delete_file))
+
+
+@take.command("pull")
+@click.option("--guitar", help="Which instrument these were played on.")
+@click.option("--pickup")
+@click.option("--kind", default="loop", type=click.Choice(sorted(TAKE_KINDS)), show_default=True)
+@click.option("--list", "listing", is_flag=True, help="Show what is there without importing.")
+@click.option("--only", multiple=True, help="Import only these filenames.")
+@handled
+def take_pull(guitar, pickup, kind, listing, only) -> None:
+    """Pull recordings off the device's USB storage.
+
+    Put the Core into Menu > USB Transfer first. Whatever the pedal recorded
+    has already been through the pedal, so these arrive as loops rather than
+    DIs - reamping through one would stack two amps.
+    """
+    from .core import devices
+
+    if listing:
+        volume, found = devices.list_device_audio()
+        click.echo(devices.render_device_audio(volume, found))
+        return
+
+    imported, skipped = devices.import_device_audio(
+        kind=kind, guitar=guitar, pickup=pickup, only=list(only) or None
+    )
+    click.echo(devices.render_import(imported, skipped))
+
+
+# ==========================================================================
 # tone matching
 # ==========================================================================
 
@@ -879,7 +1020,7 @@ def match_capture_di(seconds: float, name: str) -> None:
 
 
 @match.command("reamp")
-@click.argument("di", type=click.Path(exists=True, path_type=Path))
+@click.argument("di", metavar="AUDIO")
 @click.option("--name", default="candidate", show_default=True)
 @handled
 def match_reamp(di: Path, name: str) -> None:
@@ -890,7 +1031,7 @@ def match_reamp(di: Path, name: str) -> None:
 
 
 @match.command("render")
-@click.argument("di", type=click.Path(exists=True, path_type=Path))
+@click.argument("di", metavar="AUDIO")
 @click.option("--nam", "nam_path", type=click.Path(exists=True, path_type=Path))
 @click.option("--ir", "ir_path", type=click.Path(exists=True, path_type=Path))
 @click.option("--truncate", type=int, help="Shorten the IR, e.g. 1024.")
@@ -908,8 +1049,8 @@ def match_render(di, nam_path, ir_path, truncate, name) -> None:
 
 
 @match.command("search")
-@click.argument("di", type=click.Path(exists=True, path_type=Path))
-@click.argument("target", type=click.Path(exists=True, path_type=Path))
+@click.argument("di", metavar="AUDIO")
+@click.argument("target", metavar="AUDIO")
 @click.argument("captures_dir", type=click.Path(exists=True, file_okay=False, path_type=Path))
 @click.option("--ir", "ir_path", type=click.Path(exists=True, path_type=Path))
 @click.option("--mode", default="distribution", type=click.Choice(["aligned", "distribution"]), show_default=True)
@@ -927,7 +1068,9 @@ def match_render(di, nam_path, ir_path, truncate, name) -> None:
 def match_search(di, target, captures_dir, ir_path, mode, region, di_region) -> None:
     """Render a DI through every capture in a directory and rank them.
 
-    The whole offline loop in one command, with no hardware needed.
+    The whole offline loop in one command, with no hardware needed. DI and
+    TARGET accept a take id as readily as a path - so once the library holds
+    your playing, this is a name rather than a filename.
     """
     from .core import matching
 
@@ -973,8 +1116,8 @@ def match_search(di, target, captures_dir, ir_path, mode, region, di_region) -> 
 
 
 @match.command("score")
-@click.argument("target", type=click.Path(exists=True, path_type=Path))
-@click.argument("candidates", nargs=-1, required=True, type=click.Path(exists=True, path_type=Path))
+@click.argument("target", metavar="AUDIO")
+@click.argument("candidates", nargs=-1, required=True, metavar="AUDIO...")
 @click.option("--mode", default="distribution", type=click.Choice(["aligned", "distribution"]), show_default=True)
 @click.option(
     "--region",
@@ -1010,7 +1153,7 @@ def match_score(
 
     scores = matching.score(
         target,
-        {p.stem: p for p in candidates},
+        {_audio_label(c): c for c in candidates},
         mode=mode,
         target_region=region,
         candidate_region=candidate_region,
@@ -1019,8 +1162,8 @@ def match_score(
 
 
 @match.command("explain")
-@click.argument("target", type=click.Path(exists=True, path_type=Path))
-@click.argument("candidate", type=click.Path(exists=True, path_type=Path))
+@click.argument("target", metavar="AUDIO")
+@click.argument("candidate", metavar="AUDIO")
 @click.option("--region", metavar="START:END", help="Compare this span of the target.")
 @click.option("--candidate-region", metavar="START:END")
 @handled
@@ -1039,7 +1182,7 @@ def match_explain(target, candidate, region, candidate_region) -> None:
         target_region=region,
         candidate_region=candidate_region,
     )
-    click.echo(matching.render_bands(differences, label=candidate.stem))
+    click.echo(matching.render_bands(differences, label=_audio_label(candidate)))
 
 
 @match.group("ab")
@@ -1050,7 +1193,7 @@ def match_ab() -> None:
 @match_ab.command("start")
 @click.argument("session_id")
 @click.argument("target_label")
-@click.argument("candidates", nargs=-1, required=True, type=click.Path(exists=True, path_type=Path))
+@click.argument("candidates", nargs=-1, required=True, metavar="AUDIO...")
 @click.option("--pairs", type=int, help="Cap the number of trials.")
 @handled
 def ab_start(session_id, target_label, candidates, pairs) -> None:
@@ -1058,7 +1201,10 @@ def ab_start(session_id, target_label, candidates, pairs) -> None:
     from .core import matching
 
     session = matching.create_ab(
-        session_id, target_label, {p.stem: str(p) for p in candidates}, pairs=pairs
+        session_id,
+        target_label,
+        {_audio_label(c): str(c) for c in candidates},
+        pairs=pairs,
     )
     click.echo(f"Created '{session_id}' with {len(session.trials)} trial(s).\n")
 

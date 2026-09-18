@@ -783,8 +783,16 @@ export const onShow = refreshSessions;
 
 // Arriving from the rig builder: say which rig is being tested, so a
 // ranking saved later is not one of several anonymous ones.
-onArrive("match", ({ rigName, recipeId }) => {
+onArrive("match", ({ rigName, recipeId, diTakeId, targetTakeId }) => {
   arrivedFrom = recipeId || arrivedFrom;
+
+  // A take id works anywhere a path does, so handing one over is just
+  // filling in the box.
+  if (diTakeId) $("#search-di").value = diTakeId;
+  if (targetTakeId) {
+    $("#target-path").value = targetTakeId;
+    attempt(() => openInto("target", targetTakeId));
+  }
   if (!rigName) return;
   const note = $("#mode-note");
   if (note && !note.textContent.includes(rigName)) {

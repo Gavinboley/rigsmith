@@ -860,3 +860,72 @@ def test_a_confirmed_write_is_a_job(client):
 
 def test_a_write_preview_on_a_missing_draft_is_404(client):
     assert client.post("/api/drafts/ghost/write").status_code == 404
+
+
+# --------------------------------------------------------------------------
+# takes - the user's own recordings
+# --------------------------------------------------------------------------
+
+
+def test_a_take_round_trips_through_the_api(client, outside_file):
+    added = client.post(
+        "/api/takes",
+        json={
+            "path": str(outside_file),
+            "kind": "di",
+            "guitar": "Les Paul Standard",
+            "pickup": "bridge",
+        },
+    ).json()
+    assert added["guitar"] == "Les Paul Standard"
+    assert added["reamps"] is True
+
+    listing = client.get("/api/takes").json()
+    assert listing["guitars"] == ["Les Paul Standard"]
+    assert "di" in listing["kinds"], "the page needs the vocabulary too"
+
+    take_id = added["take_id"]
+    fetched = client.get(f"/api/takes/{take_id}").json()
+    assert fetched["url"], "the page has to be able to play it"
+    assert client.get(fetched["url"]).status_code == 200
+
+
+def test_a_takes_labels_can_be_corrected_through_the_api(client, outside_file):
+    added = client.post("/api/takes", json={"path": str(outside_file)}).json()
+    assert added["guitar"] is None
+
+    updated = client.patch(
+        f"/api/takes/{added['take_id']}", json={"guitar": "Telecaster"}
+    ).json()
+    assert updated["guitar"] == "Telecaster"
+
+
+def test_an_unreadable_take_is_400_not_500(client, tmp_path):
+    broken = tmp_path / "broken.wav"
+    broken.write_bytes(b"not audio")
+
+    response = client.post("/api/takes", json={"path": str(broken)})
+    assert response.status_code == 400
+    assert "broken.wav" in response.json()["error"]
+
+
+def test_a_missing_take_is_404(client):
+    assert client.get("/api/takes/ghost").status_code == 404
+
+
+def test_device_audio_reports_a_missing_drive_rather_than_failing(client):
+    """Looking is a question, not an action, so it answers rather than 503s."""
+    payload = client.get("/api/device/audio").json()
+    assert payload["files"] == []
+    if payload["error"]:
+        assert "HeadRush" in payload["error"] or "storage" in payload["error"].lower()
+
+
+def test_the_picker_only_offers_what_this_install_can_read(client, tmp_path):
+    (tmp_path / "riff.wav").write_bytes(b"RIFF")
+    (tmp_path / "voice.m4a").write_bytes(b"\x00")
+
+    payload = client.get("/api/browse", params={"path": str(tmp_path)}).json()
+    names = [entry["name"] for entry in payload["files"]]
+    assert "riff.wav" in names
+    assert "voice.m4a" not in names, "offering a file that cannot be opened is a trap"

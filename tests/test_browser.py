@@ -759,3 +759,53 @@ def test_writing_asks_before_it_writes_and_shows_what(browser, server):
         page.click("#modal-form button[value='cancel']")
         page.wait_for_selector("#modal[open]", state="detached", timeout=5000)
         assert "JMP-1959" in page.inner_text("#board")
+
+
+def test_the_takes_panel_keeps_the_instrument_with_the_recording(
+    browser, server, tmp_path
+):
+    """A folder of wav files is not a library; the labels are what make it one."""
+    riff = audio_file(tmp_path, "cherub-riff.wav")
+
+    with page_at(browser, server) as page:
+        page.click("#tabs .tab[data-panel='takes']")
+        page.wait_for_selector("#takes-list")
+        assert "Nothing here yet" in page.inner_text("#takes-list")
+
+        page.fill("#take-path", str(riff))
+        page.click("#take-add")
+        page.wait_for_selector("#modal[open]", timeout=10000)
+
+        page.fill("#f-guitar", "Les Paul Standard")
+        page.fill("#f-pickup", "bridge")
+        page.fill("#f-tuning", "E standard")
+        page.click("#modal-ok")
+
+        page.wait_for_selector("#takes-list .item", timeout=10000)
+        listed = page.inner_text("#takes-list")
+        assert "cherub-riff" in listed
+        assert "Les Paul Standard bridge" in listed
+        assert "no guitar" not in listed
+
+        # A DI is the one kind that can be rendered through a candidate rig,
+        # so it is the one that offers to be one.
+        page.click("#takes-list button:has-text('use as DI')")
+        page.wait_for_selector("#panels .panel[data-panel='match']", state="visible")
+        assert page.input_value("#search-di") == "cherub-riff"
+
+
+def test_a_take_with_no_guitar_is_called_out(browser, server, tmp_path):
+    riff = audio_file(tmp_path, "unlabelled.wav")
+
+    with page_at(browser, server) as page:
+        page.click("#tabs .tab[data-panel='takes']")
+        page.fill("#take-path", str(riff))
+        page.click("#take-add")
+        page.wait_for_selector("#modal[open]", timeout=10000)
+        page.click("#modal-ok")
+
+        page.wait_for_selector("#takes-list .item", timeout=10000)
+        assert "no guitar" in page.inner_text("#takes-list")
+        assert "the reason this library is worth keeping" in page.inner_text(
+            "#takes-summary"
+        )

@@ -6,7 +6,15 @@ past formatting a result, the logic belongs in core so the CLI and web UI
 get it too.
 """
 
-from . import captures, device, matching, recipes, rigs, workspace  # noqa: F401
+from . import (  # noqa: F401
+    captures,
+    device,
+    matching,
+    recipes,
+    rigs,
+    takes,
+    workspace,
+)
 
 __all__ = [
     "captures",
@@ -14,5 +22,6 @@ __all__ = [
     "matching",
     "recipes",
     "rigs",
+    "takes",
     "workspace",
 ]

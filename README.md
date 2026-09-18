@@ -4,14 +4,14 @@
 
 Three ways in, all over the same core: a **web UI**, a **CLI**, and an **MCP server** so an AI agent can do the slow parts for you.
 
-The web UI has six panels: **Research** (the recipe, with every claim's source and confidence), **Rig** (a 14-slot pedalboard you drag), **Captures**, **Match** (waveforms and blind A/B), **Device**, and **Workspace**. They hand work to each other: an unresolved amp goes looking for a capture, a compiled recipe opens as a rig, a rig goes off to be measured.
+The web UI has seven panels: **Research** (the recipe, with every claim's source and confidence), **Rig** (a 14-slot pedalboard you drag), **My playing** (your own takes, labelled with the guitar that made them), **Captures**, **Match** (waveforms and blind A/B), **Device**, and **Workspace**. They hand work to each other: an unresolved amp goes looking for a capture, a compiled recipe opens as a rig, a rig goes off to be measured.
 
 ```bash
 pip install -e ".[all]"
 rigsmith ui
 ```
 
-> **Status: works without hardware; one thing needs it.** Rig authoring, validation, NAM analysis, tone matching, catalog extraction, USB backup, MIDI and the web UI are all done and covered by 604 tests. The Remote Editor's wire protocol still has to be captured against a powered-on Core before `write_rig` can write — everything else runs today. See [docs/PROTOCOL.md](docs/PROTOCOL.md).
+> **Status: works without hardware; one thing needs it.** Rig authoring, validation, NAM analysis, tone matching, catalog extraction, USB backup, MIDI and the web UI are all done and covered by 665 tests. The Remote Editor's wire protocol still has to be captured against a powered-on Core before `write_rig` can write — everything else runs today. See [docs/PROTOCOL.md](docs/PROTOCOL.md).
 
 ---
 
@@ -127,6 +127,49 @@ rigsmith rig validate cherub-rock
 rigsmith rig preview  cherub-rock
 ```
 
+### Use your own guitar
+
+Every comparison here is against a record made on somebody else's instrument.
+The one variable you can remove is yours.
+
+```bash
+rigsmith take add riff.wav --kind di --guitar "Les Paul Standard" \
+  --pickup bridge --tuning "E standard" --note "the riff, twice"
+
+rigsmith take pull --list            # what is on the pedal's USB storage
+rigsmith take pull --guitar "Les Paul Standard"   # import loops off it
+
+rigsmith take list
+```
+
+A take id then works **anywhere a filename does**:
+
+```bash
+rigsmith match score stem.mp3 cherub-riff --region 41.2:58.0
+rigsmith match search cherub-riff stem.mp3 ./captures
+```
+
+Only a **DI** can be rendered through a candidate rig - it is the one signal
+that has not been through an amp yet. A loop off the pedal has, so it arrives
+labelled as a loop: reamping through one would stack two amps, which sounds
+like neither.
+
+### What it can read
+
+Whatever libsndfile on your machine can: **wav, aiff, flac, ogg, and mp3**
+on a current install. An mp3 of the record is a perfectly normal target, and
+the decoder handles the encoder's delay so it lines up.
+
+Lossy audio is worth avoiding in one specific place - as the DI you render
+candidates through, where the encoder's artefacts get printed into every
+candidate equally and then measured as though they were tone. rigsmith says
+so when you use one that way, and stays quiet when you do not. It also says
+when a take is clipped, since clipping is distortion and distortion is the
+thing these metrics measure.
+
+`m4a` is not something libsndfile decodes; the error says so and says what
+does work, rather than surfacing a decoder message.
+
 ### Match it against the record
 
 ```bash
@@ -161,7 +204,7 @@ Ask for a tone. The agent researches the gear, finds an A2 capture, builds the r
     +---------------+---------------+
     |               |               |
   cli.py       mcp/tools/*      web/api.py
-  (click)       (65 tools)       (FastAPI)
+  (click)       (72 tools)       (FastAPI)
 ```
 
 Each surface is a thin adapter: parse input, call core, format output. That rule exists because the first version broke it — orchestration lived inside the MCP tools, so anything not reachable from a tool was reachable from nowhere, and whole subsystems ended up built and unwired.

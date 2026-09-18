@@ -87,6 +87,11 @@ class Settings:
         return self.workspace / "nam"
 
     @property
+    def takes_dir(self) -> Path:
+        """Your own recordings: DIs, wet references, loops off the pedal."""
+        return self.workspace / "takes"
+
+    @property
     def research_dir(self) -> Path:
         """Cached tone research and compiled recipes."""
         return self.workspace / "research"
@@ -103,6 +108,7 @@ class Settings:
             self.firmware_dir,
             self.audio_dir,
             self.nam_dir,
+            self.takes_dir,
             self.research_dir,
         ):
             path.mkdir(parents=True, exist_ok=True)

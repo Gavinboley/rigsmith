@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Any
 
 from ..config import get_settings, require_writable
-from .errors import Invalid, NotFound, Unavailable
+from .errors import Conflict, Invalid, NotFound, Unavailable
 from .jobs import Progress
 
 
@@ -322,3 +322,84 @@ def verify_rig(
     with _controller(port, channel) as midi:
         steps = _verify(draft.rig, midi, program=program)
     return VerifyResult(draft_id=draft_id, steps=steps)
+
+
+# --------------------------------------------------------------------------
+# pulling audio off the device
+# --------------------------------------------------------------------------
+
+
+def list_device_audio(path: str | Path | None = None):
+    """Audio files sitting on the device's USB storage."""
+    from ..device.usbmsc import find_audio, find_device_volume
+
+    volume = find_device_volume(path)
+    return volume, find_audio(volume)
+
+
+def render_device_audio(volume, paths) -> str:
+    from ..device.usbmsc import render_audio_listing
+
+    return render_audio_listing(paths, volume)
+
+
+def import_device_audio(
+    *,
+    path: str | Path | None = None,
+    kind: str = "loop",
+    guitar: str | None = None,
+    pickup: str | None = None,
+    note: str | None = None,
+    only: list[str] | None = None,
+):
+    """Copy recordings off the device into the takes library.
+
+    Defaults to ``loop`` rather than ``di``, because whatever the pedal
+    recorded has already been through the pedal. Calling that a DI and
+    reamping through it stacks two amps.
+    """
+    from . import takes
+
+    require_writable("import audio from the device")
+    volume, found = list_device_audio(path)
+    if only:
+        wanted = {name.lower() for name in only}
+        found = [p for p in found if p.name.lower() in wanted or p.stem.lower() in wanted]
+
+    imported = []
+    skipped = []
+    for source in found:
+        try:
+            imported.append(
+                takes.add(
+                    source,
+                    kind=kind,
+                    origin="looper",
+                    guitar=guitar,
+                    pickup=pickup,
+                    note=note,
+                )
+            )
+        except Conflict:
+            skipped.append(f"{source.name}: already in the library")
+        except (Invalid, NotFound) as exc:
+            skipped.append(f"{source.name}: {exc.message}")
+    return imported, skipped
+
+
+def render_import(imported, skipped) -> str:
+    if not imported and not skipped:
+        return "Nothing to import."
+    lines = []
+    if imported:
+        lines.append(f"Imported {len(imported)} take(s):")
+        lines.extend(f"  {take.describe()}" for take in imported)
+        lines.append(
+            "\nThese came off the pedal, so they have already been through "
+            "whatever rig was loaded. Good as a reference to match; not "
+            "something to reamp through - that would stack two amps."
+        )
+    if skipped:
+        lines.append("\nskipped:")
+        lines.extend(f"  {item}" for item in skipped)
+    return "\n".join(lines)

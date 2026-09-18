@@ -32,6 +32,10 @@ AREAS: dict[str, tuple[str, bool]] = {
     # Not prunable: a downloaded capture is the thing a rig points at, and
     # re-downloading needs the account that fetched it in the first place.
     "nam": ("NAM captures downloaded from TONE3000", False),
+    # Not prunable, emphatically: these are recordings of the user playing.
+    # Nothing here can be re-derived, and a cleanup that eats them is a
+    # cleanup that eats the one thing the tool cannot make again.
+    "takes": ("your own recordings - DIs, references, loops off the pedal", False),
     "research": ("cached tone research and compiled recipes", True),
     "drafts": ("rigs being worked on", False),
     "exports": ("rigs exported to JSON", True),
