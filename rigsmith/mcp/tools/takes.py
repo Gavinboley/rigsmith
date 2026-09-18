@@ -28,7 +28,13 @@ def list_takes(kind: str | None = None, guitar: str | None = None) -> str:
 
 @tool
 def show_take(take_id: str) -> str:
-    """Show one recording: the instrument, what was played, and any concerns."""
+    """Show one recording: the instrument, what was played, and any concerns.
+
+    The concerns are worth relaying. A take recorded off concert pitch puts
+    every harmonic slightly off where the record's sits, which the band
+    comparison reads as a tone difference - so it is worth retuning and
+    re-recording before spending an evening chasing captures.
+    """
     return takes.get(take_id).render()
 
 
@@ -57,6 +63,9 @@ def add_take(
             amp stacks two, which sounds like neither.
         origin: Where it was recorded. 'usb' is the Core's own interface,
             'looper' is a loop pulled off the pedal's storage.
+        tuning: If they say one, it is checked against the lowest note in the
+            recording - and queried rather than corrected, because a low
+            string that was never played cannot be heard.
         note: What they played, in their words.
     """
     added = takes.add(

@@ -457,3 +457,90 @@ def test_every_result_carries_where_it_differs(workspace):
     worst = next(r for r in results if r.guitar == "Les Paul")
     assert worst.bands, "no band detail to act on"
     assert any(band.audible for band in worst.bands)
+
+
+# --------------------------------------------------------------------------
+# what the guitar was tuned to
+# --------------------------------------------------------------------------
+
+
+def _played(directory, name, *, base=82.41, cents=0.0):
+    """A short riff of plucked notes, so pitch has something to find."""
+    directory.mkdir(parents=True, exist_ok=True)
+    frames = []
+    for frequency in (base, base * 1.5, base * 2, base):
+        tuned = frequency * (2 ** (cents / 1200))
+        t = np.arange(int(0.5 * RATE)) / RATE
+        partials = sum(
+            (1 / (h + 1)) * np.sin(2 * np.pi * tuned * (h + 1) * t) for h in range(6)
+        )
+        frames.append(partials * np.exp(-t * 3))
+    signal = np.concatenate(frames * 3)
+    signal = signal / np.abs(signal).max() * 0.6
+
+    path = directory / f"{name}.wav"
+    sf.write(str(path), signal.astype("float32"), RATE, subtype="FLOAT")
+    return path
+
+
+def test_a_take_records_what_it_was_tuned_to(workspace):
+    take = takes.add(
+        _played(workspace / "src", "riff"), kind="di", guitar="Les Paul"
+    )
+    assert take.lowest_note == "E2"
+    assert take.in_concert_pitch is True
+
+
+def test_a_take_recorded_flat_says_so(workspace):
+    """Every harmonic sits off where the record's does, and the band
+    comparison reads that as tone."""
+    take = takes.add(
+        _played(workspace / "src", "flat", cents=-30), kind="di", guitar="Strat"
+    )
+
+    assert take.in_concert_pitch is False
+    assert take.cents_offset == pytest.approx(-30, abs=8)
+    assert any("flat of concert pitch" in note for note in take.concerns)
+    assert "-30c" in take.describe() or "-29c" in take.describe()
+
+
+def test_a_tuning_label_that_does_not_match_is_queried(workspace):
+    take = takes.add(
+        _played(workspace / "src", "dropped", base=73.42),
+        kind="di",
+        guitar="Strat",
+        tuning="E standard",
+    )
+    assert any("lowest note here is D2" in note for note in take.concerns)
+    assert any("not proof of a wrong label" in note for note in take.concerns)
+
+
+def test_a_matching_tuning_label_says_nothing(workspace):
+    take = takes.add(
+        _played(workspace / "src", "standard"),
+        kind="di",
+        guitar="Strat",
+        tuning="E standard",
+    )
+    assert take.concerns == []
+
+
+def test_a_reference_is_not_measured_for_tuning(workspace):
+    """Somebody else's record is not something this library is tuning."""
+    take = takes.add(_played(workspace / "src", "record"), kind="reference")
+    assert take.lowest_note is None
+    assert take.in_concert_pitch is None
+
+
+def test_a_take_with_nothing_pitched_in_it_claims_nothing(workspace):
+    path = workspace / "src" / "hum.wav"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    rng = np.random.default_rng(1)
+    sf.write(
+        str(path),
+        (rng.standard_normal(RATE * 2) * 0.2).astype("float32"),
+        RATE,
+        subtype="FLOAT",
+    )
+    take = takes.add(path, kind="di", guitar="Strat")
+    assert take.in_concert_pitch in (None, True)

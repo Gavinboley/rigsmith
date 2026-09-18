@@ -82,6 +82,14 @@ class Take:
     lossy: bool = False
     concerns: list[str] = field(default_factory=list)
 
+    lowest_note: str | None = None
+    """The lowest note heard. Not proof of a tuning - a lower string may
+    simply not have been played - but it is what the recording contains."""
+    cents_offset: float | None = None
+    """Deviation from concert pitch. A take recorded flat puts every harmonic
+    slightly off where the record's sits, and a band comparison reads that as
+    a tone difference."""
+
     added_at: str = field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat(timespec="seconds")
     )
@@ -108,6 +116,15 @@ class Take:
         bits = [p for p in (self.guitar, self.pickup) if p]
         return " ".join(bits) if bits else self.take_id
 
+    @property
+    def in_concert_pitch(self) -> bool | None:
+        """``None`` when there was not enough pitched material to tell."""
+        from ..match.pitch import CENTS_TOLERANCE
+
+        if self.cents_offset is None:
+            return None
+        return abs(self.cents_offset) <= CENTS_TOLERANCE
+
     def describe(self) -> str:
         bits = [self.take_id, f"[{self.kind}]"]
         gear = " ".join(p for p in (self.guitar, self.pickup) if p)
@@ -115,6 +132,10 @@ class Take:
             bits.append(gear)
         if self.tuning:
             bits.append(self.tuning)
+        elif self.lowest_note:
+            bits.append(f"low {self.lowest_note}")
+        if self.in_concert_pitch is False:
+            bits.append(f"{self.cents_offset:+.0f}c")
         if self.duration:
             bits.append(f"{self.duration:.1f}s")
         if self.lossy:
@@ -135,6 +156,7 @@ class Take:
         data = asdict(self)
         data["exists"] = self.exists
         data["reamps"] = self.reamps
+        data["in_concert_pitch"] = self.in_concert_pitch
         data["describe"] = self.describe()
         return data
 
@@ -184,7 +206,7 @@ def _save_index(takes: dict[str, Take]) -> None:
     # to_dict adds derived keys; strip them so the file stays the record and
     # not a cache of things that can change.
     for entry in payload["takes"]:
-        for derived in ("exists", "reamps", "describe"):
+        for derived in ("exists", "reamps", "in_concert_pitch", "describe"):
             entry.pop(derived, None)
     _index_path().write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
@@ -240,6 +262,7 @@ def add(
         copy: Bring the file into the workspace. Left on, because a library
             that points at files on a drive you unplug is not a library.
     """
+    from ..match.pitch import analyse_file
     from ..match.source import inspect_audio
 
     require_writable("add a take")
@@ -273,6 +296,16 @@ def add(
         if destination.resolve() != source.resolve():
             shutil.copy2(source, destination)
 
+    # What the guitar was tuned to. Only for the user's own playing - the
+    # tuning of somebody else's record is not something this library is
+    # keeping, and measuring it would just be a wait.
+    report = None
+    if kind in ("di", "wet", "loop"):
+        try:
+            report = analyse_file(destination)
+        except Exception:
+            report = None
+
     take = Take(
         take_id=identifier,
         path=str(destination),
@@ -290,7 +323,11 @@ def add(
         channels=described.channels,
         lossy=described.lossy,
         concerns=described.concerns(as_di=kind == "di"),
+        lowest_note=report.lowest_note if report and report.measured else None,
+        cents_offset=report.cents_offset if report and report.measured else None,
     )
+    if report and report.measured:
+        take.concerns.extend(report.concerns(stated_tuning=tuning))
     takes[identifier] = take
     _save_index(takes)
     return take

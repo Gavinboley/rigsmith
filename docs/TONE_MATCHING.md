@@ -53,6 +53,27 @@ In this mode the sample-wise metrics are **not computed at all**. Not computed a
 
 The output of distribution mode is a **ranking**. The ordering is informative; the absolute numbers are not. Every rendered ranking says so.
 
+## Tuning, which is measured because nothing else would catch it
+
+A take recorded thirty cents flat puts every harmonic slightly off where the
+record's sits. The band comparison then reads that as a tone difference -
+quietly, and in the direction of "darker", which is exactly the sort of thing
+somebody spends an evening chasing with captures.
+
+So every take of your own playing is measured when it is added. Two separate
+answers come out of it:
+
+- **Concert pitch.** Median deviation across every pitched window. Beyond
+  fifteen cents it is reported, because that is roughly where harmonics move
+  enough for a band to notice.
+- **The lowest note heard.** Reported, and hedged: if the low string never
+  sounds, nothing can know it was there. A stated tuning that disagrees is
+  *queried*, not corrected.
+
+The estimator is autocorrelation with parabolic interpolation - old, cheap,
+and adequate for a guitar part. It is not a polyphonic transcriber, and
+chords score a clarity low enough to be dropped rather than guessed at.
+
 ## Your guitar is a variable too
 
 A capture that matches a record through a maple-necked Strat may not match it

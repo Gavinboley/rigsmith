@@ -42,7 +42,24 @@ function takeItem(take) {
             "Which instrument this was is the whole point of keeping it. " +
             "Click to say.",
         }),
-    take.tuning ? el("span", { class: "meta", text: take.tuning }) : null,
+    take.tuning
+      ? el("span", { class: "meta", text: take.tuning })
+      : take.lowest_note
+      ? el("span", {
+          class: "meta",
+          text: `low ${take.lowest_note}`,
+          title: "The lowest note heard. A lower string may not have been played.",
+        })
+      : null,
+    take.in_concert_pitch === false
+      ? el("span", {
+          class: "tag bad",
+          text: `${take.cents_offset > 0 ? "+" : ""}${Math.round(take.cents_offset)}c`,
+          title:
+            "Off concert pitch. Every harmonic sits slightly off where the " +
+            "record's does, and the band comparison reads that as tone.",
+        })
+      : null,
     el("span", { class: "spacer" }),
     el("span", { class: "meta", text: `${(take.duration || 0).toFixed(1)}s` }),
     take.lossy
