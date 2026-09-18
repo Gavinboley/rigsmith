@@ -403,8 +403,39 @@ def update(take_id: str, **changes) -> Take:
     for name, value in changes.items():
         if value is not None:
             setattr(take, name, value)
+
+    # Two of these labels change what is worth saying about the file. A take
+    # added as a reference and relabelled a DI has just become something that
+    # gets rendered through, which is where lossy encoding starts to matter;
+    # a tuning added after the fact is a claim that can now be checked.
+    if {"kind", "tuning"} & set(changes):
+        _refresh_concerns(take)
+
     _save_index(takes)
     return take
+
+
+def _refresh_concerns(take: Take) -> None:
+    """Re-derive a take's notes after its labels changed."""
+    from ..match.pitch import analyse_file
+    from ..match.source import inspect_audio
+
+    if not take.exists:
+        return
+    try:
+        take.concerns = inspect_audio(take.file).concerns(as_di=take.kind == "di")
+    except Exception:
+        return
+
+    if take.kind in ("di", "wet", "loop"):
+        try:
+            report = analyse_file(take.file)
+        except Exception:
+            return
+        if report.measured:
+            take.lowest_note = report.lowest_note
+            take.cents_offset = report.cents_offset
+            take.concerns.extend(report.concerns(stated_tuning=take.tuning))
 
 
 def delete(take_id: str, *, remove_file: bool = False) -> str:

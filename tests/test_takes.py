@@ -658,3 +658,34 @@ def test_recording_without_a_dry_channel_says_what_that_costs(workspace, monkeyp
     assert wet_take is not None
     assert "cannot be rendered through other rigs" in message
     assert "channel 5" in message, "and how to fix it"
+
+
+def test_relabelling_a_take_as_a_di_reconsiders_what_matters(workspace):
+    """Lossy encoding is unremarkable in a reference and a real problem in a
+    DI, and the label is what decides which one this is."""
+    if "MP3" not in readable_formats():
+        pytest.skip("this libsndfile has no mp3 encoder")
+
+    source = recording(workspace / "src", "riff.mp3", format="MP3")
+    take = takes.add(source, kind="reference")
+    assert take.concerns == []
+
+    updated = takes.update(take.take_id, kind="di")
+    assert any("worth avoiding" in note for note in updated.concerns)
+    assert takes.get(take.take_id).concerns == updated.concerns, "and it persisted"
+
+
+def test_adding_a_tuning_afterwards_checks_it(workspace):
+    take = takes.add(
+        _played(workspace / "src", "dropped", base=73.42), kind="di", guitar="Strat"
+    )
+    assert take.concerns == []
+
+    updated = takes.update(take.take_id, tuning="E standard")
+    assert any("lowest note here is D2" in note for note in updated.concerns)
+
+
+def test_changing_an_unrelated_label_leaves_the_notes_alone(workspace):
+    take = takes.add(_played(workspace / "src", "riff"), kind="di", guitar="Strat")
+    before = list(take.concerns)
+    assert takes.update(take.take_id, pickup="neck").concerns == before
