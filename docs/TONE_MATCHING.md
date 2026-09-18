@@ -53,6 +53,40 @@ In this mode the sample-wise metrics are **not computed at all**. Not computed a
 
 The output of distribution mode is a **ranking**. The ordering is informative; the absolute numbers are not. Every rendered ranking says so.
 
+## Comparing a wav against an mp3
+
+This is the ordinary case: the target is an mp3 of the record and the
+candidates are files you rendered. Measured naively it does not merely add
+noise. On a three-way comparison it **inverted the ranking** - the candidate
+that was byte-identical to the target came last, because the codec's error
+was larger than the difference between the candidates and was not the same
+for each of them.
+
+So when the target is lossy and a candidate is not, the candidate is
+re-encoded to the same format before measuring. The codec's error is then
+common to both sides and cancels, and the same three-way comparison ranks
+correctly with the identical candidate at zero. It is reported rather than
+done quietly, the copy is cached, and in read-only mode the comparison
+proceeds unmatched with a note saying the codec is in the numbers.
+
+Two lossy files are left alone: they already carry an encoder's error, and
+adding another would not cancel anything.
+
+## Frames that hold no tone
+
+A guitar part has gaps, and a gap's spectral shape is whatever the noise
+floor happens to be. Averaged in alongside the notes, that noise is a
+substantial part of what gets compared - a lossless file measured against an
+mp3 *of itself* scored an MFCC distance of 1.97 against a scale where 1.5 is
+the entire term.
+
+Frames more than 45 dB below the loudest are left out. The measure is the
+frame's energy rather than a sum across bins: broadband noise spreads a
+little into every bin, and summing counts that as loudly as a note
+concentrating the same energy into a few, which left a real noise floor
+sitting 38 dB down and never gated. Nothing is gated when no frame stands
+out, because a sustained note is not a signal with gaps.
+
 ## Tuning, which is measured because nothing else would catch it
 
 A take recorded thirty cents flat puts every harmonic slightly off where the

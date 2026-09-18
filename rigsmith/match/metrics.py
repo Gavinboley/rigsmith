@@ -264,6 +264,41 @@ def mfcc(
     return coefficients.T
 
 
+#: How far below a signal's loudest frame a frame can be and still be taken
+#: as carrying tone.
+#:
+#: Guitar parts have gaps, and a gap's spectral shape is whatever the noise
+#: floor happens to be - dither, amp hiss, an encoder's idea of silence.
+#: Averaged in alongside the notes, that noise is what gets compared: a wav
+#: measured against an mp3 of *itself* scored an MFCC distance of 1.97,
+#: against a scale where 1.5 is the whole term. Gated, the same pair scores
+#: near zero, and the metric goes back to measuring the playing.
+FRAME_FLOOR_DB = -45.0
+
+
+def loud_frames(magnitude: np.ndarray, floor_db: float = FRAME_FLOOR_DB) -> np.ndarray:
+    """Mask of frames within ``floor_db`` of the loudest one.
+
+    Everything is kept when no frame stands out - a sustained note or a wall
+    of noise is not a signal with gaps, and gating it would leave nothing.
+    """
+    # The L2 norm rather than a plain sum. Broadband noise spreads a little
+    # energy across every bin, and a sum counts that as loudly as a note
+    # concentrating the same energy into a few - so summing left an actual
+    # noise floor sitting only 38 dB down and never gated it. The L2 norm is
+    # proportional to the frame's real energy and puts the same noise 53 dB
+    # down, which is where it belongs.
+    energy = np.sqrt((magnitude**2).sum(axis=1))
+    peak = float(energy.max()) if energy.size else 0.0
+    if peak <= 0:
+        return np.ones(len(energy), dtype=bool)
+
+    keep = energy >= peak * (10 ** (floor_db / 20))
+    # Never gate everything away, and never gate down to a handful of frames
+    # where the statistics stop meaning anything.
+    return keep if keep.sum() >= max(4, len(keep) // 20) else np.ones_like(keep)
+
+
 def mfcc_distance(
     a: np.ndarray, b: np.ndarray, sample_rate: int, *, n_mfcc: int = 13
 ) -> float:
@@ -272,13 +307,28 @@ def mfcc_distance(
     Compares per-coefficient means and standard deviations rather than
     frame-by-frame, so it does not require the performances to line up.
     """
-    a_mfcc = mfcc(a, sample_rate, n_mfcc=n_mfcc)
-    b_mfcc = mfcc(b, sample_rate, n_mfcc=n_mfcc)
+    a_mfcc = _loud_mfcc(a, sample_rate, n_mfcc)
+    b_mfcc = _loud_mfcc(b, sample_rate, n_mfcc)
 
     a_stats = np.concatenate([a_mfcc.mean(axis=1), a_mfcc.std(axis=1)])
     b_stats = np.concatenate([b_mfcc.mean(axis=1), b_mfcc.std(axis=1)])
     scale = np.maximum(np.abs(a_stats), 1.0)
     return float(np.mean(np.abs(a_stats - b_stats) / scale))
+
+
+def _loud_mfcc(signal: np.ndarray, sample_rate: int, n_mfcc: int) -> np.ndarray:
+    """MFCCs of the frames that actually hold something."""
+    coefficients = mfcc(signal, sample_rate, n_mfcc=n_mfcc)
+    if coefficients.shape[1] < 4:
+        return coefficients
+
+    magnitude = _stft_magnitude(to_mono(signal), 2048, 512)
+    keep = loud_frames(magnitude)
+    # The two framings can differ by a frame at the edges; line them up
+    # rather than assume they match.
+    width = min(len(keep), coefficients.shape[1])
+    kept = keep[:width]
+    return coefficients[:, :width][:, kept] if kept.any() else coefficients
 
 
 @dataclass
@@ -332,6 +382,8 @@ def spectral_summary(
 
     hop = n_fft // 4
     magnitude = _stft_magnitude(signal, n_fft, hop)
+    # A gap between notes describes the noise floor, not the guitar.
+    magnitude = magnitude[loud_frames(magnitude)]
     freqs = np.fft.rfftfreq(n_fft, d=1.0 / sample_rate)
 
     total = magnitude.sum(axis=1, keepdims=True)

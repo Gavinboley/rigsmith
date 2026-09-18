@@ -11,7 +11,7 @@ pip install -e ".[all]"
 rigsmith ui
 ```
 
-> **Status: works without hardware; one thing needs it.** Rig authoring, validation, NAM analysis, tone matching, catalog extraction, USB backup, MIDI and the web UI are all done and covered by 720 tests. The Remote Editor's wire protocol still has to be captured against a powered-on Core before `write_rig` can write — everything else runs today. See [docs/PROTOCOL.md](docs/PROTOCOL.md).
+> **Status: works without hardware; one thing needs it.** Rig authoring, validation, NAM analysis, tone matching, catalog extraction, USB backup, MIDI and the web UI are all done and covered by 735 tests. The Remote Editor's wire protocol still has to be captured against a powered-on Core before `write_rig` can write — everything else runs today. See [docs/PROTOCOL.md](docs/PROTOCOL.md).
 
 ---
 
@@ -180,6 +180,12 @@ candidate equally and then measured as though they were tone. rigsmith says
 so when you use one that way, and stays quiet when you do not. It also says
 when a take is clipped, since clipping is distortion and distortion is the
 thing these metrics measure.
+
+Comparing a wav candidate against an mp3 target needs care, and gets it: the
+candidate is re-encoded to match before measuring. Without that the codec's
+own error is bigger than the difference between candidates — enough to put
+the right answer last — and it is reported when it happens rather than done
+quietly.
 
 `m4a` is not something libsndfile decodes; the error says so and says what
 does work, rather than surfacing a decoder message.

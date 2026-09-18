@@ -356,6 +356,104 @@ def load(path: str | Path, *, mono: bool = True) -> tuple[np.ndarray, int]:
     return array, int(sample_rate)
 
 
+# --------------------------------------------------------------------------
+# comparing like with like
+# --------------------------------------------------------------------------
+
+
+def _encoded_dir() -> Path:
+    from ..config import get_settings
+
+    settings = get_settings()
+    settings.ensure_workspace()
+    directory = settings.audio_dir / "encoded"
+    directory.mkdir(parents=True, exist_ok=True)
+    return directory
+
+
+def matched_to(candidate: str | Path, target: str | Path) -> tuple[Path, str | None]:
+    """A copy of ``candidate`` encoded the way ``target`` is, if that differs.
+
+    This is not a nicety. Measured against an mp3 of itself, a lossless file
+    scored far enough off to *invert* a three-way ranking: the right answer
+    came last, because the codec's error was larger than the difference
+    between the instruments and was not the same for each of them. Put both
+    sides through the same encoder and the error is common to both, so it
+    cancels - the same three-way comparison then ranked correctly, with the
+    identical candidate at zero.
+
+    Returns ``(path, note)``. The path is the candidate unchanged when
+    nothing needs doing; the note says what was done when something did.
+    """
+    candidate_path = Path(candidate)
+    try:
+        target_source = inspect_audio(target, measure=False)
+        candidate_source = inspect_audio(candidate_path, measure=False)
+    except (Invalid, NotFound, Unavailable):
+        return candidate_path, None
+
+    if not target_source.lossy or candidate_source.lossy:
+        return candidate_path, None
+
+    fmt = target_source.format.upper()
+    if fmt not in readable_formats():
+        return candidate_path, None
+
+    from ..config import get_settings
+
+    if get_settings().readonly:
+        return candidate_path, (
+            f"{target_source.path.name} is {fmt} and {candidate_path.name} is "
+            "not. Read-only mode cannot make the matching copy, so the "
+            "codec's own error is in this comparison."
+        )
+
+    suffix = {"MP3": ".mp3", "OGG": ".ogg", "VORBIS": ".ogg"}.get(fmt)
+    if suffix is None:
+        return candidate_path, None
+
+    try:
+        stat = candidate_path.stat()
+    except OSError:
+        return candidate_path, None
+
+    stem = f"{candidate_path.stem}-{fmt.lower()}-{stat.st_size}-{stat.st_mtime_ns}"
+    destination = _encoded_dir() / f"{stem}{suffix}"
+    note = (
+        f"{candidate_path.name} was re-encoded as {fmt} to match "
+        f"{target_source.path.name}. Comparing a lossless candidate against a "
+        "lossy target measures the encoder as well as the tone, and that "
+        "error is big enough to reorder candidates."
+    )
+    if destination.is_file():
+        return destination, note
+
+    try:
+        samples, rate = load(candidate_path, mono=False)
+        sf = _soundfile()
+        sf.write(str(destination), samples.astype("float32"), rate, format=fmt)
+    except Exception:
+        # A codec that will not write is a reason to compare unmatched and
+        # say so, not a reason to refuse the comparison.
+        return candidate_path, (
+            f"could not re-encode {candidate_path.name} as {fmt}, so the "
+            "codec's own error is in this comparison"
+        )
+    return destination, note
+
+
+def matched_set(candidates: dict, target) -> tuple[dict, list[str]]:
+    """Encode every candidate to the target's format where that differs."""
+    matched: dict = {}
+    notes: list[str] = []
+    for label, path in candidates.items():
+        resolved, note = matched_to(path, target)
+        matched[label] = resolved
+        if note and note not in notes:
+            notes.append(note)
+    return matched, notes
+
+
 def concerns_for(
     paths, *, aligned: bool = False, di_paths=(),
 ) -> list[str]:

@@ -527,6 +527,12 @@ def score(
             ),
         )
 
+    # Both sides through the same encoder, or the encoder is what gets
+    # measured. See rigsmith.match.source.matched_to.
+    from ..match.source import matched_set
+
+    candidate_paths, codec_notes = matched_set(candidate_paths, target_path)
+
     target, sample_rate = load_audio(target_path)
     if target_region:
         target = target_region.slice(target, sample_rate, label="the target")
@@ -549,7 +555,7 @@ def score(
     # rather than being something the caller has to go and ask about.
     from ..match.source import concerns_for
 
-    notes = concerns_for(
+    notes = codec_notes + concerns_for(
         [target_path, *candidate_paths.values()],
         aligned=comparison.value == "aligned",
     )
@@ -752,8 +758,10 @@ def compare_bands(
     from ..match.metrics import band_differences
     from ..match.render_offline import load_audio, resample
 
+    from ..match.source import matched_to
+
     target_path = audio_path(target_path)
-    candidate_path = audio_path(candidate_path)
+    candidate_path, _ = matched_to(audio_path(candidate_path), target_path)
     target_region = resolve_region(target_region, target_path)
     candidate_region = resolve_region(candidate_region, candidate_path)
 

@@ -489,3 +489,73 @@ def test_the_report_leads_with_the_biggest_difference():
     assert lines[1].strip().startswith("low end")
     # Under the audible threshold, so not worth acting on and not listed.
     assert not any(line.strip().startswith("mids") for line in lines)
+
+
+# --------------------------------------------------------------------------
+# frames that hold no tone
+# --------------------------------------------------------------------------
+
+
+def test_a_gap_between_notes_is_not_averaged_in_as_timbre():
+    """A gap's spectral shape is whatever the noise floor happens to be -
+    dither, amp hiss, an encoder's idea of silence. Averaged in alongside the
+    notes, that is what gets compared."""
+    from rigsmith.match.metrics import loud_frames, _stft_magnitude
+
+    t = np.arange(SR * 4) / SR
+    signal = np.zeros_like(t)
+    for offset in (0.5, 1.5, 2.5):
+        start = int(offset * SR)
+        envelope = np.arange(int(0.3 * SR)) / SR
+        note = np.sin(2 * np.pi * 196 * envelope * SR / SR) * np.exp(-envelope * 4)
+        signal[start : start + len(note)] += note
+
+    magnitude = _stft_magnitude(to_mono(signal), 2048, 512)
+    keep = loud_frames(magnitude)
+
+    assert 0 < keep.sum() < len(keep), "some frames are notes and some are gaps"
+
+
+def test_a_signal_with_no_gaps_keeps_every_frame():
+    """A sustained note is not a signal with gaps, and gating it would be
+    throwing away the thing being measured."""
+    from rigsmith.match.metrics import loud_frames, _stft_magnitude
+
+    t = np.arange(SR * 2) / SR
+    steady = np.sin(2 * np.pi * 196 * t)
+    keep = loud_frames(_stft_magnitude(to_mono(steady), 2048, 512))
+    assert keep.all()
+
+
+def test_silence_keeps_every_frame_rather_than_none():
+    from rigsmith.match.metrics import loud_frames, _stft_magnitude
+
+    keep = loud_frames(_stft_magnitude(np.zeros(SR), 2048, 512))
+    assert keep.all(), "gating everything away would leave nothing to compare"
+
+
+def test_a_noise_floor_is_gated_the_same_as_true_silence():
+    """The reason the gate measures frame energy rather than summing bins:
+    broadband noise spreads a little energy across every bin, and a sum
+    counts that as loudly as a note concentrating the same energy."""
+    from rigsmith.match.metrics import loud_frames, _stft_magnitude
+
+    rng = np.random.default_rng(0)
+    t = np.arange(SR * 4) / SR
+    signal = np.zeros_like(t)
+    for offset in (0.5, 1.5, 2.5):
+        start = int(offset * SR)
+        envelope = np.arange(int(0.3 * SR)) / SR
+        signal[start : start + len(envelope)] += np.sin(
+            2 * np.pi * 196 * envelope
+        ) * np.exp(-envelope * 4)
+
+    quiet = loud_frames(_stft_magnitude(to_mono(signal), 2048, 512)).sum()
+    hissy = loud_frames(
+        _stft_magnitude(to_mono(signal + 0.0005 * rng.standard_normal(len(t))), 2048, 512)
+    ).sum()
+
+    assert abs(int(quiet) - int(hissy)) <= 5, (
+        f"digital silence kept {quiet} frames and a noise floor kept {hissy} - "
+        "the gate is measuring the wrong thing"
+    )
