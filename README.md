@@ -11,7 +11,7 @@ pip install -e ".[all]"
 rigsmith ui
 ```
 
-> **Status: works without hardware; one thing needs it.** Rig authoring, validation, NAM analysis, tone matching, catalog extraction, USB backup, MIDI and the web UI are all done and covered by 670 tests. The Remote Editor's wire protocol still has to be captured against a powered-on Core before `write_rig` can write — everything else runs today. See [docs/PROTOCOL.md](docs/PROTOCOL.md).
+> **Status: works without hardware; one thing needs it.** Rig authoring, validation, NAM analysis, tone matching, catalog extraction, USB backup, MIDI and the web UI are all done and covered by 676 tests. The Remote Editor's wire protocol still has to be captured against a powered-on Core before `write_rig` can write — everything else runs today. See [docs/PROTOCOL.md](docs/PROTOCOL.md).
 
 ---
 
@@ -140,7 +140,13 @@ rigsmith take pull --list            # what is on the pedal's USB storage
 rigsmith take pull --guitar "Les Paul Standard"   # import loops off it
 
 rigsmith take list
+rigsmith take compare stem.mp3 --nam ./captures/jcm800.nam   # which guitar?
 ```
+
+`take compare` is the one that surprises people. A capture sweep answers
+"which amp gets closest"; this answers the question underneath it - which
+guitar should you be holding. Same rig, same target, one variable, and it is
+the difference no amount of capture hunting fixes.
 
 A take id then works **anywhere a filename does**:
 
@@ -205,7 +211,7 @@ Ask for a tone. The agent researches the gear, finds an A2 capture, builds the r
     +---------------+---------------+
     |               |               |
   cli.py       mcp/tools/*      web/api.py
-  (click)       (72 tools)       (FastAPI)
+  (click)       (73 tools)       (FastAPI)
 ```
 
 Each surface is a thin adapter: parse input, call core, format output. That rule exists because the first version broke it — orchestration lived inside the MCP tools, so anything not reachable from a tool was reachable from nowhere, and whole subsystems ended up built and unwired.

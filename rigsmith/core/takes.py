@@ -103,6 +103,11 @@ class Take:
         """
         return self.kind == "di"
 
+    def label_or_id(self) -> str:
+        """The instrument if it is known, the take id otherwise."""
+        bits = [p for p in (self.guitar, self.pickup) if p]
+        return " ".join(bits) if bits else self.take_id
+
     def describe(self) -> str:
         bits = [self.take_id, f"[{self.kind}]"]
         gear = " ".join(p for p in (self.guitar, self.pickup) if p)

@@ -200,6 +200,24 @@
 
     <div class="card">
       <div class="scenes-head">
+        <h3>Which guitar</h3>
+        <button class="btn small" id="guitar-compare">Compare</button>
+      </div>
+      <p class="hint">
+        A capture sweep answers &ldquo;which amp gets closest&rdquo;. This
+        answers the question underneath it &mdash; and it is the one
+        difference no amount of capture hunting fixes.
+      </p>
+      <div class="row">
+        <input type="text" id="guitar-target" placeholder="The record, or a take id" class="grow">
+        <input type="text" id="guitar-nam" placeholder="Capture to render through (optional)" class="grow">
+      </div>
+      <div id="guitar-progress" class="list"></div>
+      <div id="guitar-results" class="list"></div>
+    </div>
+
+    <div class="card">
+      <div class="scenes-head">
         <h3>On the pedal</h3>
         <button class="btn small" id="device-audio-scan">Look</button>
       </div>

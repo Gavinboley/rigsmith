@@ -10,7 +10,7 @@
  */
 
 import { api } from "../api.js";
-import { $, attempt, clear, el, prompt, toast } from "../ui.js";
+import { $, attempt, clear, el, jobRow, prompt, toast } from "../ui.js";
 import { attachPicker } from "../picker.js";
 import { goTo, onArrive } from "../nav.js";
 
@@ -306,6 +306,88 @@ async function importOne(file) {
   await refresh();
 }
 
+/* ------------------------------------------------- which guitar */
+
+/* Renders every DI through the same rig and ranks the instruments. It is a
+ * job because it renders; it is here rather than in the Match panel because
+ * the thing being compared is what is in this room, not what is on TONE3000. */
+
+let compareJob = null;
+
+async function compareGuitars() {
+  const target = $("#guitar-target").value.trim();
+  if (!target) throw new Error("Give the record you are chasing");
+
+  const { job_id } = await api.compareGuitars({
+    target_path: target,
+    nam_path: $("#guitar-nam").value.trim() || null,
+    target_region: "auto",
+  });
+  compareJob = job_id;
+  clear($("#guitar-results"));
+  clear($("#guitar-progress")).append(
+    el("div", { class: "hint", text: "rendering..." })
+  );
+}
+
+export function onJobs(jobs) {
+  if (!compareJob) return;
+  const job = jobs.find((candidate) => candidate.id === compareJob);
+  if (!job) return;
+
+  clear($("#guitar-progress")).append(
+    jobRow(job, { onCancel: () => attempt(() => api.cancelJob(job.id)) })
+  );
+  if (!job.finished) return;
+
+  const id = compareJob;
+  compareJob = null;
+  if (job.state !== "succeeded") return;
+
+  attempt(async () => {
+    const { result } = await api.job(id);
+    const host = clear($("#guitar-results"));
+    clear($("#guitar-progress"));
+
+    for (const [index, entry] of (result.results || []).entries()) {
+      const worst = (entry.bands || [])
+        .filter((band) => band.audible)
+        .sort((a, b) => Math.abs(b.delta_db) - Math.abs(a.delta_db))
+        .slice(0, 3);
+
+      host.append(
+        el(
+          "div",
+          { class: "item" },
+          el("span", { class: "tag", text: `#${index + 1}` }),
+          el("span", { class: "title", text: entry.label }),
+          el("span", { class: "spacer" }),
+          ...worst.map((band) =>
+            el("span", {
+              class: "meta",
+              title: band.meaning,
+              text: `${band.name} ${band.delta_db >= 0 ? "+" : ""}${band.delta_db.toFixed(1)} dB`,
+            })
+          ),
+          el("span", {
+            class: "meta mono",
+            text: entry.composite.toFixed(4),
+          })
+        )
+      );
+    }
+    host.append(
+      el("div", {
+        class: "hint",
+        text: result.through_a_rig
+          ? "Same rig, same target, one variable."
+          : "No capture given, so these are the raw instruments - a real " +
+            "comparison of them, but dark and thin against a recorded target.",
+      })
+    );
+  });
+}
+
 /* ------------------------------------------------------------------- init */
 
 export function init() {
@@ -313,6 +395,9 @@ export function init() {
 
   $("#take-add").onclick = () => attempt(addTake);
   $("#device-audio-scan").onclick = () => attempt(lookOnDevice);
+  $("#guitar-compare").onclick = () => attempt(compareGuitars);
+  attachPicker("#guitar-target", { kind: "audio", title: "The record" });
+  attachPicker("#guitar-nam", { kind: "capture", title: "A capture" });
 
   return refresh();
 }

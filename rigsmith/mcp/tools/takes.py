@@ -149,3 +149,44 @@ def import_device_audio(
         kind=kind, guitar=guitar, pickup=pickup, note=note, only=only
     )
     return devices.render_import(imported, skipped)
+
+
+@tool
+def compare_guitars(
+    target_path: str,
+    nam_path: str | None = None,
+    ir_path: str | None = None,
+    take_ids: list[str] | None = None,
+    target_region: str | None = None,
+) -> str:
+    """Rank the user's instruments against a target, one variable at a time.
+
+    search_offline answers "which capture gets closest". This answers the
+    question underneath it: which guitar should they be holding. Same rig,
+    same target - and it is the one difference no amount of capture hunting
+    fixes, because a Les Paul is not going to sound like a Strat however good
+    the model is.
+
+    Needs at least two DI takes. Suggest this when they own more than one
+    guitar and are chasing a specific record; it is often a shorter path than
+    another twenty captures.
+
+    Args:
+        nam_path: Render each guitar through this capture first. Without one
+            the DIs are compared raw, which is still a real answer about the
+            instruments but reads dark and thin against a recorded target.
+        take_ids: Limit the comparison. Defaults to every DI in the library.
+        target_region: 'start:end', or 'auto' for the busiest passage.
+    """
+    from ...core import matching
+
+    results = matching.compare_guitars(
+        target_path,
+        nam_path=nam_path,
+        ir_path=ir_path,
+        take_ids=take_ids,
+        target_region=target_region,
+    )
+    return matching.render_guitar_comparison(
+        results, through_a_rig=bool(nam_path or ir_path)
+    )

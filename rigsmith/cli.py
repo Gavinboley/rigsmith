@@ -925,6 +925,37 @@ def take_rm(take_id, delete_file) -> None:
     click.echo(takes.delete(take_id, remove_file=delete_file))
 
 
+@take.command("compare")
+@click.argument("target", metavar="AUDIO")
+@click.option("--nam", "nam_path", type=click.Path(exists=True, path_type=Path),
+              help="Render each guitar through this capture first.")
+@click.option("--ir", "ir_path", type=click.Path(exists=True, path_type=Path))
+@click.option("--region", metavar="START:END", help="Span of the target, or 'auto'.")
+@click.option("--take", "take_ids", multiple=True, help="Limit to these takes.")
+@handled
+def take_compare(target, nam_path, ir_path, region, take_ids) -> None:
+    """Rank your instruments against a target, one variable at a time.
+
+    The capture sweep answers "which amp gets closest". This answers the
+    question underneath it: which guitar should you be holding. Same rig,
+    same target, and the one difference no amount of capture hunting fixes.
+    """
+    from .core import matching
+
+    results = matching.compare_guitars(
+        target,
+        nam_path=nam_path,
+        ir_path=ir_path,
+        take_ids=list(take_ids) or None,
+        target_region=region,
+    )
+    click.echo(
+        matching.render_guitar_comparison(
+            results, through_a_rig=bool(nam_path or ir_path)
+        )
+    )
+
+
 @take.command("pull")
 @click.option("--guitar", help="Which instrument these were played on.")
 @click.option("--pickup")

@@ -342,3 +342,118 @@ def test_with_no_di_at_all_it_says_how_to_make_one(workspace):
         _di_or_default(None)
     assert "take add" in caught.value.hint
     assert "capture-di" in caught.value.hint
+
+
+# --------------------------------------------------------------------------
+# which guitar
+# --------------------------------------------------------------------------
+
+
+def _guitar(directory, name, *, dark=0.0, bright=0.0):
+    """A DI with a deliberate tonal slant, so a ranking has something to find."""
+    scipy_signal = pytest.importorskip("scipy.signal")
+
+    t = np.arange(3 * RATE) / RATE
+    rng = np.random.default_rng(4)
+    # Harmonically rich on purpose. Two pure sines have nothing above 400 Hz
+    # for a shelf to act on, so filtered copies of them come out identical
+    # once levels are normalised - and the test would pass on a fixture that
+    # proves nothing.
+    base = np.tanh(
+        (np.sin(2 * np.pi * 196 * t) + 0.4 * np.sin(2 * np.pi * 392 * t)) * 3
+    ) + 0.05 * rng.standard_normal(len(t))
+    signal = base.copy()
+    if dark:
+        signal += dark * scipy_signal.lfilter(
+            *scipy_signal.butter(2, 2000 / (RATE / 2), btype="low"), base
+        )
+    if bright:
+        signal += bright * scipy_signal.lfilter(
+            *scipy_signal.butter(2, 3000 / (RATE / 2), btype="high"), base
+        )
+    signal = signal / np.abs(signal).max() * 0.7
+
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / f"{name}.wav"
+    sf.write(str(path), signal.astype("float32"), RATE, subtype="FLOAT")
+    return path
+
+
+def test_the_instrument_closest_to_the_target_comes_first(workspace):
+    """Same rig, same target, one variable - the one no capture fixes."""
+    from rigsmith.core.matching import compare_guitars, render_guitar_comparison
+
+    source = workspace / "src"
+    takes.add(_guitar(source, "lp", dark=0.9), kind="di", guitar="Les Paul")
+    takes.add(_guitar(source, "strat"), kind="di", guitar="Strat")
+    bright = _guitar(source, "tele", bright=1.1)
+    takes.add(bright, kind="di", guitar="Telecaster")
+
+    results = compare_guitars(bright)
+    assert results[0].guitar == "Telecaster", [r.label for r in results]
+
+    text = render_guitar_comparison(results, through_a_rig=False)
+    assert "Telecaster" in text
+    assert "raw instruments" in text, "a dry comparison has to say it is one"
+
+
+def test_a_pickup_is_part_of_the_answer(workspace):
+    from rigsmith.core.matching import compare_guitars
+
+    source = workspace / "src"
+    takes.add(_guitar(source, "a"), kind="di", guitar="Strat", pickup="bridge")
+    takes.add(_guitar(source, "b", dark=0.9), kind="di", guitar="Strat", pickup="neck")
+
+    results = compare_guitars(workspace / "src" / "a.wav")
+    assert {r.label for r in results} == {"Strat bridge", "Strat neck"}
+
+
+def test_comparing_needs_more_than_one_instrument(workspace):
+    from rigsmith.core.matching import compare_guitars
+
+    source = workspace / "src"
+    only = _guitar(source, "lonely")
+    takes.add(only, kind="di", guitar="Strat")
+
+    with pytest.raises(Invalid) as caught:
+        compare_guitars(only)
+    assert "at least two DI takes" in caught.value.message
+    assert "stacks two amps" in caught.value.hint
+
+
+def test_a_wet_take_is_never_entered_into_the_comparison(workspace):
+    """Rendering one through an amp model stacks two amps."""
+    from rigsmith.core.matching import compare_guitars
+
+    source = workspace / "src"
+    takes.add(_guitar(source, "dry"), kind="di", guitar="Strat")
+    takes.add(_guitar(source, "wet"), kind="wet", guitar="Les Paul")
+
+    with pytest.raises(Invalid, match="at least two DI takes"):
+        compare_guitars(workspace / "src" / "dry.wav")
+
+
+def test_the_comparison_can_be_limited_to_named_takes(workspace):
+    from rigsmith.core.matching import compare_guitars
+
+    source = workspace / "src"
+    for name in ("a", "b", "c"):
+        takes.add(_guitar(source, name), kind="di", guitar=name.upper())
+
+    results = compare_guitars(workspace / "src" / "a.wav", take_ids=["a", "b"])
+    assert {r.take_id for r in results} == {"a", "b"}
+
+
+def test_every_result_carries_where_it_differs(workspace):
+    """A ranking says which. The bands say what to do about it."""
+    from rigsmith.core.matching import compare_guitars
+
+    source = workspace / "src"
+    takes.add(_guitar(source, "dark", dark=1.2), kind="di", guitar="Les Paul")
+    bright = _guitar(source, "bright", bright=1.2)
+    takes.add(bright, kind="di", guitar="Telecaster")
+
+    results = compare_guitars(bright)
+    worst = next(r for r in results if r.guitar == "Les Paul")
+    assert worst.bands, "no band detail to act on"
+    assert any(band.audible for band in worst.bands)

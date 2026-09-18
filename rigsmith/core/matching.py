@@ -572,6 +572,170 @@ def inspect_source(path: str | Path):
     return inspect_audio(path)
 
 
+@dataclass
+class GuitarResult:
+    """One instrument, rendered through the same rig as every other."""
+
+    take_id: str
+    guitar: str
+    pickup: str | None
+    path: Path
+    composite: float
+    bands: list = field(default_factory=list)
+
+    @property
+    def label(self) -> str:
+        bits = [self.guitar or self.take_id]
+        if self.pickup:
+            bits.append(self.pickup)
+        return " ".join(bits)
+
+    def to_dict(self) -> dict:
+        return {
+            "take_id": self.take_id,
+            "guitar": self.guitar,
+            "pickup": self.pickup,
+            "label": self.label,
+            "path": str(self.path),
+            "composite": self.composite,
+            "bands": [
+                {
+                    "name": b.name,
+                    "delta_db": b.delta_db,
+                    "audible": b.audible,
+                    "meaning": b.meaning,
+                }
+                for b in self.bands
+            ],
+        }
+
+
+def compare_guitars(
+    target_path,
+    *,
+    nam_path=None,
+    ir_path=None,
+    take_ids: list[str] | None = None,
+    mode: str = "distribution",
+    target_region=None,
+    progress: Progress | None = None,
+) -> list[GuitarResult]:
+    """Render each of your DIs through the same rig and rank the instruments.
+
+    The capture sweep answers "which amp gets closest". This answers the
+    question underneath it: *which guitar should I be holding*. Same rig,
+    same target, one variable - and it is the variable no amount of capture
+    hunting can fix, because a Les Paul is not going to sound like a Strat
+    however good the model is.
+
+    Needs at least two DI takes. A wet take cannot be used: rendering one
+    through an amp model stacks two amps.
+    """
+    from . import takes as takes_library
+
+    wanted = [takes_library.get(t) for t in take_ids] if take_ids else [
+        t for t in takes_library.list_takes(kind="di") if t.exists
+    ]
+    usable = [t for t in wanted if t.reamps and t.exists]
+
+    if len(usable) < 2:
+        raise Invalid(
+            f"comparing guitars needs at least two DI takes, found {len(usable)}",
+            hint=(
+                "Play the same part on each instrument and add them:\n"
+                "  rigsmith take add <file> --kind di --guitar '...'\n"
+                "Only a DI works here - a wet take through an amp model "
+                "stacks two amps."
+            ),
+        )
+
+    target_path = audio_path(target_path)
+    span = resolve_region(target_region, target_path)
+
+    results: list[GuitarResult] = []
+    total = len(usable)
+    for index, take in enumerate(usable, start=1):
+        if progress:
+            progress.check()
+            progress.update((index - 1) / total, f"rendering {take.label_or_id()}")
+
+        # With no rig given the DIs are compared as they are. That is
+        # still a real answer - it is how the instruments differ before
+        # anything is done to them - and it is the only one available
+        # without the NAM renderer installed.
+        if nam_path or ir_path:
+            audio = render_offline(
+                take.file,
+                nam_path=nam_path,
+                ir_path=ir_path,
+                label=f"guitar-{take.take_id}",
+            ).path
+        else:
+            audio = take.file
+
+        scored = score(
+            target_path,
+            {take.take_id: audio},
+            mode=mode,
+            target_region=span,
+        )[0]
+        results.append(
+            GuitarResult(
+                take_id=take.take_id,
+                guitar=take.guitar or take.take_id,
+                pickup=take.pickup,
+                path=audio,
+                composite=scored.composite,
+                bands=compare_bands(target_path, audio, target_region=span),
+            )
+        )
+
+    results.sort(key=lambda r: r.composite)
+    if progress:
+        progress.update(1.0, f"{len(results)} instrument(s) compared")
+    return results
+
+
+def render_guitar_comparison(
+    results: list[GuitarResult], *, through_a_rig: bool = True
+) -> str:
+    if not results:
+        return "Nothing to compare."
+
+    header = (
+        "Your instruments against this target, closest first:"
+        if through_a_rig
+        else "Your instruments against this target, dry, closest first:"
+    )
+    lines = [header, ""]
+    for position, result in enumerate(results, start=1):
+        lines.append(f"  {position}. {result.label}  composite {result.composite:.4f}")
+        worst = [b for b in result.bands if b.audible]
+        worst.sort(key=lambda b: abs(b.delta_db), reverse=True)
+        if worst:
+            summary = ", ".join(
+                f"{b.name} {b.delta_db:+.1f} dB" for b in worst[:3]
+            )
+            lines.append(f"       {summary}")
+
+    lines.append(
+        "\nSame rig, same target, one variable. This is the one difference "
+        "no amount of capture hunting fixes - a Les Paul is not going to "
+        "sound like a Strat however good the model is."
+        if through_a_rig
+        else "\nNo rig was given, so these are the raw instruments. That is "
+        "a real comparison - it is how they differ before anything is done "
+        "to them - but a dry signal against a recorded one reads as dark "
+        "and thin across the board. Pass a capture to hear them in context."
+    )
+    if all(r.composite == results[0].composite for r in results):
+        lines.append(
+            "\nEvery instrument scored identically, which usually means the "
+            "renders came out the same - check that the NAM stage actually ran."
+        )
+    return "\n".join(lines)
+
+
 def compare_bands(
     target_path: str | Path,
     candidate_path: str | Path,

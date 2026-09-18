@@ -182,6 +182,14 @@ class TakeEdit(BaseModel):
     note: str | None = None
 
 
+class CompareGuitars(BaseModel):
+    target_path: str
+    nam_path: str | None = None
+    ir_path: str | None = None
+    take_ids: list[str] | None = None
+    target_region: str | None = None
+
+
 class ImportDeviceAudio(BaseModel):
     kind: str = "loop"
     guitar: str | None = None
@@ -1425,6 +1433,31 @@ def add_take(body: TakeBody) -> dict:
     )
     _allow_audio(take.path)
     return take.to_dict()
+
+
+@router.post("/takes/compare")
+def compare_guitars(body: CompareGuitars) -> dict:
+    """Rank the user's instruments against a target - a job, since it renders."""
+    def run(progress):
+        results = matching.compare_guitars(
+            body.target_path,
+            nam_path=body.nam_path,
+            ir_path=body.ir_path,
+            take_ids=body.take_ids,
+            target_region=body.target_region,
+            progress=progress,
+        )
+        return {
+            "results": [result.to_dict() for result in results],
+            "through_a_rig": bool(body.nam_path or body.ir_path),
+            "rendered": matching.render_guitar_comparison(
+                results, through_a_rig=bool(body.nam_path or body.ir_path)
+            ),
+        }
+
+    _allow_audio(body.target_path)
+    job = get_manager().submit("compare guitars", run)
+    return {"job_id": job.id, "name": job.name}
 
 
 @router.get("/takes/{take_id}")

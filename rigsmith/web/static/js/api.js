@@ -119,6 +119,7 @@ export const api = {
   score: (body) => api.post("/api/match/score", body),
   bands: (body) => api.post("/api/match/bands", body),
   suggestRegion: (path) => api.get("/api/match/suggest-region", { path }),
+  compareGuitars: (body) => api.post("/api/takes/compare", body),
   spectrum: (path, region) =>
     api.get("/api/match/spectrum", {
       path,
