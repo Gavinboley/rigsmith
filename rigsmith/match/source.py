@@ -21,6 +21,7 @@ it is reported rather than silently accepted.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from functools import lru_cache
 from pathlib import Path
 
 import numpy as np
@@ -58,6 +59,7 @@ CLIP_RUN = 3
 QUIET_PEAK = 0.05
 
 
+@lru_cache(maxsize=1)
 def readable_formats() -> dict[str, str]:
     """What this install can actually open, asked of the library itself.
 
@@ -208,6 +210,29 @@ class AudioSource:
         }
 
 
+#: Inspections already made, keyed by identity-on-disk. Scoring twenty
+#: candidates asks about the same files repeatedly - once to score, once for
+#: the commentary, once more for the bands - and reading each one every time
+#: is a second of nothing for no reason.
+_CACHE: dict[tuple, "AudioSource"] = {}
+_CACHE_LIMIT = 256
+
+
+def _cache_key(path: Path, measure: bool) -> tuple | None:
+    try:
+        stat = path.stat()
+    except OSError:
+        return None
+    # Size and mtime together: a file edited in place stops matching, which
+    # is the only way a stale entry could ever be wrong.
+    return (str(path.resolve()), stat.st_size, stat.st_mtime_ns, measure)
+
+
+def forget_cached() -> None:
+    """Drop every remembered inspection. For tests, and for a long session."""
+    _CACHE.clear()
+
+
 def inspect_audio(path: str | Path, *, measure: bool = True) -> AudioSource:
     """Read a file's header, and optionally its samples, without keeping them.
 
@@ -219,6 +244,10 @@ def inspect_audio(path: str | Path, *, measure: bool = True) -> AudioSource:
     target = Path(path)
     if not target.exists():
         raise NotFound(f"no audio file at {target}")
+
+    key = _cache_key(target, measure)
+    if key is not None and key in _CACHE:
+        return _CACHE[key]
 
     try:
         info = sf.info(str(target))
@@ -252,6 +281,11 @@ def inspect_audio(path: str | Path, *, measure: bool = True) -> AudioSource:
             # Measuring is a nicety; a header that parsed is enough to work
             # with, and refusing the file over it would be worse.
             pass
+
+    if key is not None:
+        if len(_CACHE) >= _CACHE_LIMIT:
+            _CACHE.clear()
+        _CACHE[key] = source
     return source
 
 

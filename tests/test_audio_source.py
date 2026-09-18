@@ -278,3 +278,50 @@ def test_a_source_with_no_samples_does_not_divide_by_zero():
     source = AudioSource(path=Path("empty.wav"), sample_rate=0, channels=1, frames=0)
     assert source.duration == 0.0
     assert source.concerns()
+
+
+# --------------------------------------------------------------------------
+# not reading the same file twenty times
+# --------------------------------------------------------------------------
+
+
+def test_a_repeated_inspection_is_not_a_repeated_read(tmp_path):
+    """Scoring twenty candidates asks about the same files several times
+    each - once to score, once for the commentary, once for the bands."""
+    from rigsmith.match.source import forget_cached, inspect_audio
+
+    forget_cached()
+    path = write(tmp_path / "riff.wav", tone(2.0) * 0.5, subtype="FLOAT")
+
+    first = inspect_audio(path)
+    again = inspect_audio(path)
+    assert again is first, "the second inspection should be the first one"
+
+
+def test_a_file_edited_in_place_is_read_again(tmp_path):
+    """The only way a remembered answer could be wrong."""
+    import os
+    import time
+
+    from rigsmith.match.source import forget_cached, inspect_audio
+
+    forget_cached()
+    path = write(tmp_path / "riff.wav", tone(1.0) * 0.5, subtype="FLOAT")
+    loud = inspect_audio(path).peak
+    assert loud > 0.3
+
+    write(tmp_path / "riff.wav", tone(1.0) * 0.02, subtype="FLOAT")
+    later = time.time() + 2
+    os.utime(path, (later, later))
+
+    assert inspect_audio(path).peak < loud / 4
+
+
+def test_measured_and_unmeasured_are_remembered_separately(tmp_path):
+    from rigsmith.match.source import forget_cached, inspect_audio
+
+    forget_cached()
+    path = write(tmp_path / "riff.wav", tone(1.0) * 0.5, subtype="FLOAT")
+
+    assert inspect_audio(path, measure=False).peak == 0.0
+    assert inspect_audio(path, measure=True).peak > 0.0, "not the cheap answer"

@@ -29,6 +29,12 @@ def reset_global_state():
         jobs.set_manager(None)
         catalog._cached = None
 
+    # Audio inspections are remembered by path and mtime. A tmp_path
+    # reused across tests could otherwise serve a previous file's answer.
+    from rigsmith.match import source as audio_source
+
+    audio_source.forget_cached()
+
     clear()
     yield
     clear()
