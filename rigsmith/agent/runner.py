@@ -104,6 +104,20 @@ def toolset(role, *, allow_writes: bool, extra: list[VirtualTool] | None = None)
     return list(selected) + list(extra or [])
 
 
+def _step(conversation, emit: Emit):
+    """A turn, streamed when the provider can: ``partial`` events carry the
+    visible reply so far, and the final ``text`` replaces them."""
+    import inspect
+
+    try:
+        streams = "on_partial" in inspect.signature(conversation.step).parameters
+    except (TypeError, ValueError):
+        streams = False
+    if streams:
+        return conversation.step(on_partial=lambda text: emit({"kind": "partial", "text": text}))
+    return conversation.step()
+
+
 def step_loop(
     conversation,
     tools,
@@ -121,7 +135,7 @@ def step_loop(
             result.stopped = "cancelled"
             break
         emit({"kind": "status", "text": "thinking" if round_number == 1 else f"round {round_number}"})
-        turn = conversation.step()
+        turn = _step(conversation, emit)
         result.rounds = round_number
         for key, value in (turn.usage or {}).items():
             if isinstance(value, (int, float)):

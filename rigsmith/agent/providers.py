@@ -86,6 +86,29 @@ def split_reasoning(text: str) -> tuple[str, str]:
     return reasoning.strip(), answer.strip()
 
 
+#: Where a reply stops being prose and starts being a tool call written as
+#: text - the live view hides everything from here on.
+_CALL_START = ("<tool_call", "<function=", "<tools>")
+
+
+def visible_so_far(text: str) -> str:
+    """What of a reply still being written can be shown: no ``<think>`` -
+    finished or not - and nothing from a text tool call onwards."""
+    text = _THINK.sub("", text or "")
+    if "</think>" in text:  # the template opened it; the model closed it
+        text = text.partition("</think>")[2]
+    if "<think>" in text:  # still thinking
+        text = text.partition("<think>")[0]
+    cut = min((text.find(marker) for marker in _CALL_START if marker in text), default=-1)
+    if cut >= 0:
+        text = text[:cut]
+    # A marker half-written at the very end ("<tool_") is not prose either.
+    tail = text.rfind("<")
+    if tail >= 0 and any(marker.startswith(text[tail:]) for marker in _CALL_START + ("<think>",)):
+        text = text[:tail]
+    return text.strip()
+
+
 def _coerce(value: str):
     try:
         return json.loads(value)
@@ -215,6 +238,65 @@ class OpenAICompatible:
         return OpenAIConversation(self, system, tools)
 
 
+def _collect_stream(lines, on_partial) -> dict:
+    """Server-sent chat-completion chunks back into one response body.
+
+    Content and reasoning are concatenated; tool calls arrive in pieces keyed
+    by index (the name once, the arguments a few characters at a time). The
+    visible text is reported at most every 80 ms, so a fast model does not
+    flood the page.
+    """
+    import time
+
+    content, reasoning = [], []
+    calls: dict[int, dict] = {}
+    finish, usage = "", {}
+    shown, last = "", 0.0
+    for line in lines:
+        line = line.strip()
+        if not line.startswith("data:"):
+            continue
+        payload = line[5:].strip()
+        if payload == "[DONE]":
+            break
+        try:
+            chunk = json.loads(payload)
+        except ValueError:
+            continue
+        usage = chunk.get("usage") or usage
+        for choice in chunk.get("choices") or []:
+            delta = choice.get("delta") or {}
+            if delta.get("content"):
+                content.append(delta["content"])
+            for key in ("reasoning_content", "reasoning"):
+                if delta.get(key):
+                    reasoning.append(delta[key])
+            for piece in delta.get("tool_calls") or []:
+                slot = calls.setdefault(int(piece.get("index", len(calls))), {"id": "", "name": "", "arguments": ""})
+                slot["id"] = piece.get("id") or slot["id"]
+                function = piece.get("function") or {}
+                slot["name"] += function.get("name") or ""
+                slot["arguments"] += function.get("arguments") or ""
+            finish = choice.get("finish_reason") or finish
+        if on_partial and content:
+            visible = visible_so_far("".join(content))
+            now = time.monotonic()
+            if visible != shown and now - last >= 0.08:
+                shown, last = visible, now
+                on_partial(visible)
+    if on_partial:
+        visible = visible_so_far("".join(content))
+        if visible != shown:
+            on_partial(visible)
+    message = {"content": "".join(content), "reasoning_content": "".join(reasoning)}
+    if calls:
+        message["tool_calls"] = [
+            {"id": c["id"], "type": "function", "function": {"name": c["name"], "arguments": c["arguments"]}}
+            for _, c in sorted(calls.items())
+        ]
+    return {"choices": [{"message": message, "finish_reason": finish}], "usage": usage}
+
+
 class OpenAIConversation:
     def __init__(self, provider: OpenAICompatible, system: str, tools) -> None:
         self.provider = provider
@@ -226,14 +308,19 @@ class OpenAIConversation:
     def add_user(self, text: str) -> None:
         self.messages.append({"role": "user", "content": text})
 
-    def step(self) -> Turn:
+    def step(self, on_partial=None) -> Turn:
+        """One model turn. With ``on_partial``, the reply is streamed and the
+        callback gets the visible text so far as it grows - a local model
+        writing for a minute should not look like a hung one."""
         model = self.provider.pick_model()
         body = {
             "model": model,
             "messages": self.messages,
             "temperature": self.provider.temperature,
-            "stream": False,
+            "stream": bool(on_partial),
         }
+        if on_partial:
+            body["stream_options"] = {"include_usage": True}
         if self.tools:
             body["tools"] = [t.openai(compact=True) for t in self.tools]
             body["tool_choice"] = "auto"
@@ -241,10 +328,15 @@ class OpenAIConversation:
         body["chat_template_kwargs"] = {"enable_thinking": bool(self.provider.thinking)}
         try:
             with self.provider._client() as client:
-                response = client.post(f"{self.provider.base_url}/chat/completions", json=body)
-                if response.status_code >= 400:
-                    raise Unavailable(f"the model server refused the request ({response.status_code}): {response.text[:300]}")
-                data = response.json()
+                with client.stream("POST", f"{self.provider.base_url}/chat/completions", json=body) as response:
+                    if response.status_code >= 400:
+                        response.read()
+                        raise Unavailable(f"the model server refused the request ({response.status_code}): {response.text[:300]}")
+                    if "text/event-stream" in response.headers.get("content-type", ""):
+                        data = _collect_stream(response.iter_lines(), on_partial)
+                    else:  # a server (or a test) that answered in one piece
+                        response.read()
+                        data = response.json()
         except Unavailable:
             raise
         except Exception as exc:
@@ -317,6 +409,34 @@ class AnthropicAPI:
         return AnthropicConversation(self, system, tools)
 
 
+def echoable(content) -> list:
+    """A reply's blocks as they may be sent back next turn.
+
+    When a stream falls back to another model mid-reply, the declined
+    attempt's partial stays in the content, marked off by a ``fallback``
+    block. Its text is fine to echo; its thinking and tool calls are not,
+    and must be left out - so are server-tool calls without their results,
+    and anything unrecognised, before the last boundary. Without a fallback
+    block the content goes back untouched.
+    """
+    blocks = list(content or [])
+    marks = [i for i, block in enumerate(blocks) if getattr(block, "type", None) == "fallback"]
+    if not marks:
+        return blocks
+    boundary = marks[-1]
+    results = {getattr(b, "tool_use_id", None) for b in blocks[:boundary] if str(getattr(b, "type", "")).endswith("_tool_result")}
+    kept = []
+    for block in blocks[:boundary]:
+        kind = getattr(block, "type", "")
+        if kind == "text":
+            kept.append(block)
+        elif kind == "server_tool_use" and getattr(block, "id", None) in results:
+            kept.append(block)
+        elif kind.endswith("_tool_result") and kind != "tool_result":
+            kept.append(block)
+    return kept + blocks[boundary:]
+
+
 class AnthropicConversation:
     def __init__(self, provider: AnthropicAPI, system: str, tools) -> None:
         import anthropic
@@ -330,21 +450,37 @@ class AnthropicConversation:
     def add_user(self, text: str) -> None:
         self.messages.append({"role": "user", "content": text})
 
-    def step(self) -> Turn:
+    def step(self, on_partial=None) -> Turn:
+        import time
+
         import anthropic
 
+        params = dict(
+            model=self.provider.model,
+            max_tokens=16000,
+            system=self.system,
+            tools=self.tools,
+            messages=self.messages,
+            output_config={"effort": self.provider.effort},
+            # A policy decline re-runs on a fallback model in the same call.
+            betas=["server-side-fallback-2026-07-01"],
+            fallbacks="default",
+        )
         try:
-            response = self.client.beta.messages.create(
-                model=self.provider.model,
-                max_tokens=16000,
-                system=self.system,
-                tools=self.tools,
-                messages=self.messages,
-                output_config={"effort": self.provider.effort},
-                # A policy decline re-runs on a fallback model in the same call.
-                betas=["server-side-fallback-2026-07-01"],
-                fallbacks="default",
-            )
+            if on_partial:
+                shown, last = "", 0.0
+                with self.client.beta.messages.stream(**params) as stream:
+                    for event in stream:
+                        if getattr(event, "type", "") == "text":
+                            shown += event.text
+                            now = time.monotonic()
+                            if now - last >= 0.08:
+                                last = now
+                                on_partial(shown.strip())
+                    response = stream.get_final_message()
+                on_partial(shown.strip())
+            else:
+                response = self.client.beta.messages.create(**params)
         except anthropic.AuthenticationError as exc:
             raise Unavailable("the Anthropic API rejected the credentials", hint="Set ANTHROPIC_API_KEY, or use Claude Code.") from exc
         except anthropic.RateLimitError as exc:
@@ -354,10 +490,12 @@ class AnthropicConversation:
         except anthropic.APIConnectionError as exc:
             raise Unavailable("could not reach the Anthropic API") from exc
 
-        # Appended exactly as returned: thinking blocks must come back unchanged.
-        self.messages.append({"role": "assistant", "content": response.content})
+        content = echoable(response.content)
+        # Appended as returned (thinking blocks must come back unchanged),
+        # less what a mid-reply fallback says not to echo.
+        self.messages.append({"role": "assistant", "content": content})
         turn = Turn(stop=response.stop_reason or "")
-        for block in response.content:
+        for block in content:
             if block.type == "text":
                 turn.text += block.text
             elif block.type == "thinking":

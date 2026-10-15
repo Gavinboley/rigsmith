@@ -88,10 +88,35 @@ function finishCard(card, entry) {
   card.append(el("pre", { text: entry.text || "" }));
 }
 
+/* The reply being written right now, if it is streaming in. */
+let live = null;
+
+function settleLive() {
+  if (live && !live.textContent.trim()) live.remove();
+  live?.classList.remove("live");
+  live = null;
+}
+
 function renderEntry(entry) {
   if (entry.role === "user") return addMessage("user", entry.text);
   switch (entry.kind) {
+    case "partial":
+      if (!live) {
+        live = addMessage("assistant", "");
+        live.classList.add("live");
+      }
+      live.textContent = entry.text;
+      scrollDown();
+      return live;
     case "text":
+      if (live) {
+        // The finished turn replaces what was streamed of it.
+        live.textContent = entry.text;
+        const node = live;
+        live.classList.remove("live");
+        live = null;
+        return node;
+      }
       return addMessage("assistant", entry.text);
     case "final":
       // Claude Code repeats its last text as the final result.
@@ -100,6 +125,7 @@ function renderEntry(entry) {
     case "reasoning":
       return addMessage("reasoning", entry.text.length > 600 ? entry.text.slice(0, 600) + "..." : entry.text);
     case "tool_call": {
+      settleLive();
       const card = toolCard(entry, { pending: true });
       if (entry.id) pendingCards.set(entry.id, card);
       return card;
@@ -130,6 +156,7 @@ function renderEmpty() {
 }
 
 async function loadChat(id) {
+  live = null;
   chatId = id;
   pendingCards.clear();
   clear(log());
@@ -261,6 +288,7 @@ export function onEvent(message) {
     return;
   }
   if (message.kind === "done") {
+    settleLive();
     setBusy(false);
     refreshChats();
     return;
@@ -269,6 +297,7 @@ export function onEvent(message) {
     $("#chat-provider").dataset.status = message.text;
     return;
   }
+  if (message.kind === "error") settleLive();
   renderEntry(message);
   if (message.kind === "error") setBusy(false);
 }

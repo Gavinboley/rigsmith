@@ -203,3 +203,109 @@ def test_online_tools_refuse_in_local_mode(workspace):
     appsettings.update(mode="local")
     outcome = tools.call("search_song", {"query": "going under"})
     assert outcome.refused and not outcome.ok
+
+
+def streamed(chunks):
+    """A model server that streams its reply as server-sent events."""
+    def handler(request):
+        if request.url.path.endswith("/models"):
+            return httpx.Response(200, json={"data": [{"id": "qwen3-8b"}]})
+        assert json.loads(request.content)["stream"] is True
+        body = "".join(f"data: {json.dumps(c)}\n\n" for c in chunks) + "data: [DONE]\n\n"
+        return httpx.Response(200, text=body, headers={"content-type": "text/event-stream"})
+
+    return httpx.MockTransport(handler)
+
+
+def test_a_streamed_reply_shows_as_it_is_written_without_its_thinking():
+    def delta(**kw):
+        return {"choices": [{"delta": kw, "finish_reason": None}]}
+
+    chunks = [delta(content="<think>hmm"), delta(content=" ok</think>The verse "), delta(content="is a Plexi"), delta(content=" <tool_"), delta(content='call>{"name": "show_song", "arguments": {"song_id": "s"}}</tool_call>'),
+              {"choices": [{"delta": {}, "finish_reason": "stop"}], "usage": {"completion_tokens": 9}}]
+    seen = []
+    conversation = local(streamed(chunks)).start("system", tools.select(["show_song"]))
+    conversation.add_user("which amp?")
+    turn = conversation.step(on_partial=seen.append)
+    assert seen and seen[-1] == "The verse is a Plexi"
+    assert not any("<" in text or "hmm" in text for text in seen)
+    assert turn.text == "The verse is a Plexi" and turn.calls[0].name == "show_song"
+    assert turn.reasoning.startswith("hmm") and turn.usage["completion_tokens"] == 9
+
+
+def test_streamed_tool_calls_are_put_back_together():
+    pieces = [
+        {"choices": [{"delta": {"tool_calls": [{"index": 0, "id": "c9", "function": {"name": "list_songs", "arguments": ""}}]}}]},
+        {"choices": [{"delta": {"tool_calls": [{"index": 0, "function": {"arguments": '{"q":'}}]}}]},
+        {"choices": [{"delta": {"tool_calls": [{"index": 0, "function": {"arguments": ' "x"}'}}]}, "finish_reason": "tool_calls"}]},
+    ]
+    events_seen = []
+    conversation = local(streamed(pieces)).start("system", tools.select(["list_songs"]))
+    conversation.add_user("songs?")
+    turn = runner._step(conversation, events_seen.append)
+    assert turn.calls[0].id == "c9" and turn.calls[0].arguments == {"q": "x"}
+    assert providers.visible_so_far("Plexi <tool_ca") == "Plexi" and providers.visible_so_far("a <b") == "a <b"
+
+
+def _fake_anthropic(monkeypatch, final, events):
+    """Just enough of the SDK's shape for the conversation to run against."""
+    import sys
+    import types
+
+    module = types.ModuleType("anthropic")
+    for name in ("AuthenticationError", "RateLimitError", "APIStatusError", "APIConnectionError"):
+        setattr(module, name, type(name, (Exception,), {}))
+    sent = []
+
+    class Stream:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def __iter__(self):
+            return iter(events)
+
+        def get_final_message(self):
+            return final
+
+    class Messages:
+        def stream(self, **params):
+            sent.append(params)
+            return Stream()
+
+        def create(self, **params):
+            sent.append(params)
+            return final
+
+    module.Anthropic = lambda: types.SimpleNamespace(beta=types.SimpleNamespace(messages=Messages()))
+    monkeypatch.setitem(sys.modules, "anthropic", module)
+    return sent
+
+
+def test_claude_streams_and_a_fallback_is_echoed_back_cleanly(monkeypatch):
+    from types import SimpleNamespace as B
+
+    content = [
+        B(type="thinking", thinking="first try"),
+        B(type="text", text="The verse is "),
+        B(type="tool_use", id="t0", name="show_song", input={}),
+        B(type="fallback"),
+        B(type="text", text="a Plexi."),
+        B(type="tool_use", id="t1", name="list_songs", input={"q": "x"}),
+    ]
+    final = B(content=content, stop_reason="tool_use", usage=B(input_tokens=5, output_tokens=7))
+    sent = _fake_anthropic(monkeypatch, final, [B(type="text", text="The verse is "), B(type="message_delta"), B(type="text", text="a Plexi.")])
+    conversation = providers.AnthropicAPI(model="claude-opus-5-5").start("system", tools.select(["show_song", "list_songs"]))
+    conversation.add_user("which amp?")
+    seen = []
+    turn = conversation.step(on_partial=seen.append)
+
+    assert seen[-1] == "The verse is a Plexi."
+    assert sent[0]["fallbacks"] == "default" and sent[0]["betas"] == ["server-side-fallback-2026-07-01"]
+    # Before the boundary only text goes back; the declined attempt's tool call is not run.
+    echoed = [b.type for b in conversation.messages[-1]["content"]]
+    assert echoed == ["text", "fallback", "text", "tool_use"]
+    assert [c.name for c in turn.calls] == ["list_songs"]
+    assert providers.echoable(content[1:3]) == content[1:3]  # no fallback: untouched
