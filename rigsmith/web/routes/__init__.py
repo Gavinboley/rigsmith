@@ -8,6 +8,6 @@ from __future__ import annotations
 
 
 def routers():
-    from . import agents, autopilot, files, learn, loop, settings, songs, tuning
+    from . import agents, autopilot, device, files, learn, loop, settings, songs, tuning
 
-    return [module.router for module in (files, learn, loop, songs, tuning, agents, autopilot, settings)]
+    return [module.router for module in (files, device, learn, loop, songs, tuning, agents, autopilot, settings)]

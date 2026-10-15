@@ -19,8 +19,10 @@ before it:
    string and register, which fills the frets you did not record without the
    chipmunk artefacts that stretching a sample a fifth would print.
 
-:mod:`.transfer` joins them to a record: transcribe the guitar part from an
-isolated stem, play it back through your profile, and you have a clean DI of
-*that song's part on your guitar* - the thing that makes testing an effects
-chain against the record a like-for-like comparison.
+:mod:`rigsmith.core.parts` joins them to a record: take the part's notes
+from a tab's MIDI (warped onto the record by :mod:`.align`) or transcribe them
+from an isolated stem (:mod:`.transcribe`), play them back through your
+profile, and you have a clean DI of *that song's part on your guitar* - the
+thing that makes testing an effects chain against the record a like-for-like
+comparison.
 """

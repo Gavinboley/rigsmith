@@ -140,6 +140,81 @@ async def probe(
 
 
 # --------------------------------------------------------------------------
+# Pairing and read-only snapshots
+# --------------------------------------------------------------------------
+
+
+def sessions() -> list[dict]:
+    """Every device this workspace is paired with - never the cookie itself."""
+    import json
+
+    from ..device.session import Session
+
+    directory = get_settings().workspace / "sessions"
+    found = []
+    for path in sorted(directory.glob("*.json")) if directory.is_dir() else []:
+        try:
+            session = Session.from_dict(json.loads(path.read_text(encoding="utf-8")))
+        except (OSError, ValueError, Invalid):
+            continue
+        found.append(
+            {
+                "host": session.host,
+                "hostname": session.hostname,
+                "server": session.server,
+                "firmware": session.firmware,
+                "paired_at": datetime.fromtimestamp(session.paired_at).isoformat(timespec="seconds") if session.paired_at else None,
+            }
+        )
+    return found
+
+
+def render_sessions(found: list[dict]) -> str:
+    if not found:
+        return "Not paired with any device. Pair from the Device panel, or:  rigsmith device pair"
+    lines = ["Paired with:"]
+    for item in found:
+        lines.append(f"  {item['host']}  {item.get('server') or ''}  since {item.get('paired_at') or '?'}".rstrip())
+    return "\n".join(lines)
+
+
+async def pair(host: str | None = None, *, timeout: float = 120.0, on_pin=None):
+    """Pair with a Core; ``on_pin`` gets the PIN to show the person at it.
+
+    The device authorises a session cookie, not a user, and only once somebody
+    standing at it accepts the PIN on its screen - so this waits for a person.
+    """
+    from ..device.client import DeviceClient
+    from ..protocol.map import get as get_map
+
+    require_writable("save a device session")
+    if not host:
+        host = (await find()).host
+    async with DeviceClient(f"http://{host}", get_map("headrush-core"), session=None) as client:
+        return await client.pair(timeout_s=timeout, on_pin=on_pin)
+
+
+def forget(host: str) -> bool:
+    from ..device.session import forget_session
+
+    return forget_session(host)
+
+
+async def snapshot(host: str | None = None):
+    """What is on the device, read over the network: every rig's name and id,
+    and the loaded rig in full. Writes nothing to the device."""
+    from ..device import snapshot as snap
+    from ..device.client import DeviceClient
+    from ..protocol.map import get as get_map
+
+    if not host:
+        host = (await find()).host
+    async with DeviceClient(f"http://{host}", get_map("headrush-core")) as client:
+        taken = await snap.take(client)
+    return taken, snap.save(taken)
+
+
+# --------------------------------------------------------------------------
 # USB storage
 # --------------------------------------------------------------------------
 

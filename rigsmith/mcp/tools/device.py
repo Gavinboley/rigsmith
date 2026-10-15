@@ -35,6 +35,32 @@ async def probe_protocol(max_assets: int = 200) -> str:
 
 
 @tool
+def device_sessions() -> str:
+    """Which HeadRush devices this workspace is paired with, and since when.
+
+    Writing a rig needs a paired session; pairing itself needs a person at the
+    Core to accept a PIN, so it is done from the Device panel or the CLI
+    rather than by an agent.
+    """
+    return devices.render_sessions(devices.sessions())
+
+
+@tool
+async def device_snapshot(host: str | None = None) -> str:
+    """Read what is on the Core over the network and keep a record of it.
+
+    Every rig's name and id, plus the loaded rig's whole state. Read-only -
+    nothing on the device changes - and not a substitute for a USB backup,
+    which copies the rig files themselves.
+
+    Args:
+        host: The device's host or IP. Discovered when not given.
+    """
+    taken, path = await devices.snapshot(host)
+    return f"{taken.render()}\n  saved to {path}"
+
+
+@tool
 def device_storage_status(path: str | None = None) -> str:
     """Check whether the device's USB storage is mounted, and what is on it.
 

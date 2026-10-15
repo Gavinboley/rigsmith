@@ -1,7 +1,79 @@
 /* Device panel: discovery, USB storage, and MIDI. */
 
 import { api } from "../api.js";
-import { $, attempt, clear, el, setPill } from "../ui.js";
+import { describeJob, track } from "../jobs.js";
+import { $, attempt, clear, el, setPill, toast } from "../ui.js";
+
+/* ------------------------------------------------------------- pairing */
+
+/* The Core authorises a session, not a user: it shows a PIN on its own
+ * screen and somebody standing at it accepts. So the PIN is shown here, big,
+ * the moment the device offers it - the wait only starts after that. */
+
+let lastHost = null;
+
+async function renderPairing() {
+  const box = clear($("#pair-box"));
+  const { sessions } = await api.get("/api/device/sessions").catch(() => ({ sessions: [] }));
+  const list = el("div", { class: "list", style: "margin-top:10px" });
+  for (const session of sessions) {
+    list.append(
+      el(
+        "div",
+        { class: "item" },
+        el("span", { class: "tag a2", text: "paired" }),
+        el("span", { class: "title", text: session.host }),
+        el("span", { class: "meta", text: [session.server, session.paired_at ? `since ${session.paired_at.replace("T", " ")}` : ""].filter(Boolean).join("  ") }),
+        el("span", { class: "spacer" }),
+        el("button", { class: "btn small", text: "snapshot", title: "Read every rig's name and the loaded rig in full - writes nothing", onclick: () => snapshot(session.host, out) }),
+        el("button", { class: "btn small ghost danger", text: "forget", onclick: () => attempt(async () => { await api.post("/api/device/forget", { host: session.host }); renderPairing(); }) })
+      )
+    );
+  }
+  const pin = el("div", { class: "pin", hidden: true });
+  const out = el("div", { class: "hint" });
+  const host = el("input", { type: "text", placeholder: "host or IP (blank: discover)", value: lastHost || "" });
+  box.append(
+    ...[
+    el("h3", { text: "Pairing", style: "margin-top:16px" }),
+    el("p", { class: "hint", text: sessions.length ? "Writing a rig needs a paired session. Pairing again replaces it." : "Not paired yet. Writing a rig needs a paired session: the Core shows a PIN, and you accept it on the device." }),
+    sessions.length ? list : null,
+    el("div", { class: "row" }, host, el("button", { class: "btn primary", text: "Pair", onclick: () => pair(host.value.trim() || null, pin, out) })),
+    pin,
+    out,
+    ].filter(Boolean)
+  );
+}
+
+async function pair(host, pin, out) {
+  await attempt(async () => {
+    const { job_id } = await api.post("/api/device/pair", { host });
+    out.textContent = "asking the device for a PIN...";
+    const result = await track(job_id, {
+      onUpdate: (job) => {
+        const match = /PIN (\S+)/.exec(job.message || "");
+        if (match) {
+          pin.hidden = false;
+          pin.textContent = match[1];
+          out.textContent = "Accept this PIN on the Core's screen. Waiting...";
+        } else {
+          out.textContent = describeJob(job);
+        }
+      },
+    });
+    pin.hidden = true;
+    toast(result.message, { kind: "ok" });
+    renderPairing();
+  });
+}
+
+async function snapshot(host, out) {
+  await attempt(async () => {
+    const { job_id } = await api.post("/api/device/snapshot", { host });
+    const result = await track(job_id, { onUpdate: (job) => (out.textContent = describeJob(job)) });
+    clear(out).append(el("pre", { class: "out", text: `${result.render}\n  saved to ${result.path}` }));
+  });
+}
 
 function deviceItem(device) {
   return el(
@@ -41,6 +113,10 @@ async function discover() {
 
   for (const device of result.devices) host.append(deviceItem(device));
   const confirmed = result.devices.filter((d) => d.confirmed);
+  if (confirmed.length) {
+    lastHost = confirmed[0].address || confirmed[0].host;
+    renderPairing();
+  }
   setPill(
     "pill-device",
     confirmed.length ? confirmed[0].host : `${result.devices.length} hosts`,
@@ -179,9 +255,11 @@ export function init() {
     });
 
   renderFootswitches();
+  renderPairing();
   return refreshDrafts();
 }
 
 export function onShow() {
   attempt(refreshDrafts);
+  renderPairing();
 }

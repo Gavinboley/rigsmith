@@ -185,3 +185,16 @@ def test_numpy_from_the_core_never_breaks_a_response():
     value = plain({"ok": np.bool_(True), "level": np.float32(-3.5), "curve": np.arange(3), "where": Path("a"), "bad": float("nan"), "tags": {"x"}})
     assert value == {"ok": True, "level": -3.5, "curve": [0, 1, 2], "where": "a", "bad": None, "tags": ["x"]}
     assert type(value["ok"]) is bool
+
+
+def test_pairing_is_listed_without_its_cookie(client):
+    from rigsmith.device.session import Session, save_session
+
+    assert client.get("/api/device/sessions").json()["sessions"] == []
+    save_session(Session(host="192.0.2.7", cookie="secret-cookie", server="AZ0X Web Server/0.6.2", paired_at=1_700_000_000))
+    listed = client.get("/api/device/sessions")
+    assert "secret-cookie" not in listed.text
+    assert listed.json()["sessions"][0]["host"] == "192.0.2.7"
+    assert client.post("/api/device/forget", json={}).status_code == 400
+    assert client.post("/api/device/forget", json={"host": "192.0.2.7"}).json()["forgotten"] is True
+    assert client.get("/api/device/sessions").json()["sessions"] == []
