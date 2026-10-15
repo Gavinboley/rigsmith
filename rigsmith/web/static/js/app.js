@@ -19,6 +19,9 @@ import * as match from "./panels/match.js";
 import * as device from "./panels/device.js";
 import * as workspace from "./panels/workspace.js";
 
+/* Job ids to their names, from the jobs ticks - so "finished" can say what. */
+const jobNames = new Map();
+
 const PANELS = { autopilot, songs, recipes, guitar, takes, captures, rig, match, tune, loop, device, workspace, settings };
 
 let activePanel = null;
@@ -73,6 +76,7 @@ function connectLive() {
       }
 
       if (message.type === "jobs") {
+        for (const job of message.jobs) jobNames.set(job.id, job.name);
         jobsTick(message.jobs);
         const running = message.jobs.filter((j) => !j.finished);
         if (running.length) {
@@ -88,10 +92,11 @@ function connectLive() {
       }
 
       if (message.type === "job" && message.kind === "state") {
+        const name = jobNames.get(message.job_id) || "a background job";
         if (message.state === "succeeded") {
-          toast(`Finished: ${message.message || "job"}`, { kind: "ok" });
+          toast(`Finished: ${name}`, { kind: "ok" });
         } else if (message.state === "failed") {
-          toast(`Job failed: ${message.message}`, { kind: "error", timeout: 10000 });
+          toast(`${name} failed: ${message.message}`, { kind: "error", timeout: 10000 });
         }
       }
     };
@@ -162,6 +167,7 @@ async function boot() {
   });
 
   $("#pill-mode").onclick = () => show("settings");
+  $("#pill-jobs").onclick = () => show("workspace");
   document.addEventListener("rigsmith:settings", refreshMode);
 
   await Promise.allSettled([

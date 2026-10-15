@@ -751,3 +751,4 @@ input:focus, select:focus { outline: 1px solid var(--amber-dim); border-color: v
 .agent-log .agent-call { font-size: 11px; color: var(--text-faint); }
 .agent-log .agent-call.bad { color: #e0574b; }
 .scenes-head h3 { white-space: nowrap; }
+button.pill { cursor: pointer; font: inherit; font-size: 11px; }
