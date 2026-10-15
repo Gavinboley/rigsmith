@@ -543,6 +543,64 @@ def record_result(song_id: str, part_id: str, *, label: str, composite: float, m
     return part
 
 
+#: Audio a music library holds, in the order worth preferring for analysis.
+LIBRARY_SUFFIXES = (".flac", ".wav", ".aiff", ".aif", ".m4a", ".mp3", ".ogg", ".opus", ".aac")
+
+#: How many files a library scan looks at before giving up - a library on a
+#: network drive should not hang the page.
+LIBRARY_SCAN_LIMIT = 50_000
+
+
+def _words(text: str) -> list[str]:
+    import re
+
+    text = re.sub(r"\(.*?\)|\[.*?\]", " ", (text or "").lower())  # (Remastered 2011), [Live]
+    return [w for w in re.findall(r"[a-z0-9']+", text) if w not in ("the", "a", "an", "feat", "ft")]
+
+
+def music_dirs() -> list[Path]:
+    from . import appsettings
+
+    configured = [Path(p).expanduser() for p in appsettings.load().music_dirs if p]
+    roots = configured or [Path.home() / "Music"]
+    return [root for root in roots if root.is_dir()]
+
+
+def find_local(title: str, artist: str | None = None, *, roots: list[Path] | None = None, limit: int = 5) -> list[dict]:
+    """Files in your music library that look like this song.
+
+    Matched on names - a library is laid out Artist/Album/NN Title.ext, and
+    that is what is read here, file and folders - so nothing has to be
+    indexed and nothing leaves the machine. Every word of the title must be
+    in the file's name; the artist's words in the path make it a better match;
+    lossless beats lossy when both are there.
+    """
+    title_words = _words(title)
+    if not title_words:
+        return []
+    artist_words = _words(artist or "")
+    found = []
+    seen = 0
+    for root in roots if roots is not None else music_dirs():
+        for path in root.rglob("*"):
+            seen += 1
+            if seen > LIBRARY_SCAN_LIMIT:
+                break
+            if path.suffix.lower() not in LIBRARY_SUFFIXES or not path.is_file():
+                continue
+            name = _words(path.stem)
+            if not all(word in name for word in title_words):
+                continue
+            around = set(_words(" ".join(path.parts[-4:-1])) + name)
+            artist_hits = sum(1 for word in artist_words if word in around)
+            extra = max(0, len([w for w in name if not w.isdigit()]) - len(title_words) - artist_hits)
+            score = 1.0 + (artist_hits / len(artist_words) if artist_words else 0.0) - 0.05 * extra
+            score -= 0.01 * LIBRARY_SUFFIXES.index(path.suffix.lower())
+            found.append({"path": str(path), "name": path.name, "score": round(score, 3), "artist_match": bool(artist_words) and artist_hits == len(artist_words)})
+    found.sort(key=lambda f: -f["score"])
+    return found[:limit]
+
+
 def render_part_di(
     song_id: str, part_id: str, profile_id: str | None, *, midi=None, track=None, text=None, power_chords=False,
     like: str | None = None, amount: float = 1.0, progress: Progress | None = None,

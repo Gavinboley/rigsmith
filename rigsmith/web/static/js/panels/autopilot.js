@@ -88,6 +88,7 @@ function renderForm() {
           title.value = match.title;
           artist.value = match.artist;
           results.querySelectorAll(".match-card").forEach((c) => c.classList.toggle("chosen", c === card));
+          findInLibrary(match.title, match.artist);
         } },
         match.artwork_url ? el("img", { src: match.artwork_url, alt: "" }) : el("img", { alt: "" }),
         el("div", {}, el("div", { class: "t", text: match.title }), el("div", { class: "m", text: `${match.artist} - ${match.album || ""} ${match.year || ""}` }))
@@ -97,6 +98,21 @@ function renderForm() {
   };
   query.addEventListener("keydown", (event) => event.key === "Enter" && search());
 
+  // Your own copy, if the music library has it - so looking a song up can
+  // be the whole of starting a run.
+  const libraryHint = el("div", { class: "hint" });
+  const findInLibrary = async (songTitle, songArtist) => {
+    libraryHint.textContent = "";
+    if (zones.mix.path()) return;
+    const found = await api.get("/api/songs/local", { title: songTitle, artist: songArtist || "" }).catch(() => null);
+    const best = found?.matches?.find((m) => m.artist_match) || found?.matches?.[0];
+    if (!best) {
+      libraryHint.textContent = found?.roots?.length ? "Not in your music library - drop your copy in." : "";
+      return;
+    }
+    zones.mix.setPath(best.path);
+    libraryHint.textContent = `Found in your music library: ${best.name}`;
+  };
   const start = el("button", { class: "btn primary", text: "Start autopilot" });
   start.onclick = () =>
     attempt(async () => {
@@ -129,6 +145,7 @@ function renderForm() {
     results,
     el("div", { class: "form-grid", style: "margin-top:12px" }, field("Title", title), field("Artist", artist), field("Your guitar", profile), field("Bench", bench), field("Loop route (device bench)", route)),
     el("div", { class: "form-grid", style: "margin-top:12px" }, zones.mix, zones.stem, zones.midi),
+    libraryHint,
     el(
       "div",
       { class: "row", style: "margin-top:12px" },

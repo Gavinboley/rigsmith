@@ -123,6 +123,22 @@ def rename_song_section(song_id: str, index: int, name: str) -> str:
 
 
 @tool
+def find_song_file(title: str, artist: str | None = None) -> str:
+    """Find the user's own copy of a song in their music library, by name.
+
+    Local only - nothing leaves the machine. Use the path it returns as the
+    song's mix (create_song / run_autopilot) instead of asking for a file.
+    """
+    from ...core import songs as song_core
+
+    matches = song_core.find_local(title, artist)
+    if not matches:
+        roots = ", ".join(str(r) for r in song_core.music_dirs()) or "no music folder found"
+        return f"nothing in the library matches '{title}' (looked in {roots})"
+    return "\n".join(f"{m['path']}  (score {m['score']}{', artist matches' if m['artist_match'] else ''})" for m in matches)
+
+
+@tool
 def setup_status() -> str:
     """What the user has set up and what is still missing, with the next step.
 

@@ -11,7 +11,7 @@ pip install -e ".[all]"
 rigsmith ui
 ```
 
-> **Status: everything runs today.** Rig authoring, validation, NAM analysis, tone matching, catalog extraction, USB backup, MIDI, guitar learning, song maps, the hardware loop, the tuner, autopilot, the chat and the web UI are covered by 897 tests. The Remote Editor protocol has been captured against a real Core and a rig written to it and read back exactly - see [docs/PROTOCOL.md](docs/PROTOCOL.md). What still wants hardware is *measuring*: the loop and the blind A/B need the Core and an interface plugged in - [docs/FIRST_SESSION.md](docs/FIRST_SESSION.md) walks through that first session.
+> **Status: everything runs today.** Rig authoring, validation, NAM analysis, tone matching, catalog extraction, USB backup, MIDI, guitar learning, song maps, the hardware loop, the tuner, autopilot, the chat and the web UI are covered by 899 tests. The Remote Editor protocol has been captured against a real Core and a rig written to it and read back exactly - see [docs/PROTOCOL.md](docs/PROTOCOL.md). What still wants hardware is *measuring*: the loop and the blind A/B need the Core and an interface plugged in - [docs/FIRST_SESSION.md](docs/FIRST_SESSION.md) walks through that first session.
 
 ---
 
@@ -404,6 +404,12 @@ can be resumed, and nothing is written to the device: that stays yours.
 `--bench virtual` runs the whole thing on the simulated amp - a rehearsal
 that needs no hardware, and says so on every result.
 
+A title can be all it takes: with no file given, autopilot looks for your
+own copy in your music library by name (Artist/Album/NN Title, lossless
+first; `rigsmith song find "Going Under" --artist Evanescence` shows what it
+would pick), and only then, in accuracy mode, falls back to the store's
+30-second preview. The library folders are a setting; nothing is uploaded.
+
 ### Ask for it in plain words
 
 Everything above is a tool, and the app has a chat in front of all of them.
@@ -442,7 +448,7 @@ Ask for a tone. The agent researches the gear, finds an A2 capture, builds the r
     +---------------+---------------+
     |               |               |
   cli.py       mcp/tools/*      web/api.py
-  (click)       (116 tools)       (FastAPI)
+  (click)       (117 tools)       (FastAPI)
 ```
 
 Each surface is a thin adapter: parse input, call core, format output. That rule exists because the first version broke it — orchestration lived inside the MCP tools, so anything not reachable from a tool was reachable from nowhere, and whole subsystems ended up built and unwired.

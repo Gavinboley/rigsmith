@@ -208,6 +208,22 @@ def song_di(song_id, part_id, profile_id, midi_path, track, text, power_chords, 
     click.echo(result.render())
 
 
+@group.command("find")
+@click.argument("title")
+@click.option("--artist")
+@handled
+def song_find(title, artist) -> None:
+    """Find your own copy of a song in the music library, by name. Local only."""
+    from ..core import songs
+
+    matches = songs.find_local(title, artist)
+    if not matches:
+        click.echo(f"Nothing matches in: {', '.join(str(r) for r in songs.music_dirs()) or 'no music folder'}")
+        return
+    for match in matches:
+        click.echo(f"  {match['score']:.2f}  {match['path']}")
+
+
 @group.command("brief")
 @click.argument("song_id")
 @click.argument("part_id", required=False)

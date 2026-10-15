@@ -240,6 +240,14 @@ def _stage_song(run: Run) -> str:
         except Exception as exc:
             run.note(f"the online lookup failed ({exc}); carrying on without credits")
     if not song.mix and not song.stem:
+        # Your own copy first: a file in the music library whose name is the
+        # song (and whose path names the artist, when one was given).
+        found = songs.find_local(song.title, song.artist)
+        found = [f for f in found if f["artist_match"] or not song.artist]
+        if found:
+            song = songs.attach(song.song_id, mix=found[0]["path"])
+            run.note(f"no file given, so your library's {found[0]['name']} is the song")
+    if not song.mix and not song.stem:
         if not appsettings.load().local and appsettings.load().allow_preview_downloads:
             try:
                 song = songs.preview(song.song_id)

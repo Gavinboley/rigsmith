@@ -21,6 +21,7 @@ class SettingsBody(BaseModel):
     default_profile: str | None = None
     default_route: str | None = None
     allow_preview_downloads: bool | None = None
+    music_dirs: list[str] | None = None
     onboarding_done: bool | None = None
 
 

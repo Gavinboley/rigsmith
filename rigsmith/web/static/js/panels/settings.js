@@ -103,12 +103,14 @@ async function render() {
   const route = el("select", {}, el("option", { value: "", text: "the loop's own default" }), ...routes.routes.map((r) => el("option", { value: r.route_id, text: r.route_id, selected: settings.default_route === r.route_id })));
   const backend = el("select", {}, ...["sounddevice", "virtual"].map((b) => el("option", { value: b, text: b, selected: settings.audio_backend === b })));
   const previews = el("input", { type: "checkbox", checked: settings.allow_preview_downloads });
+  const musicDirs = el("textarea", { rows: 2, placeholder: "your home folder's Music, when empty", text: (settings.music_dirs || []).join("\n") });
   host.append(
     el(
       "div",
       { class: "card" },
       el("h3", { text: "Defaults" }),
       el("div", { class: "form-grid" }, field("Your guitar", profile, "what parts are rendered on when nothing else is said"), field("Loop route", route), field("Audio", backend, "virtual = the simulated bench")),
+      field("Music library folders, one per line", musicDirs, "where autopilot looks for your copy of a song by name - nothing leaves the machine"),
       el("label", { class: "check hint" }, previews, "fetch a store's 30-second preview when a song has no file (accuracy mode)"),
       el(
         "div",
@@ -125,6 +127,7 @@ async function render() {
               default_route: route.value,
               audio_backend: backend.value,
               allow_preview_downloads: previews.checked,
+              music_dirs: musicDirs.value.split(/\n+/).map((line) => line.trim()).filter(Boolean),
             });
             toast("Saved", { kind: "ok" });
             document.dispatchEvent(new CustomEvent("rigsmith:settings"));

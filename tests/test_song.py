@@ -346,3 +346,22 @@ def test_a_song_mapped_by_an_older_analyser_says_so(workspace):
     old = songs.get(made.song_id)
     assert old.stale and old.to_dict()["stale"] and "older analyser" in old.describe()
     assert not songs.create("Never Mapped").stale
+
+
+def test_your_own_copy_is_found_in_the_library_by_name(workspace, tmp_path):
+    library = tmp_path / "Music"
+    album = library / "Evanescence" / "Fallen"
+    album.mkdir(parents=True)
+    for name in ("03 Going Under.mp3", "03 Going Under.flac", "09 Going Under (Live).mp3", "04 Bring Me to Life.mp3"):
+        (album / name).write_bytes(b"x")
+    (library / "Other Band").mkdir()
+    (library / "Other Band" / "Going Under.mp3").write_bytes(b"x")
+
+    found = songs.find_local("Going Under", "Evanescence", roots=[library])
+    assert found[0]["name"] == "03 Going Under.flac" and found[0]["artist_match"]  # lossless first
+    assert all("Bring Me" not in f["name"] for f in found)
+    assert {f["name"] for f in found if not f["artist_match"]} == {"Going Under.mp3"}
+    assert songs.find_local("", roots=[library]) == []
+
+    appsettings.update(music_dirs=[str(library)])
+    assert songs.music_dirs() == [library]

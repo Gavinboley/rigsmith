@@ -64,6 +64,9 @@ class AppSettings:
     default_route: str | None = None
     allow_preview_downloads: bool = True
     """Fetch a store's 30-second preview for analysis, in accuracy mode."""
+    music_dirs: list[str] = field(default_factory=list)
+    """Where your music library lives, for finding a song's file by name.
+    Empty means the home folder's Music."""
     onboarding_done: bool = False
 
     @property

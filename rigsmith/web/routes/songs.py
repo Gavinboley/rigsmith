@@ -67,6 +67,15 @@ def list_songs() -> dict:
     return {"songs": [{**s.to_dict(), "parts": len(s.parts), "chosen": len(s.chosen())} for s in songs.list_songs()]}
 
 
+@router.get("/local")
+def local(title: str, artist: str | None = None) -> dict:
+    """Your own copy of a song, found in the music library by name."""
+    matches = songs.find_local(title, artist)
+    for match in matches:
+        _allow_audio(match["path"])
+    return {"matches": matches, "roots": [str(r) for r in songs.music_dirs()]}
+
+
 @router.get("/search")
 def search(q: str) -> dict:
     return {"matches": [m.to_dict() for m in songs.lookup(q)]}

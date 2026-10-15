@@ -268,3 +268,21 @@ def test_several_chosen_parts_become_one_rig_with_a_scene_each(workspace):
         assert {first.state_for(a.slot).value for a in amps} == {"on", "off"}
         assert first.state_for(amps[0].slot) != second.state_for(amps[0].slot)
     assert "song rig" in run.describe()
+
+
+def test_a_title_is_enough_when_the_song_is_in_your_library(workspace):
+    from rigsmith.core import appsettings
+
+    stem, _ = song(seconds_per_section=6.0)
+    album = workspace / "Music" / "Synthetic Band" / "Fixtures"
+    album.mkdir(parents=True)
+    save_audio(album / "01 Fixture Song.wav", with_drums(stem), RATE)
+    appsettings.update(music_dirs=[str(workspace / "Music")])
+
+    request = autopilot.Request(title="Fixture Song", artist="Synthetic Band", research=False, candidates=3, tune_budget=6)
+    run = autopilot.Run(run_id="t9", request=request)
+    run.save()
+    run = autopilot.execute("t9")
+    assert run.stages["song"].state == "done", run.describe()
+    assert any("your library's 01 Fixture Song.wav" in n for n in run.all_notes())
+    assert run.state == "done"
