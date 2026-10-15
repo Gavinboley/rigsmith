@@ -220,3 +220,19 @@ def test_the_setup_checklist_says_what_is_missing(client):
     assert steps["loop"]["optional"] and steps["brains"]["optional"]
     client.patch("/api/settings", json={"onboarding_done": True})
     assert client.get("/api/settings/setup").json()["dismissed"] is True
+
+
+def test_a_default_cleanup_never_touches_what_cannot_be_made_again(tmp_path):
+    from rigsmith.core import workspace
+
+    for area in ("profiles", "songs", "uploads", "sessions", "loop", "agents", "autopilot", "tuning"):
+        (tmp_path / area / "thing").mkdir(parents=True)
+        (tmp_path / area / "thing" / "f.bin").write_bytes(b"x" * 10)
+    report = workspace.inspect(tmp_path)
+    assert {a.name for a in report.areas} >= {"profiles", "songs", "uploads", "sessions", "autopilot"}
+
+    result = workspace.prune(root=tmp_path, dry_run=False)
+    gone = {area for area, _, _ in result.removed}
+    assert gone == {"autopilot", "tuning"}
+    for kept in ("profiles", "songs", "uploads", "sessions", "loop", "agents"):
+        assert (tmp_path / kept / "thing" / "f.bin").exists()

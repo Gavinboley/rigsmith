@@ -39,6 +39,18 @@ AREAS: dict[str, tuple[str, bool]] = {
     "research": ("cached tone research and compiled recipes", True),
     "drafts": ("rigs being worked on", False),
     "exports": ("rigs exported to JSON", True),
+    # Protected for the same reason as takes: the samples are your playing.
+    "profiles": ("guitars you have taught it - your playing, cut into notes", False),
+    # Protected: a song's map holds the parts you chose, and its audio may
+    # live in uploads.
+    "songs": ("songs, their maps, guitar layers and part DIs", False),
+    "uploads": ("files dropped into the page - songs' audio may point here", False),
+    "loop": ("loop routes and their calibrations", False),
+    "sessions": ("device pairings - pruning one means pairing again", False),
+    "agents": ("chats and the runs of agents they dispatched", False),
+    # Re-runnable, and mostly rendered audio: safe to clear.
+    "autopilot": ("autopilot runs and the candidates they rendered", True),
+    "tuning": ("tuning runs and their best renders", True),
 }
 
 
