@@ -173,6 +173,24 @@ async function loadChat(id) {
   for (const entry of chat.transcript) renderEntry(entry);
   setBusy(chat.busy);
   await refreshApprovals();
+  await restoreAgents(id);
+}
+
+/* Agents this chat dispatched earlier, rebuilt from their stored runs and
+ * placed after the dispatch that started them - so reopening a chat does not
+ * lose what its specialists did. */
+async function restoreAgents(id) {
+  const { runs } = await api.get("/api/chat/agents").catch(() => ({ runs: [] }));
+  for (const summary of runs.filter((r) => r.parent === id).reverse()) {
+    if (chatId !== id || agentCards.has(summary.run_id)) continue;
+    const run = await api.get(`/api/chat/agents/${summary.run_id}`).catch(() => null);
+    if (!run || chatId !== id) continue;
+    const entry = agentCard(run.run_id, run.role, run.task || "");
+    const after = [...log().querySelectorAll("details.toolcard pre")].find((pre) => pre.textContent.includes(run.run_id))?.closest("details");
+    if (after) after.after(entry.card);
+    for (const event of run.events || []) agentEvent({ run_id: run.run_id, ...event });
+    if (run.state !== "running") agentEvent({ run_id: run.run_id, kind: "finished", state: run.state, text: run.result?.text || "" });
+  }
 }
 
 async function refreshChats(select = null) {
