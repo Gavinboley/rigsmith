@@ -176,9 +176,14 @@ class Run:
             for result in self.results[:5]:
                 lines.append(f"    {result['composite']:.4f}  {result['label']}")
         if self.draft_id:
-            lines.append(f"  draft: {self.draft_id}")
+            lines.append(f"  draft: {self.draft_id}" + (f" (your ears' pick: {self.ear_pick})" if self.ear_pick else ""))
         if self.ab_session:
             lines.append(f"  listen: blind A/B session '{self.ab_session}'")
+        audible = [r for r in self.remaining if r.get("audible")]
+        if audible:
+            lines.append("  still different from the record:")
+            for row in sorted(audible, key=lambda r: -abs(r["delta_db"])):
+                lines.append(f"    {row['band']:<9} {row['delta_db']:+5.1f} dB  try {row['try']}")
         lines.extend(f"  note: {n}" for n in self.all_notes())
         return "\n".join(lines)
 
