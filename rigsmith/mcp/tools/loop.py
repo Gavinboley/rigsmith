@@ -52,6 +52,17 @@ def make_bench_rig_draft() -> str:
 
 
 @tool
+def check_input_level(device: str, channel: int = 1, seconds: float = 3.0) -> str:
+    """Listen to a guitar input for a few seconds and judge it for recording a
+    DI: peak, noise floor, and what to change. Tell the user to play hard
+    while it listens. Saves nothing. ``device`` is an input device name
+    (list_audio_devices); on a Windows interface use the Analog input, not
+    Loopback."""
+    result = loop.input_level(device, channel=channel, seconds=seconds)
+    return f"{result['verdict']}: peak {result['peak_db']} dBFS, noise floor {result['noise_floor_db']} dBFS\n{result['advice']}"
+
+
+@tool
 def suggest_loop_routes(virtual: bool = False) -> str:
     """Routes that fit the audio devices connected right now.
 

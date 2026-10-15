@@ -123,6 +123,37 @@ def rename_song_section(song_id: str, index: int, name: str) -> str:
 
 
 @tool
+def add_song_audio(song_id: str, mix_path: str | None = None, stem_path: str | None = None) -> str:
+    """Give an existing song its audio: the user's copy of the record (mix)
+    and/or an isolated guitar stem. Map it again afterwards with analyse_song."""
+    if not mix_path and not stem_path:
+        return "give a mix_path, a stem_path, or both"
+    song = songs.attach(song_id, mix=mix_path, stem=stem_path)
+    return song.describe()
+
+
+@tool
+def look_up_song(song_id: str) -> str:
+    """Fill in a song's album, year, artwork and recording credits (who played
+    guitar) from the online lookup. Never fetches the audio. Accuracy mode only."""
+    return songs.enrich(song_id).describe()
+
+
+@tool
+def align_take_to_part(song_id: str, part_id: str, take: str) -> str:
+    """Put the user's own recording of a part (a take id or an audio path),
+    played along with the record or to a click at its tempo, on the part's
+    clock - one offset and one tempo ratio - and make it the part's DI, so
+    tuning compares it frame by frame. A take that does not follow the record
+    is refused with the reason."""
+    result = songs.take_for_part(song_id, part_id, take)
+    text = ("Aligned: " if result["aligned"] else "Not aligned: ") + result["describe"]
+    if result.get("take_id"):
+        text += f"\nfiled as take {result['take_id']}"
+    return text
+
+
+@tool
 def set_song_tempo(song_id: str, bpm: float | None = None, factor: float | None = None) -> str:
     """Correct a song's tempo: an exact bpm, or factor 0.5/2 to halve or
     double the detected one (its known mistake is an octave). Re-times every

@@ -73,7 +73,7 @@ ROLES: dict[str, Role] = {
             "choose_parts", "song_brief", "search_models",
             "run_autopilot", "autopilot_status",
             "setup_status", "device_sessions", "estimate_pickup",
-            "autopilot_listen_back", "check_bench_rig", "tone_sheet",
+            "autopilot_listen_back", "check_bench_rig", "tone_sheet", "resume_autopilot",
         ],
     ),
     "researcher": Role(
@@ -111,7 +111,7 @@ ROLES: dict[str, Role] = {
         "explain what the profile's concerns mean (tuning, quiet strings, "
         "hum). Then render parts on it.",
         groups=["learn", "takes"],
-        tools=["job_status", "list_audio_devices"],
+        tools=["job_status", "list_audio_devices", "check_input_level"],
     ),
     "tone-matcher": Role(
         "tone-matcher",

@@ -67,6 +67,18 @@ def autopilot_listen_back(run_id: str) -> str:
 
 
 @tool
+def resume_autopilot(run_id: str, from_stage: str | None = None) -> str:
+    """Pick a stopped or failed autopilot run back up, in the background.
+
+    It carries on from its first unfinished stage, or from ``from_stage``
+    (song, stem, map, parts, research, di, candidates, cabs, tune, rig) to
+    redo that stage and everything after it - after fixing what stopped it.
+    """
+    run = autopilot.resume(run_id, from_stage=from_stage)
+    return f"resumed {run.run_id} - follow it with autopilot_status"
+
+
+@tool
 def build_song_rig(run_ids: list[str], name: str | None = None) -> str:
     """One rig for several parts of a song, with a scene per part on its own footswitch.
 

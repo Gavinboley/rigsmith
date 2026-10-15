@@ -374,3 +374,25 @@ async def test_configure_scene_reports_the_whole_scene_not_just_the_delta(server
     )
     assert "[1, 2]" in out
     assert "footswitch=1" in out
+
+
+@pytest.mark.asyncio
+async def test_what_the_cli_can_do_to_a_song_an_agent_can_too(server, tmp_path):
+    """Adding audio, aligning a take and resuming a run were CLI-only."""
+    pytest.importorskip("soundfile")
+    import numpy as np
+    import soundfile as sf
+
+    from rigsmith.core import autopilot, songs
+
+    song_id = songs.create("Agent Song").song_id
+    mix = tmp_path / "mix.wav"
+    sf.write(str(mix), (0.1 * np.sin(np.arange(48000) / 48000 * 2 * np.pi * 110)).astype("float32"), 48000)
+    assert "mix.wav" in await call(server, "add_song_audio", {"song_id": song_id, "mix_path": str(mix)})
+    assert "give a mix_path" in await call(server, "add_song_audio", {"song_id": song_id})
+
+    stopped = autopilot.Run(run_id="stopped-run", request=autopilot.Request(title="Agent Song"), state="stopped")
+    stopped.save()
+    with pytest.raises(Exception) as caught:
+        await call(server, "resume_autopilot", {"run_id": "stopped-run", "from_stage": "nonsense"})
+    assert "no stage" in str(caught.value)
