@@ -11,7 +11,23 @@
 - **Every block type exists twice** (`Amp` and `Amp 2`), so a rig can hold two of anything; the second is addressed by its own node.
 - `Blocks/serializeBlock` returns a block's whole state as JSON in display units - the cheapest read-only snapshot of a block before a write.
 
-There is, as far as public sources show, no existing documentation of this protocol anywhere — no published API, no third-party editor for the Prime/Core generation, and no reverse-engineering write-up. So this starts from zero.
+## Scenes: found, not yet written
+
+The loaded rig's scenes live on `/Evil/Engine/FootSwitch` (from the
+September capture): for each of ten footswitches a `ModeNew{N}` (0 Toggle,
+1 Hold, 2 Scene), a label in `UserFootSwitchText{N}`, and for every slot
+`Scene{N}_{S}_Effect` (the block's name) and `Scene{N}_{S}_Mode`, an integer
+0-2, plus `Scene{N}Slot{S}Preset` for preset recall and a second set
+(`State2Scene...`) for two-state switches. With no scenes set every Mode is
+0, so 0 is almost certainly *No Change*; which of 1 and 2 is *On* and which
+is *Off* has not been seen.
+
+Until it has, a write does not send scenes (guessing could invert every one)
+and the write report lists what to set on each footswitch instead. To settle
+it: on the device, make FS1 a scene that turns one block on and another off,
+then run `rigsmith device scenes` - it prints each slot's raw Mode number.
+
+, no existing documentation of this protocol anywhere — no published API, no third-party editor for the Prime/Core generation, and no reverse-engineering write-up. So this starts from zero.
 
 ---
 

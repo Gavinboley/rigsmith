@@ -61,6 +61,17 @@ async def device_snapshot(host: str | None = None) -> str:
 
 
 @tool
+async def device_scenes(host: str | None = None) -> str:
+    """Read the loaded rig's scene table from the Core, raw - read only.
+
+    Footswitch modes and labels, and per block the raw scene mode number.
+    Used to learn which number means on and which off before scenes are
+    written over the network.
+    """
+    return devices.render_scenes(await devices.read_scenes(host))
+
+
+@tool
 def device_storage_status(path: str | None = None) -> str:
     """Check whether the device's USB storage is mounted, and what is on it.
 

@@ -293,3 +293,24 @@ async def test_a_value_the_device_keeps_refusing_is_reported(patched_catalog):
 
     assert any("Type stayed" in note for note in report.notes), report.notes
     assert any("refused" in step.detail for step in report.steps)
+
+
+def test_scenes_are_read_raw_and_written_as_instructions():
+    from rigsmith.core.devices import parse_scenes, render_scenes
+    from rigsmith.device.client import scene_instructions
+    from rigsmith.rig.model import Block, BlockCategory, Rig, Scene, SceneBlockState
+
+    values = {"ModeNew1": 2, "UserFootSwitchText1": "Verse", "Scene1_1_Effect": "Amp", "Scene1_1_Mode": 1,
+              "Scene1_2_Effect": "Cab", "Scene1_2_Mode": 2, "Scene1_3_Effect": "Empty Slot", "Scene1_3_Mode": 0,
+              "ModeNew2": 0, "Scene2_1_Effect": "Amp", "Scene2_1_Mode": 0}
+    rows = parse_scenes(values)
+    assert rows[0]["mode"] == "Scene" and rows[0]["label"] == "Verse"
+    assert [(s["block"], s["mode"]) for s in rows[0]["slots"]] == [("Amp", 1), ("Cab", 2)]
+    text = render_scenes(rows)
+    assert "FS1 [Scene] 'Verse': 1:Amp=1, 2:Cab=2" in text and "FS2" not in text
+
+    rig = Rig(name="song")
+    rig.blocks = [Block(slot=1, category=BlockCategory.AMP, model_id="82 Lead 800 100W"), Block(slot=2, category=BlockCategory.AMP, model_id="64 Black Lux Norm")]
+    rig.scenes = [Scene(name="verse", states={1: SceneBlockState.ON, 2: SceneBlockState.OFF}, footswitch=1)]
+    note = scene_instructions(rig)
+    assert "not written over the network" in note and "FS1 'verse': on 82 Lead 800 100W (1); off 64 Black Lux Norm (2)" in note

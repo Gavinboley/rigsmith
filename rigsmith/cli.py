@@ -562,6 +562,23 @@ def device_pair(host: str | None, timeout: float, forget: bool) -> None:
     asyncio.run(run())
 
 
+@device.command("scenes")
+@click.option("--host", help="Device host or IP. Discovered if not given.")
+@handled
+def device_scenes(host: str | None) -> None:
+    """Read the loaded rig's scenes, raw - read only.
+
+    Set one scene by hand on the device (say FS1 turning one block on and
+    another off), load that rig, and run this: the numbers it prints are
+    what lets rigsmith write scenes itself.
+    """
+    import asyncio
+
+    from .core import devices
+
+    click.echo(devices.render_scenes(asyncio.run(devices.read_scenes(host))))
+
+
 @device.command("snapshot")
 @click.option("--host", help="Device host or IP. Discovered if not given.")
 @handled

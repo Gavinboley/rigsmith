@@ -590,6 +590,8 @@ class DeviceClient:
             await self.call("save_rig_as", name=rig.name, colour=colour)
             report.rig_id = rig.name
             record("save_rig_as", f"saved as '{rig.name}'")
+            if rig.scenes:
+                report.notes.append(scene_instructions(rig))
 
             loaded = await self.call("loaded_rig")
             if isinstance(loaded, dict):
@@ -680,6 +682,25 @@ class DeviceClient:
             )
 
         return report
+
+
+def scene_instructions(rig: Rig) -> str:
+    """What to set by hand for each scene - they are not written over the network.
+
+    The Core keeps scenes on /Evil/Engine/FootSwitch (per switch ModeNew,
+    UserFootSwitchText and SceneN_S_Mode per slot), and which Mode number
+    means on and which means off has not been confirmed on hardware. Writing
+    them on a guess could invert every scene, so until 'device scenes' has
+    read one set by hand, the write says what to set instead.
+    """
+    lines = [f"{len(rig.scenes)} scene(s) were not written over the network yet - set them on the device:"]
+    names = {block.slot: block.model_id for block in rig.blocks}
+    for scene in sorted(rig.scenes, key=lambda s: (s.footswitch or 99, s.name)):
+        on = [f"{names.get(slot, slot)} ({slot})" for slot, state in sorted(scene.states.items()) if state is SceneBlockState.ON]
+        off = [f"{names.get(slot, slot)} ({slot})" for slot, state in sorted(scene.states.items()) if state is SceneBlockState.OFF]
+        switch = f"FS{scene.footswitch}" if scene.footswitch else "unassigned"
+        lines.append(f"  {switch} '{scene.name}': on {', '.join(on) or '-'}; off {', '.join(off) or '-'}")
+    return "\n".join(lines)
 
 
 async def connect(

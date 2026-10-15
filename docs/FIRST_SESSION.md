@@ -81,3 +81,8 @@ recipe, and the draft follows your ears if they disagreed with the score.
 
 **Rig -> Write to device**: validate, back up, diff, confirm, write, verify.
 Nothing reaches the Core without this step.
+
+A song rig's **scenes are not written over the network yet** - the write
+report lists what each footswitch should do, to set by hand. While you are
+there, two minutes settles it for next time: make FS1 a scene that turns
+one block on and one off, and run `rigsmith device scenes`.

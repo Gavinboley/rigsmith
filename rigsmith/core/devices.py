@@ -213,6 +213,58 @@ async def snapshot(host: str | None = None):
     return taken, snap.save(taken)
 
 
+#: The footswitch modes the Core lists for ModeNew1..10, in order.
+FOOTSWITCH_MODES = ("Toggle", "Hold", "Scene")
+
+
+def parse_scenes(values: dict) -> list[dict]:
+    """The scene table out of /Evil/Engine/FootSwitch's values.
+
+    Per footswitch: its mode (Toggle, Hold, Scene), label and, for every slot
+    that holds a block, the raw SceneN_S_Mode number. Raw on purpose - which
+    number means on and which off is what this is for finding out.
+    """
+    rows = []
+    for switch in range(1, 11):
+        mode = values.get(f"ModeNew{switch}")
+        slots = []
+        for slot in range(1, 15):
+            effect = values.get(f"Scene{switch}_{slot}_Effect")
+            if effect and effect != "Empty Slot":
+                slots.append({"slot": slot, "block": effect, "mode": values.get(f"Scene{switch}_{slot}_Mode")})
+        rows.append({
+            "footswitch": switch,
+            "mode": FOOTSWITCH_MODES[mode] if isinstance(mode, int) and 0 <= mode < len(FOOTSWITCH_MODES) else mode,
+            "label": values.get(f"UserFootSwitchText{switch}") or values.get(f"FootSwitchText{switch}") or "",
+            "slots": slots,
+        })
+    return rows
+
+
+def render_scenes(rows: list[dict]) -> str:
+    lines = []
+    for row in rows:
+        if row["mode"] != "Scene" and not any(s["mode"] for s in row["slots"]):
+            continue
+        settings = ", ".join(f"{s['slot']}:{s['block']}={s['mode']}" for s in row["slots"]) or "no blocks"
+        lines.append(f"  FS{row['footswitch']} [{row['mode']}] '{row['label']}': {settings}")
+    if not lines:
+        return "No scenes are set on the loaded rig."
+    return "Scenes on the loaded rig (slot:block=raw mode; 0 is believed to be No Change):\n" + "\n".join(lines)
+
+
+async def read_scenes(host: str | None = None) -> list[dict]:
+    """Read the loaded rig's scene table - read only."""
+    from ..device.client import DeviceClient
+    from ..protocol.map import get as get_map
+
+    if not host:
+        host = (await find()).host
+    async with DeviceClient(f"http://{host}", get_map("headrush-core")) as client:
+        values = await client.call("get_properties", node="/Evil/Engine/FootSwitch")
+    return parse_scenes(values if isinstance(values, dict) else {})
+
+
 # --------------------------------------------------------------------------
 # USB storage
 # --------------------------------------------------------------------------
