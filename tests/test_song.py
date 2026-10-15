@@ -317,6 +317,7 @@ def test_tremolo_is_a_level_wobble_inside_notes_not_the_rhythm():
     t = np.arange(len(clean)) / RATE
     wobbling = describe.sketch(clean * (1 - 0.35 * (1 + np.sin(2 * np.pi * 5.0 * t)) / 2), RATE, from_stem=False)
     assert wobbling.modulation == "tremolo" and 4.6 < wobbling.modulation_hz < 5.4, wobbling.describe()
+    assert abs(wobbling.modulation_depth - 0.35) < 0.05, wobbling.modulation_depth
     # Steady eighth notes put their own pulse in the level; that is not tremolo.
     assert describe.sketch(SimAmp(Type=0, Gain=0.1).process(riff_di()), RATE, from_stem=False).modulation == ""
 
@@ -417,3 +418,13 @@ def test_a_tempo_set_by_hand_survives_a_remap(workspace):
     songs.set_tempo(made.song_id, 97.5)
     again = songs.analyse(made.song_id)
     assert again.structure["tempo"] == 97.5 and again.structure["tempo_source"] == "hand"
+
+
+def test_a_deep_choppy_tremolo_is_heard_and_its_depth_read():
+    """Its troughs used to break every note into pieces too short to measure."""
+    driven = SimAmp(Type=2, Gain=0.6).process(sustained())
+    t = np.arange(len(driven)) / RATE
+    chopped = describe.sketch(driven * (1 - 0.8 * (1 + np.sin(2 * np.pi * 4.0 * t)) / 2), RATE, from_stem=False)
+    assert chopped.modulation == "tremolo" and abs(chopped.modulation_hz - 4.0) < 0.3, chopped.describe()
+    assert abs(chopped.modulation_depth - 0.8) < 0.06, chopped.modulation_depth
+    assert any("depth about" in s for s in chopped.suggestions), chopped.suggestions

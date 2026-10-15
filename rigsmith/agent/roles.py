@@ -73,7 +73,7 @@ ROLES: dict[str, Role] = {
             "choose_parts", "song_brief", "search_models",
             "run_autopilot", "autopilot_status",
             "setup_status", "device_sessions", "estimate_pickup",
-            "autopilot_listen_back", "check_bench_rig",
+            "autopilot_listen_back", "check_bench_rig", "tone_sheet",
         ],
     ),
     "researcher": Role(

@@ -153,7 +153,7 @@ function render() {
   if (song.stale) {
     host.lastChild.append(
       el("div", { class: "notice warn" },
-        "This map was made by an older analyser - re-map it to hear chorus and vibrato, and for a fairer gain reading on leads and chords. Your chosen parts are kept. ",
+        "This map was made by an older analyser - re-map it for what the newer one hears: deep tremolo and how deep it is, chorus and vibrato, a fairer gain reading on leads and chords. Your chosen parts are kept. ",
         el("button", { class: "btn small", text: "Re-map now", onclick: analyse }))
     );
   }

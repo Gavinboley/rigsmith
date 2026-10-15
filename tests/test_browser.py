@@ -1084,3 +1084,42 @@ def test_the_tone_sheet_opens_as_its_own_page(browser, server):
         assert sheet.locator("h1").inner_text() == "Sheet"
         assert "120 BPM, fixed" in sheet.inner_text("body")
         sheet.close()
+
+
+def test_a_mapped_song_hands_its_chosen_parts_to_autopilot(browser, server, monkeypatch):
+    """Songs -> Autopilot carries the song itself, not just its title."""
+    from rigsmith.core import autopilot, songs
+    from rigsmith.core.songs import Part
+
+    made = songs.create("Handover", artist="Synthetic")
+    made.structure = {
+        "tempo": 120.0, "key": "E minor", "duration": 30.0,
+        "sections": [{"start": 0.0, "end": 15.0, "label": "A", "name": "verse"}, {"start": 15.0, "end": 30.0, "label": "B", "name": "chorus"}],
+    }
+    made.parts = [
+        Part("verse-1-left", 0, "verse", "left", 0.0, 15.0, chosen=True),
+        Part("chorus-2-left", 1, "chorus", "left", 15.0, 30.0, chosen=True),
+    ]
+    made.save()
+
+    started = []
+
+    def start(request):
+        started.append(request)
+        run = autopilot.Run(run_id="handover-run", request=request, state="stopped", song_id=request.song_id)
+        run.save()
+        return run
+
+    monkeypatch.setattr(autopilot, "start", start)
+    with page_at(browser, server) as page:
+        page.click("#tabs .tab[data-panel='songs']")
+        page.wait_for_selector("#song-tempo")
+        page.click("section[data-panel='songs'] button:has-text('Autopilot')")
+        page.wait_for_selector("#tabs .tab[data-panel='autopilot'][aria-selected='true']")
+        assert "2 chosen parts" in page.inner_text("#ap-song-hint")
+        page.click("#ap-form button:has-text('Start autopilot')")
+        deadline = time.monotonic() + 5
+        while not started and time.monotonic() < deadline:
+            time.sleep(0.1)
+    assert started, "the form never started a run"
+    assert started[0].song_id == made.song_id and started[0].title == "Handover"

@@ -60,6 +60,8 @@ class ToneSketch:
     space: str = ""
     modulation_hz: float | None = None
     modulation: str = ""
+    modulation_depth: float | None = None
+    """A tremolo's depth, 0-1: how far the level dips each cycle (1 is to silence)."""
     wobble_cents: float | None = None
     """How far sustained notes wander in pitch, peak, after bends are
     removed - a few cents for a chorus, tens for vibrato, ~0 for neither."""
@@ -406,8 +408,8 @@ def _decay(audio, sample_rate) -> float | None:
     return float(np.median(times))
 
 
-def _modulation(audio, sample_rate, *, note_rate_hz=None) -> tuple[float | None, str]:
-    """A steady wobble in level, 2-10 Hz, inside sustained sound.
+def _modulation(audio, sample_rate, *, note_rate_hz=None) -> tuple[float | None, str, float | None]:
+    """A steady wobble in level, 2-10 Hz, inside sustained sound: (rate, label, depth).
 
     Measured only within stretches that stay loud - each one detrended for
     its own decay - because the gaps between notes put the rhythm's pulse
@@ -415,13 +417,26 @@ def _modulation(audio, sample_rate, *, note_rate_hz=None) -> tuple[float | None,
     note every 1.6 s read as a 2.5 Hz tremolo. What is left must also not sit
     on the playing's own pulse (or a small multiple of it), and must be deep
     enough to hear.
+
+    "Loud" is judged against the sound's own neighbourhood - within 25 dB
+    of the loudest moment in the surrounding 0.45 s - rather than against
+    the part as a whole. Judged against the whole part, a deep tremolo's
+    troughs fell out of every stretch and broke it into pieces too short to
+    measure, so the choppiest tremolos (depth 0.7 and up) were never heard
+    at all. A gap between notes is still far below its neighbourhood and
+    still ends a stretch. The depth is the level swing as a tremolo pedal's
+    0-1 depth: on synthetic parts it reads 0.32, 0.50, 0.69 and 0.88 for 0.3,
+    0.5, 0.7 and 0.9, clean or driven.
     """
+    from scipy.ndimage import maximum_filter1d
+
     hop_s = 0.01
     env = _envelope(audio, sample_rate, hop_s)
     if len(env) < 300:
-        return None, ""
+        return None, "", None
     db = 20 * np.log10(np.maximum(env, 1e-9))
-    loud = db > max(np.percentile(db, 40), db.max() - 30)
+    held = maximum_filter1d(db, size=int(0.45 / hop_s))
+    loud = (db > held - 25) & (held > max(np.percentile(held, 40), held.max() - 30))
     edges = np.diff(np.concatenate([[0], loud.astype(int), [0]]))
     starts, ends = np.where(edges == 1)[0], np.where(edges == -1)[0]
     pad = int(8 / hop_s)
@@ -437,7 +452,7 @@ def _modulation(audio, sample_rate, *, note_rate_hz=None) -> tuple[float | None,
         depths.append(float(np.sqrt(2 * np.mean(level**2))))
         weights.append(len(level))
     if not spectra or sum(weights) * hop_s < 1.5:
-        return None, ""
+        return None, "", None
     total = np.sum(spectra, axis=0)
     band = (rates >= 2.0) & (rates <= 10.0)
     peak = int(np.where(band)[0][np.argmax(total[band])])
@@ -445,15 +460,18 @@ def _modulation(audio, sample_rate, *, note_rate_hz=None) -> tuple[float | None,
     concentration = float(total[near].sum() / max(total[(rates >= 0.5) & (rates <= 12)].sum(), 1e-20))
     depth_db = float(np.average(depths, weights=weights))
     if concentration < 0.35 or depth_db < 1.0:
-        return None, ""
+        return None, "", None
     rate = float(rates[peak])
     if callable(note_rate_hz):
         note_rate_hz = note_rate_hz()
     if note_rate_hz:
         for multiple in (0.5, 1.0, 2.0, 3.0, 4.0):
             if abs(rate - note_rate_hz * multiple) / (note_rate_hz * multiple) < 0.08:
-                return None, ""
-    return round(rate, 2), "tremolo"
+                return None, "", None
+    # depth_db is the swing's amplitude, half its peak-to-peak; a gain that
+    # dips to (1 - depth) swings 20*log10(1 / (1 - depth)) dB peak to peak.
+    depth = 1.0 - 10 ** (-depth_db / 10.0)
+    return round(rate, 2), "tremolo", round(float(min(max(depth, 0.0), 1.0)), 2)
 
 
 def _princarg(phase):
@@ -616,7 +634,7 @@ def sketch(audio, sample_rate: int, *, tempo: float | None = None, from_stem: bo
         spacing = _note_spacing_ms(audio, sample_rate)
         return (1000.0 / spacing) if spacing else None
 
-    result.modulation_hz, result.modulation = _modulation(audio, sample_rate, note_rate_hz=note_rate)
+    result.modulation_hz, result.modulation, result.modulation_depth = _modulation(audio, sample_rate, note_rate_hz=note_rate)
     if pitch and not result.modulation and result.gain < 0.85:
         # Pitch movement is only looked for under tremolo's absence, and not
         # on the most saturated parts, where distortion's intermodulation
@@ -679,7 +697,9 @@ def _suggestions(s: ToneSketch) -> list[str]:
         out.append("a short room reverb")
     if s.modulation:
         rate = f" at about {s.modulation_hz:.1f} Hz" if s.modulation_hz else ""
-        if s.modulation.startswith("chorus"):
+        if s.modulation == "tremolo" and s.modulation_depth:
+            out.append(f"a tremolo{rate}, depth about {s.modulation_depth:.0%}")
+        elif s.modulation.startswith("chorus"):
             out.append(f"a chorus{rate}, depth modest (the notes move about {s.wobble_cents:.0f} cents)")
         elif s.modulation.startswith("vibrato on some"):
             out.append("no vibrato block - the wobble is on some notes only, which is a hand, not a pedal")

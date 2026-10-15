@@ -354,12 +354,15 @@ def surrounding_blocks(sketch: dict, *, tempo: float | None = None) -> list[dict
     rate = f" at {hz:.1f} Hz" if hz else ""
     if modulation == "tremolo":
         params = {"Rate": _linear(float(hz), 0.1, 12.0)} if hz else {}
+        depth = sketch.get("modulation_depth")
+        if depth:
+            params["Depth"] = round(float(depth), 3)
         division = synced_rate(hz, tempo)
         if division:
             params.update({"Sync": True, "Rate_Synced": RATE_DIVISIONS.index(division)})
         blocks.append({
             "category": "effect", "model": "Tremolo", "role": "tremolo", "params": params,
-            "why": f"a {hz or 0:.1f} Hz wobble" + (f" (a {division} cycle, synced)" if division else ""),
+            "why": f"a {hz or 0:.1f} Hz wobble" + (f", {depth:.0%} deep" if depth else "") + (f" (a {division} cycle, synced)" if division else ""),
             "division": division,
         })
     elif modulation == "chorus":

@@ -329,6 +329,9 @@ def test_a_tremolo_on_the_beat_is_synced():
     assert candidates.RATE_DIVISIONS[tremolo["params"]["Rate_Synced"]] == "1/16"
     assert candidates.RATE_DIVISIONS[0] == "Bar", "the modulation list runs the other way from the delay's"
     # 5.3 Hz at 90 BPM falls between divisions, so it keeps its own rate.
+    assert "Depth" not in tremolo["params"], "no measured depth, no guess"
+    deep = candidates.surrounding_blocks({"modulation": "tremolo", "modulation_hz": 6.0, "modulation_depth": 0.8}, tempo=90.0)[0]
+    assert deep["params"]["Depth"] == 0.8 and "80% deep" in deep["why"]
     loose = candidates.surrounding_blocks({"modulation": "tremolo", "modulation_hz": 5.3}, tempo=90.0)[0]
     assert "Sync" not in loose["params"] and loose["division"] is None
     assert candidates.synced_rate(6.0, None) is None
