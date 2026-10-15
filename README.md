@@ -56,21 +56,22 @@ rigsmith --device 127.0.0.1:8100 probe --dump-app
 rigsmith catalog extract --capture ~/.rigsmith/captures/<timestamp>
 ```
 
-A stand-in device, so the whole device-facing toolchain is exercisable
-today. **It is not the real protocol** - nobody has captured that yet, and
-every response it gives is invented. What it is good for is developing
-against: discovery, endpoint extraction, catalog extraction and traffic
-recording all run end to end on it. Once real traffic *is* captured,
-`--replay` serves that instead, and the simulator becomes a faithful fixture
-rather than a guess.
+A stand-in device, so the whole device-facing toolchain can be exercised
+without the Core. **It is not the real protocol**: it speaks an invented
+REST shape, while a real Core is an object tree - captured, and verified by
+writing a rig and reading it back, in `headrush-core.json` (see
+[docs/PROTOCOL.md](docs/PROTOCOL.md)). What the simulator is good for is
+developing against: discovery, endpoint extraction, catalog extraction and
+traffic recording all run end to end on it, and `--replay` serves a
+recording of real traffic instead.
 
-`rigsmith rig write` really does write, too - the client is driven by a
+`rigsmith rig write` really does write - the client is driven by a
 **protocol map**, which expresses one device and firmware's API as data
-(`rigsmith protocol maps`). That is what let the whole write path be finished
-before the real protocol is known: when it is captured, it drops in as
-another JSON file and nothing about the client changes. Unverified maps are
-labelled everywhere they are used, including in the write report, so a guess
-can never quietly pass for knowledge.
+(`rigsmith protocol maps`). That is what let the write path be finished
+before the real protocol was known; when it was captured it dropped in as
+another JSON file, and the client gained the object-tree write it
+describes. Unverified maps are labelled everywhere they are used, including
+in the write report, so a guess can never quietly pass for knowledge.
 
 It has already paid for itself once: its bundle builds its WebSocket URL by
 concatenation and names message types in comparisons, and the extractor
