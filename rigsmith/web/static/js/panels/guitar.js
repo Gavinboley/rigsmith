@@ -11,6 +11,7 @@ import { api } from "../api.js";
 import { lineChart, COLOURS } from "../charts.js";
 import { track } from "../jobs.js";
 import { onArrive } from "../nav.js";
+import { likeControls, refreshPickups } from "../pickups.js";
 import { $, attempt, clear, el, prompt, toast } from "../ui.js";
 import { dropZone } from "../upload.js";
 
@@ -96,7 +97,9 @@ function render() {
         stat("noise floor", `${(print.noise_floor_db ?? -120).toFixed(0)} dBFS`),
         stat("tuning", print.tuning_cents == null ? "--" : Math.abs(print.tuning_cents) < 0.5 ? "in tune" : `${print.tuning_cents > 0 ? "+" : ""}${print.tuning_cents.toFixed(0)} c`),
         stat("brightness", `${Math.round(print.centroid_hz || 0)} Hz`),
-        stat("hum", print.hum_hz ? `${print.hum_hz} Hz` : "none")
+        stat("hum", print.hum_hz ? `${print.hum_hz} Hz` : "none"),
+        profile.resonance ? el("div", { class: "stat", title: profile.resonance.describe }, el("div", { class: "k", text: "pickup resonance" }), el("div", { class: "v", text: `${(profile.resonance.f0_hz / 1000).toFixed(1)} kHz Q${profile.resonance.q.toFixed(1)}` })) : null,
+        profile.resonance ? stat("reads as", profile.resonance.clear ? profile.resonance.reads_as : "no clear peak") : null
       )
     ),
     sessionCard(),
@@ -152,6 +155,7 @@ function sessionCard() {
       const report = await track(job_id, { onUpdate: (job) => (stage.textContent = job.message || job.state) });
       clear(stage).append(el("pre", { class: "out", text: report.render }));
       toast(`${report.samples_added} notes learned`, { kind: "ok" });
+      refreshPickups();
       profile = await api.get(`/api/learn/profiles/${profileId}`, { samples: true });
       const keep = stage.cloneNode(true);
       render();
@@ -253,27 +257,27 @@ function fretboardCard() {
 function tryCard() {
   const text = el("textarea", { rows: 4, class: "grow", style: "width:100%;font-family:var(--mono)", text: "# notes in order: :4 quarter, :16, :8. dotted, + chord, - rest, x2 repeat, ! accent\n@120  E2 G2 A2:4  (E2+B2+E3):2  -  (A2 A#2)x2 A2!" });
   const noise = el("input", { type: "checkbox" });
-  const out = el("div", { class: "hint" });
+  const like = likeControls({ except: profileId });
+  const out = el("div", { class: "hint", style: "white-space:pre-wrap" });
+  const play = (withLike) =>
+    attempt(async () => {
+      const result = await api.post(`/api/learn/profiles/${profileId}/play`, { notes: text.value, noise: noise.checked, like: withLike ? like.like : null, amount: like.amount });
+      out.textContent = result.describe;
+      playUrl(result.url);
+    });
   return el(
     "div",
     { class: "card" },
-    el("h3", { text: "Play something on it" }),
+    el("div", { class: "scenes-head" }, el("h3", { text: "Play something on it" }), el("span", { class: "hint", text: "Sound like moves the pickup's resonance - a humbucker heard as a Strat, or any amount between." })),
     text,
     el(
       "div",
       { class: "row" },
       el("label", { class: "check hint" }, noise, "include the guitar's own hum and hiss"),
+      like.node,
       el("span", { class: "grow" }),
-      el("button", {
-        class: "btn primary",
-        text: "Play",
-        onclick: () =>
-          attempt(async () => {
-            const result = await api.post(`/api/learn/profiles/${profileId}/play`, { notes: text.value, noise: noise.checked });
-            out.textContent = result.describe;
-            playUrl(result.url);
-          }),
-      })
+      el("button", { class: "btn small", text: "as played", title: "The same riff without the pickup move - for A/B", onclick: () => play(false) }),
+      el("button", { class: "btn primary", text: "Play", onclick: () => play(true) })
     ),
     out
   );

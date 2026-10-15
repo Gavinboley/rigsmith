@@ -715,3 +715,5 @@ input:focus, select:focus { outline: 1px solid var(--amber-dim); border-color: v
 .part .p-actions .btn { padding: 3px 8px; }
 .parts { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
 .pin { font-family: var(--mono); font-size: 44px; letter-spacing: 0.3em; color: var(--amber); padding: 10px 0 4px; }
+.like-controls { display: inline-flex; align-items: center; gap: 6px; }
+.like-controls select { max-width: 230px; }

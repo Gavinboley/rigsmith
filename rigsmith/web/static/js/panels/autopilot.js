@@ -8,6 +8,7 @@
 
 import { api } from "../api.js";
 import { goTo, onArrive } from "../nav.js";
+import { likeControls } from "../pickups.js";
 import { $, attempt, clear, el, toast } from "../ui.js";
 import { dropZone } from "../upload.js";
 import { ask } from "../chat.js";
@@ -61,6 +62,10 @@ function renderForm() {
   const route = el("select");
   const research = el("input", { type: "checkbox", checked: true });
   const budget = el("input", { type: "number", value: 24, min: 6, max: 200, class: "narrow" });
+  // The record's guitar: by default whatever the research names, so a Strat
+  // record is chased with a single-coil DI even when you play a humbucker.
+  const like = likeControls({ none: "keep my pickup", extra: [["auto", "what the research says"]] });
+  like.set("auto");
 
   zones.mix = dropZone({ label: "Your copy of the song - drop or click", accept: "audio/*" });
   zones.stem = dropZone({ label: "An isolated guitar stem (optional)", accept: "audio/*" });
@@ -105,6 +110,9 @@ function renderForm() {
         route_id: bench.value === "device" ? route.value || null : null,
         research: research.checked,
         tune_budget: Number(budget.value) || 24,
+        like: like.like && like.like !== "auto" ? like.like : null,
+        like_amount: like.amount,
+        match_guitar: like.like === "auto",
       };
       if (!body.title) throw new Error("Give the song a title - search for it, or type it");
       const run = await api.post("/api/autopilot", body);
@@ -122,6 +130,7 @@ function renderForm() {
       "div",
       { class: "row", style: "margin-top:12px" },
       el("label", { class: "check hint" }, research, "research the gear with an agent"),
+      like.node,
       el("span", { class: "hint" }, "tuning budget"),
       budget,
       el("span", { class: "grow" }),

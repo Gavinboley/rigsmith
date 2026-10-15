@@ -92,6 +92,16 @@ def test_a_guitar_is_learned_and_played_from_the_page(client):
     assert played["url"].startswith("/api/audio")
     assert client.get("/api/learn/protocols").json()["protocols"]
 
+    # The guitar's own pickup, and the same riff as if on a Strat.
+    known = client.get("/api/learn/pickups").json()
+    assert {t["name"] for t in known["types"]} >= {"strat", "paf", "p90"}
+    assert known["guitars"][0]["profile_id"] == "demo"
+    strat = client.post("/api/learn/profiles/demo/play", json={"notes": "@140 E2 G2 A2", "like": "strat", "amount": 0.5}).json()
+    assert "50% of the way toward strat" in strat["pickup"]
+    swapped = client.post("/api/learn/swap", json={"source": played["path"], "like": "p90", "profile_id": "demo", "file_as_take": True}).json()
+    assert swapped["take_id"] and swapped["url"].startswith("/api/audio")
+    assert client.post("/api/learn/swap", json={"source": played["path"], "like": "kazoo"}).status_code == 400
+
 
 def test_the_loop_is_set_up_checked_and_used_on_the_bench(client, tmp_path):
     routes = client.post("/api/loop/demo").json()["routes"]

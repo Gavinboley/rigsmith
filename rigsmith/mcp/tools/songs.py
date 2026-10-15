@@ -95,17 +95,21 @@ def render_song_part_di(
     midi_path: str | None = None,
     midi_track: int | None = None,
     power_chords: bool = False,
+    like: str | None = None,
+    amount: float = 1.0,
 ) -> str:
     """Render one part as a DI on the user's guitar, on the part's clock.
 
     Then candidates rendered from it can be scored against part_target in
-    mode='performance'. Background job.
+    mode='performance'. ``like`` moves it toward the record's guitar (strat,
+    p90, paf, ... or a learned guitar) by ``amount``. Background job.
     """
     job = get_manager().submit(
         f"render {part_id} on {profile_id}",
         lambda progress: songs.render_part_di(
             song_id, part_id, None if profile_id == "synthetic" else profile_id,
-            midi=midi_path, track=midi_track, power_chords=power_chords, progress=progress,
+            midi=midi_path, track=midi_track, power_chords=power_chords,
+            like=like, amount=amount, progress=progress,
         ),
     )
     return f"Started job {job.id}. Check it with job_status('{job.id}')."

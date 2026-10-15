@@ -68,6 +68,8 @@ class Rendered:
     max_shift: float = 0.0
     notes: int = 0
     warnings: list[str] = field(default_factory=list)
+    pickup: str | None = None
+    """When the DI was moved toward another guitar's pickup, what was done."""
 
     @property
     def duration(self) -> float:
@@ -82,6 +84,8 @@ class Rendered:
         lines = [f"{self.notes} note(s), {self.duration:.1f}s: {parts or 'nothing played'}"]
         if self.max_shift:
             lines.append(f"  largest shift {self.max_shift:.1f} semitones")
+        if self.pickup:
+            lines.append(f"  pickup: {self.pickup}")
         lines.extend(f"  note: {w}" for w in self.warnings)
         return "\n".join(lines)
 
@@ -93,6 +97,7 @@ class Rendered:
             "voices": self.voices,
             "from_samples": round(self.from_samples, 3),
             "max_shift": round(self.max_shift, 2),
+            "pickup": self.pickup,
             "warnings": self.warnings,
             "describe": self.describe(),
         }

@@ -28,6 +28,9 @@ class RunBody(BaseModel):
     candidates: int = 5
     tune_budget: int = 24
     research: bool = True
+    like: str | None = None
+    like_amount: float = 1.0
+    match_guitar: bool = True
 
 
 def _payload(run) -> dict:

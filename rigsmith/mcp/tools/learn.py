@@ -92,16 +92,53 @@ def learn_guitar(
 
 
 @tool
-def play_notes(profile_id: str, notes: str, label: str = "riff") -> str:
+def play_notes(profile_id: str, notes: str, label: str = "riff", like: str | None = None, amount: float = 1.0) -> str:
     """Render typed notes on a learned guitar into a DI wav.
 
-    ``notes`` is one note per line: ``start duration note [velocity]``, e.g.
-    ``0 0.5 E2 0.8``. Use profile 'synthetic' when nothing is learned yet.
+    ``notes`` is either the quick form - ``@140 E2 G2 A2:4 (E2+B2)x2 -``,
+    eighths unless ``:4``/``:16``/``:8.``, ``+`` a chord, ``-`` a rest, ``x2``
+    a repeat, ``!`` an accent - or one ``start duration note [velocity]`` per
+    line. Use profile 'synthetic' when nothing is learned yet. ``like`` moves
+    the result toward another pickup (see swap_pickup) by ``amount``.
     """
     path, rendered = profiles.render_text(
-        None if profile_id == "synthetic" else profile_id, notes, label=label
+        None if profile_id == "synthetic" else profile_id, notes, label=label, like=like, amount=amount
     )
     return f"{path}\n{rendered.describe()}"
+
+
+@tool
+def estimate_pickup(source: str) -> str:
+    """Where a guitar's pickup resonates - a learned guitar's id, a take id, or a file.
+
+    The resonant peak of pickup plus cable (around 4-5 kHz and sharp for a
+    single coil, 2-3 kHz and broad for a humbucker) is most of what makes a
+    clean DI sound like one guitar rather than another.
+    """
+    known = {p.profile_id for p in profiles.list_profiles()}
+    resonance = profiles.resonance_of(source) if source in known else profiles.pickup_of(source)
+    return resonance.describe()
+
+
+@tool
+def swap_pickup(
+    source: str,
+    like: str,
+    amount: float = 1.0,
+    profile_id: str | None = None,
+    file_as_take: bool = True,
+) -> str:
+    """Move a DI toward another guitar's pickup, for a record made on a different guitar.
+
+    ``like`` is a learned guitar's id or a type: strat, tele, p90, paf,
+    hot-humbucker, active, filtertron - a recipe's description such as
+    "Fender Stratocaster" or "EMG 81" works too. ``amount`` 0-1 goes part
+    way. Give ``profile_id`` when the DI was played on a learned guitar; its
+    pickup is then measured rather than estimated. The result stays
+    sample-aligned with the source, so performance-mode scoring still works.
+    """
+    result = profiles.swap_di(source, like, amount=amount, profile_id=profile_id, file_as_take=file_as_take)
+    return f"{result['path']}\n  {result['pickup']}" + (f"\n  take {result['take_id']}" if result["take_id"] else "")
 
 
 @tool
@@ -116,6 +153,8 @@ def render_part(
     transpose: int = 0,
     label: str | None = None,
     file_as_take: bool = True,
+    like: str | None = None,
+    amount: float = 1.0,
 ) -> str:
     """Render a song's part as a DI on the user's guitar, on the record's clock.
 
@@ -127,7 +166,9 @@ def render_part(
 
     Prefer a tab's MIDI for chord-heavy distorted parts - transcription is
     reliable on single-note parts and approximate on distorted chords, and
-    the result says how much of the stem its notes explain.
+    the result says how much of the stem its notes explain. ``like`` moves
+    the DI toward the record's guitar when it was not the user's (a type such
+    as strat or p90, or another learned guitar), by ``amount``.
     """
     job = get_manager().submit(
         f"render part {label or stem or midi_path}",
@@ -142,6 +183,8 @@ def render_part(
             transpose=transpose,
             label=label,
             file_as_take=file_as_take,
+            like=like,
+            amount=amount,
             progress=progress,
         ),
     )

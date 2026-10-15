@@ -295,3 +295,60 @@ def test_a_tab_at_the_wrong_tempo_is_put_on_the_records_clock(tempo):
     assert np.median(errors) < 0.005
     assert sum(error > 0.05 for error in errors) <= 0.2 * len(tab)
     assert result.tempo_ratio == pytest.approx(tempo, rel=0.06)
+
+
+# ---------------------------------------------------------------------------
+# pickups
+# ---------------------------------------------------------------------------
+
+
+def _line(pickup_name, seed=0):
+    from rigsmith.learn.synth import NoteEvent
+
+    rng = np.random.default_rng(seed)
+    events = [NoteEvent(0.25 * i, 0.6, float(rng.integers(40, 76)), float(rng.uniform(0.5, 0.95))) for i in range(48)]
+    return render(events, None, sample_rate=48000, pickup=pickup_name).audio
+
+
+def test_a_pickup_resonance_is_measured_from_what_was_played():
+    from rigsmith.learn import pickup
+    from rigsmith.learn.pluck import PICKUPS as SYNTHETIC
+
+    for name in ("bridge", "middle", "neck-single"):
+        found = pickup.estimate(_line(name), 48000)
+        truth = SYNTHETIC[name]
+        assert abs(np.log2(found.f0_hz / truth.resonance_hz)) < 0.25, (name, found.describe())
+    assert pickup.estimate(_line("bridge"), 48000).reads_as in ("paf", "hot-humbucker", "p90")
+    assert pickup.estimate(_line("middle"), 48000).reads_as in ("strat", "tele", "filtertron")
+
+
+def test_a_humbucker_di_is_moved_to_a_single_coil_and_stays_aligned():
+    from rigsmith.learn import pickup
+    from rigsmith.learn.pluck import PICKUPS as SYNTHETIC
+
+    humbucker, single = _line("bridge"), _line("bridge-single")
+    target = pickup.Resonance(SYNTHETIC["bridge-single"].resonance_hz, SYNTHETIC["bridge-single"].q)
+    moved = pickup.swap(humbucker, 48000, pickup.estimate(humbucker, 48000), target)
+
+    def shape(audio):
+        _, levels = pickup._spectrum(audio, 48000)
+        return levels - levels.max()
+
+    before = np.sqrt(np.mean((shape(humbucker) - shape(single)) ** 2))
+    after = np.sqrt(np.mean((shape(moved) - shape(single)) ** 2))
+    assert after < before / 2, (before, after)
+    # No delay: the swap keeps the DI on the record's clock.
+    lag = np.argmax(np.correlate(moved[:4800], humbucker[:4800], "full")) - 4799
+    assert lag == 0
+    halfway = pickup.morph(pickup.named("paf"), pickup.named("strat"), 0.5)
+    assert pickup.named("paf").f0_hz < halfway.f0_hz < pickup.named("strat").f0_hz
+
+
+def test_a_recipes_words_name_a_pickup():
+    from rigsmith.learn.pickup import named
+
+    assert named("Fender Stratocaster").label == "strat"
+    assert named("Gibson Les Paul Junior").label == "p90"
+    assert named("Les Paul Custom with '57 Classics").label == "paf"
+    assert named("ESP with EMG 81").label == "active"
+    assert named("a cardboard box") is None

@@ -11,7 +11,7 @@ pip install -e ".[all]"
 rigsmith ui
 ```
 
-> **Status: everything runs today.** Rig authoring, validation, NAM analysis, tone matching, catalog extraction, USB backup, MIDI, guitar learning, song maps, the hardware loop, the tuner, autopilot, the chat and the web UI are covered by 867 tests. The Remote Editor protocol has been captured against a real Core and a rig written to it and read back exactly - see [docs/PROTOCOL.md](docs/PROTOCOL.md). What still wants hardware is *measuring*: the loop and the blind A/B need the Core and an interface plugged in.
+> **Status: everything runs today.** Rig authoring, validation, NAM analysis, tone matching, catalog extraction, USB backup, MIDI, guitar learning, song maps, the hardware loop, the tuner, autopilot, the chat and the web UI are covered by 870 tests. The Remote Editor protocol has been captured against a real Core and a rig written to it and read back exactly - see [docs/PROTOCOL.md](docs/PROTOCOL.md). What still wants hardware is *measuring*: the loop and the blind A/B need the Core and an interface plugged in.
 
 ---
 
@@ -202,6 +202,25 @@ type it the way you would hum it: `@140 E2 G2 A2:4 (E2+B2+E3):2 - (A2 A#2)x2 A2!
 - an eighth note unless `:4`, `:16` or a dotted `:8.` says otherwise, `+`
 stacks a chord, `-` rests, `x2` repeats, `!` accents. Exact timings work too:
 one `start duration note [velocity]` per line.
+
+**When the record was made on a different guitar.** A passive pickup and
+its cable are a resonant low-pass - a single coil peaks high and sharp
+(around 4-5 kHz), a humbucker lower and broader (2-3 kHz) - and that peak is
+most of what makes a clean DI sound like one guitar rather than another.
+rigsmith measures yours from every note it has learned, and can move a DI
+toward another: a type (`strat`, `tele`, `p90`, `paf`, `hot-humbucker`,
+`active`, `filtertron`), another guitar you have taught it, or any amount in
+between. The DI stays sample-aligned, so performance scoring still works.
+
+```bash
+rigsmith learn pickup lp-bridge               # 2.8 kHz, Q 1.6 - reads as a PAF
+rigsmith learn swap my-di --like strat --amount 0.7 --profile lp-bridge --take
+rigsmith song di going-under-evanescence verse-2-left lp-bridge --like "EMG 81"
+```
+
+Autopilot does this on its own: when the research says the record was a
+Strat, the part DI is moved to a single coil before any amp is heard
+(`--like` to choose, `--keep-my-pickup` to opt out).
 
 ### Map the song, then pick the part
 
@@ -395,7 +414,7 @@ Ask for a tone. The agent researches the gear, finds an A2 capture, builds the r
     +---------------+---------------+
     |               |               |
   cli.py       mcp/tools/*      web/api.py
-  (click)       (108 tools)       (FastAPI)
+  (click)       (110 tools)       (FastAPI)
 ```
 
 Each surface is a thin adapter: parse input, call core, format output. That rule exists because the first version broke it — orchestration lived inside the MCP tools, so anything not reachable from a tool was reachable from nowhere, and whole subsystems ended up built and unwired.

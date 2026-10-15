@@ -44,6 +44,8 @@ class PartDiBody(BaseModel):
     track: int | None = None
     notes: str | None = None
     power_chords: bool = False
+    like: str | None = None
+    amount: float = 1.0
 
 
 def _payload(song) -> dict:
@@ -148,7 +150,8 @@ def part_di(song_id: str, part_id: str, body: PartDiBody) -> dict:
     def run(progress):
         result = songs.render_part_di(
             song_id, part_id, None if body.profile_id == "synthetic" else body.profile_id,
-            midi=body.midi, track=body.track, text=body.notes, power_chords=body.power_chords, progress=progress,
+            midi=body.midi, track=body.track, text=body.notes, power_chords=body.power_chords,
+            like=body.like or None, amount=body.amount, progress=progress,
         )
         return {**result.to_dict(), "url": _audio_url(result.path)}
 

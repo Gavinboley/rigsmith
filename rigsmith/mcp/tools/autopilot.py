@@ -21,6 +21,7 @@ def run_autopilot(
     bench: Literal["virtual", "device"] = "virtual",
     route_id: str | None = None,
     research: bool = True,
+    like: str | None = None,
 ) -> str:
     """Chase a song's guitar tone end to end, in the background.
 
@@ -29,13 +30,15 @@ def run_autopilot(
     bench, tunes the best, and builds a draft rig plus a blind A/B. The
     'virtual' bench rehearses on a simulated amp; 'device' switches the Core's
     amp live and reamps through the loop. Nothing is written to the device.
-    Returns a run id; check it with autopilot_status.
+    The part DI follows the research's guitar (a Strat record gets a single
+    coil) unless ``like`` names one. Returns a run id; check it with
+    autopilot_status.
     """
     run = autopilot.start(
         autopilot.Request(
             title=title, artist=artist, mix=mix_path, stem=stem_path, song_id=song_id,
             parts=list(parts or []), profile_id=profile_id, midi=midi_path, bench=bench,
-            route_id=route_id, research=research,
+            route_id=route_id, research=research, like=like,
         )
     )
     return f"Started autopilot {run.run_id}. Check it with autopilot_status('{run.run_id}')."

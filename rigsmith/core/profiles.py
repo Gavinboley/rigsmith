@@ -522,6 +522,109 @@ def remove_sample(profile_id: str, sample_id: str):
 # --------------------------------------------------------------------------
 
 
+def resonance_of(profile_id: str | None):
+    """A guitar's pickup resonance: measured for a learned one, and for the
+    synthetic string the bridge humbucker it is built with."""
+    from ..learn.pickup import Resonance
+    from ..learn.pluck import PICKUPS as SYNTHETIC
+
+    if not profile_id:
+        spec = SYNTHETIC["bridge"]
+        return Resonance(spec.resonance_hz, spec.q, label="the synthetic string's bridge humbucker")
+    profile = get(profile_id)
+    found = profile.resonance()
+    if found is None:
+        raise Invalid(f"'{profile_id}' has not learned anything yet, so its pickup is unknown")
+    found.label = found.label or profile.label
+    return found
+
+
+def resolve_like(like: str):
+    """What "sound like" means: another learned guitar, or a pickup type.
+
+    ``lp-bridge`` (a profile id), ``strat``, ``P-90``, ``"Fender Stratocaster"``,
+    ``EMG 81`` - a description from a recipe works as well as a type name.
+    """
+    from ..learn.pickup import PICKUPS, named
+
+    text = (like or "").strip()
+    if not text:
+        raise Invalid("say what it should sound like")
+    known = {p.profile_id for p in list_profiles()}
+    if text in known:
+        return resonance_of(text)
+    found = named(text)
+    if found is None:
+        raise Invalid(
+            f"'{text}' is neither a learned guitar nor a pickup type rigsmith knows",
+            hint="Types: " + ", ".join(PICKUPS) + (". Guitars: " + ", ".join(sorted(known)) if known else ""),
+        )
+    return found
+
+
+def sound_like(audio, sample_rate: int, *, source, like: str, amount: float = 1.0):
+    """``audio`` moved from ``source``'s pickup toward ``like``'s, and what was done."""
+    from ..learn.pickup import swap
+
+    from ..learn.pickup import morph
+
+    target = resolve_like(like)
+    moved = swap(audio, sample_rate, source, target, amount=amount)
+    landed = target if amount >= 1 else morph(source, target, amount)
+    how = f"{source.f0_hz / 1000:.1f} kHz Q{source.q:.1f} -> {landed.f0_hz / 1000:.1f} kHz Q{landed.q:.1f}"
+    if amount < 1:
+        return moved, f"moved {amount:.0%} of the way toward {target.label or like}: {how} ({target.label or like} is {target.f0_hz / 1000:.1f} kHz Q{target.q:.1f})"
+    return moved, f"moved toward {target.label or like}: {how}"
+
+
+def pickup_of(source) -> "object":
+    """Estimate the pickup that recorded a DI - a take id or a path."""
+    from ..learn.pickup import estimate
+    from ..match.render_offline import load_audio
+    from .takes import resolve
+
+    audio, sample_rate = load_audio(resolve(source))
+    return estimate(audio, sample_rate)
+
+
+def swap_di(
+    source,
+    like: str,
+    *,
+    amount: float = 1.0,
+    profile_id: str | None = None,
+    label: str | None = None,
+    file_as_take: bool = False,
+):
+    """A DI you already have, moved toward another guitar's pickup.
+
+    The DI's own pickup comes from ``profile_id`` when it was played on a
+    learned guitar (the better measurement - every note it has heard), and
+    is estimated from the DI itself otherwise.
+    """
+    from ..learn.pickup import estimate
+    from ..match.render_offline import load_audio, save_audio
+    from . import takes
+
+    require_writable("make a DI")
+    path = takes.resolve(source)
+    audio, sample_rate = load_audio(path)
+    origin = resonance_of(profile_id) if profile_id else estimate(audio, sample_rate)
+    moved, how = sound_like(audio, sample_rate, source=origin, like=like, amount=amount)
+    settings = get_settings()
+    settings.ensure_workspace()
+    name = label or f"{Path(str(path)).stem}-like-{slugify(like)}"
+    destination = save_audio(settings.audio_dir / "swapped" / f"{slugify(name)}.wav", moved, sample_rate)
+    result = {"path": str(destination), "source": str(path), "from": origin.to_dict(), "pickup": how, "take_id": None}
+    if file_as_take:
+        take_id = slugify(name)
+        if take_id in {t.take_id for t in takes.list_takes()}:
+            takes.delete(take_id)
+        take = takes.add(destination, take_id=take_id, kind="di", origin="synth", note=f"{Path(str(path)).name}, {how}", tags=["swapped"], copy=False)
+        result["take_id"] = take.take_id
+    return result
+
+
 def render_events(
     profile_id: str | None,
     events,
@@ -530,8 +633,14 @@ def render_events(
     label: str = "part",
     noise: bool = False,
     use_voice: bool = True,
+    like: str | None = None,
+    amount: float = 1.0,
 ):
-    """Play note events on a profile (or the synthetic string) into a wav."""
+    """Play note events on a profile (or the synthetic string) into a wav.
+
+    ``like`` moves the result toward another guitar's pickup - a learned
+    guitar's id or a type such as ``strat`` - by ``amount`` (0-1).
+    """
     from ..learn.synth import render
     from ..match.render_offline import save_audio
 
@@ -545,6 +654,10 @@ def render_events(
         voice=voice,
         noise_floor_db=(profile.fingerprint.noise_floor_db if (profile and noise) else None),
     )
+    if like and amount > 0:
+        rendered.audio, rendered.pickup = sound_like(
+            rendered.audio, rendered.sample_rate, source=resonance_of(profile_id), like=like, amount=amount
+        )
     settings = get_settings()
     settings.ensure_workspace()
     destination = Path(out_path) if out_path else settings.audio_dir / "parts" / f"{slugify(label)}-{profile.profile_id if profile else 'synthetic'}.wav"

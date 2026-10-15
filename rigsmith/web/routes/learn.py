@@ -41,6 +41,17 @@ class PlayBody(BaseModel):
     notes: str
     label: str = "riff"
     noise: bool = False
+    like: str | None = None
+    amount: float = 1.0
+
+
+class SwapBody(BaseModel):
+    source: str
+    like: str
+    amount: float = 1.0
+    profile_id: str | None = None
+    label: str | None = None
+    file_as_take: bool = False
 
 
 class NoteBody(BaseModel):
@@ -82,6 +93,8 @@ def get_profile(profile_id: str, samples: bool = False) -> dict:
     profile = profiles.get(profile_id)
     data = profile.to_dict() if samples else profile.summary()
     data["coverage"] = profile.coverage(frets=24 if samples else 12)
+    resonance = profile.resonance()
+    data["resonance"] = resonance.to_dict() if resonance else None
     return data
 
 
@@ -134,7 +147,7 @@ def refit_voice(profile_id: str) -> dict:
 
 @router.post("/profiles/{profile_id}/play")
 def play(profile_id: str, body: PlayBody) -> dict:
-    path, rendered = profiles.render_text(_profile_id(profile_id), body.notes, label=body.label, noise=body.noise)
+    path, rendered = profiles.render_text(_profile_id(profile_id), body.notes, label=body.label, noise=body.noise, like=body.like or None, amount=body.amount)
     return {**rendered.to_dict(), "path": str(path), "url": _audio_url(path)}
 
 
@@ -210,3 +223,39 @@ def analyse(source: str, protocol_id: str = "free", tuning: str | None = None) -
     if "/" in source or "\\" in source:
         _allow_audio(source)
     return profiles.analyse(source, protocol_id=protocol_id, tuning=tuning)
+
+
+@router.get("/pickups")
+def pickups() -> dict:
+    """The pickup types a DI can be moved toward, and every learned guitar's own."""
+    from ...learn.pickup import PICKUPS
+
+    guitars = []
+    for profile in profiles.list_profiles():
+        resonance = profile.resonance()
+        if resonance:
+            guitars.append({"profile_id": profile.profile_id, "label": profile.label, **resonance.to_dict()})
+    return {
+        "types": [{"name": p.name, "f0_hz": p.f0_hz, "q": p.q, "description": p.description} for p in PICKUPS.values()],
+        "guitars": guitars,
+    }
+
+
+@router.get("/pickup")
+def pickup_of(source: str) -> dict:
+    if "/" in source or "\\" in source:
+        _allow_audio(source)
+    return profiles.pickup_of(source).to_dict()
+
+
+@router.post("/swap")
+def swap(body: SwapBody) -> dict:
+    if "/" in body.source or "\\" in body.source:
+        _allow_audio(body.source)
+    result = profiles.swap_di(
+        body.source, body.like, amount=body.amount, profile_id=_profile_id(body.profile_id or ""),
+        label=body.label, file_as_take=body.file_as_take,
+    )
+    _allow_audio(result["path"])
+    return {**result, "url": _audio_url(result["path"])}
+

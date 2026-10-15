@@ -75,6 +75,13 @@ class Request:
     tune_budget: int = 24
     research: bool = True
     research_timeout_s: float = 600.0
+    like: str | None = None
+    """Move the part DI toward this guitar's pickup (a learned guitar or a
+    type like ``strat``). Unset: whatever the research says the record's
+    guitar was, when it says."""
+    like_amount: float = 1.0
+    match_guitar: bool = True
+    """Follow the research's guitar when ``like`` is unset."""
 
 
 @dataclass
@@ -355,6 +362,22 @@ def _researched_amps(run: Run) -> list[str]:
     return names
 
 
+def _researched_guitar(run: Run) -> str | None:
+    """The record's guitar or pickup, as the research recipe names it."""
+    from . import recipes
+
+    if not run.recipe_id:
+        return None
+    try:
+        recipe = recipes.get(run.recipe_id)
+    except Exception:
+        return None
+    for text in (getattr(recipe, "pickup", None), getattr(recipe, "guitar", None)):
+        if text:
+            return text
+    return None
+
+
 def _stage_di(run: Run, progress) -> str:
     from . import appsettings, songs
 
@@ -370,11 +393,24 @@ def _stage_di(run: Run, progress) -> str:
     profile = run.request.profile_id or appsettings.load().default_profile
     if not profile:
         run.note("no guitar profile, so the part is played on the synthetic string - learn your guitar for a truer test")
+    like = run.request.like
+    if not like and run.request.match_guitar:
+        from ..learn.pickup import named
+
+        researched = _researched_guitar(run)
+        if researched and named(researched):
+            like = researched
+        elif researched:
+            run.note(f"the research names the guitar as '{researched}', which is no pickup type rigsmith knows - the DI keeps yours")
     result = songs.render_part_di(
-        run.song_id, part.part_id, profile, midi=run.request.midi, track=run.request.midi_track, progress=progress,
+        run.song_id, part.part_id, profile, midi=run.request.midi, track=run.request.midi_track,
+        like=like, amount=run.request.like_amount, progress=progress,
     )
     run.di_path = str(result.path)
     run.mode = "performance"
+    if like:
+        rendered_pickup = (result.rendered or "").split("pickup: ", 1)
+        run.note("the DI's pickup was " + (rendered_pickup[1].splitlines()[0] if len(rendered_pickup) > 1 else f"moved toward {like}"))
     confidence = f", notes {result.confidence:.0%} confident" if result.confidence is not None else ""
     return f"{part.label} on {profile or 'the synthetic string'} ({result.source}{confidence})"
 

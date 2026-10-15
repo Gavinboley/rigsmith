@@ -516,8 +516,12 @@ def record_result(song_id: str, part_id: str, *, label: str, composite: float, m
     return part
 
 
-def render_part_di(song_id: str, part_id: str, profile_id: str | None, *, midi=None, track=None, text=None, power_chords=False, progress: Progress | None = None):
-    """A DI of one part on your guitar, aligned to the part's own clock."""
+def render_part_di(
+    song_id: str, part_id: str, profile_id: str | None, *, midi=None, track=None, text=None, power_chords=False,
+    like: str | None = None, amount: float = 1.0, progress: Progress | None = None,
+):
+    """A DI of one part on your guitar, aligned to the part's own clock -
+    moved toward the record's guitar with ``like`` when it was not yours."""
     from . import parts as part_rendering
 
     require_writable("render a part")
@@ -534,6 +538,8 @@ def render_part_di(song_id: str, part_id: str, profile_id: str | None, *, midi=N
         power_chords=power_chords,
         label=f"{song.song_id}-{part.part_id}",
         file_as_take=True,
+        like=like,
+        amount=amount,
         progress=progress,
     )
     song = get(song_id)

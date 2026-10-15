@@ -155,18 +155,23 @@ def learn_analyse(source, protocol_id, tuning, as_json) -> None:
 @click.option("--file", "notes_file", type=click.Path(exists=True, path_type=Path), help="A text file of notes.")
 @click.option("--out", type=click.Path(path_type=Path))
 @click.option("--noise", is_flag=True, help="Include the guitar's own noise floor and hum.")
+@click.option("--like", help="Move it toward another pickup: a learned guitar, or strat, tele, p90, paf, hot-humbucker, active.")
+@click.option("--amount", type=click.FloatRange(0, 1), default=1.0, show_default=True, help="How far toward --like.")
 @handled
-def learn_play(profile_id, notes, notes_file, out, noise) -> None:
-    """Play typed notes on a profile: 'start dur note [vel]' per line.
+def learn_play(profile_id, notes, notes_file, out, noise, like, amount) -> None:
+    """Play typed notes on a profile.
 
-    Use 'synthetic' as the profile to hear the generic string.
+    Quick form: '@140 E2 G2 A2:4 (E2+B2)x2 -' (eighths unless :4, :16, :8.;
+    + stacks a chord, - rests, x2 repeats, ! accents). Exact form: one
+    'start dur note [vel]' per line. Use 'synthetic' as the profile to hear
+    the generic string.
     """
     from ..core import profiles
 
     text = notes_file.read_text(encoding="utf-8") if notes_file else (notes or "")
     text = text.replace(";", "\n")
     path, rendered = profiles.render_text(
-        None if profile_id == "synthetic" else profile_id, text, out_path=out, noise=noise
+        None if profile_id == "synthetic" else profile_id, text, out_path=out, noise=noise, like=like, amount=amount
     )
     click.echo(f"{path}\n{rendered.describe()}")
 
@@ -210,8 +215,10 @@ def learn_replay(profile_id, source) -> None:
 @click.option("--transpose", type=int, default=0)
 @click.option("--label")
 @click.option("--take", "as_take", is_flag=True, help="File the result in the takes library.")
+@click.option("--like", help="The record's guitar, when it was not yours: strat, p90, paf, a learned guitar...")
+@click.option("--amount", type=click.FloatRange(0, 1), default=1.0, show_default=True, help="How far toward --like.")
 @handled
-def learn_part(profile_id, stem, midi_path, track, text, region, mode, power_chords, transpose, label, as_take) -> None:
+def learn_part(profile_id, stem, midi_path, track, text, region, mode, power_chords, transpose, label, as_take, like, amount) -> None:
     """Render a song's part as a DI on your guitar, on the record's clock.
 
     Use 'synthetic' as the profile when you have not learned a guitar yet.
@@ -223,7 +230,7 @@ def learn_part(profile_id, stem, midi_path, track, text, region, mode, power_cho
             None if profile_id == "synthetic" else profile_id,
             stem=stem, midi=midi_path, track=track, text=text, region=region,
             mode=mode, power_chords=power_chords, transpose=transpose,
-            label=label, file_as_take=as_take, progress=bar,
+            label=label, file_as_take=as_take, like=like, amount=amount, progress=bar,
         )
     click.echo(result.render())
     if stem:
@@ -231,6 +238,41 @@ def learn_part(profile_id, stem, midi_path, track, text, region, mode, power_cho
             "\nThe DI plays the record's notes on its clock, so score candidates "
             "rendered from it with --mode performance."
         )
+
+
+@group.command("pickup")
+@click.argument("source")
+@click.option("--json", "as_json", is_flag=True)
+@handled
+def learn_pickup(source, as_json) -> None:
+    """Where a guitar's pickup resonates: a learned guitar, a take, or a file.
+
+    The resonant peak of the pickup and cable is most of what makes a single
+    coil sound like one and a humbucker like the other.
+    """
+    from ..core import profiles
+
+    known = {p.profile_id for p in profiles.list_profiles()}
+    resonance = profiles.resonance_of(source) if source in known else profiles.pickup_of(source)
+    _emit(resonance.describe(), as_json=as_json, payload=resonance.to_dict())
+
+
+@group.command("swap")
+@click.argument("source")
+@click.option("--like", required=True, help="A learned guitar, or strat, tele, p90, paf, hot-humbucker, active, filtertron.")
+@click.option("--amount", type=click.FloatRange(0, 1), default=1.0, show_default=True)
+@click.option("--profile", "profile_id", help="The learned guitar SOURCE was played on (better than estimating).")
+@click.option("--label")
+@click.option("--take", "as_take", is_flag=True, help="File the result in the takes library.")
+@handled
+def learn_swap(source, like, amount, profile_id, label, as_take) -> None:
+    """Move a DI toward another guitar's pickup - all the way, or part way."""
+    from ..core import profiles
+
+    result = profiles.swap_di(source, like, amount=amount, profile_id=profile_id, label=label, file_as_take=as_take)
+    click.echo(f"{result['path']}\n  {result['pickup']}")
+    if result["take_id"]:
+        click.echo(f"  filed as take {result['take_id']}")
 
 
 @group.command("transcribe")

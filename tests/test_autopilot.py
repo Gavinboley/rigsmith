@@ -70,7 +70,7 @@ def test_a_whole_run_ends_in_a_draft_and_a_listening_test(workspace):
 
     request = autopilot.Request(
         title="Fixture", artist="Synthetic", mix=str(mix_path), stem=str(stem_path),
-        profile_id="demo", research=False, candidates=4, tune_budget=8,
+        profile_id="demo", research=False, candidates=4, tune_budget=8, like="strat",
     )
     run = autopilot.Run(run_id="t1", request=request)
     run.save()
@@ -84,6 +84,9 @@ def test_a_whole_run_ends_in_a_draft_and_a_listening_test(workspace):
     assert run.draft_id and rigs.get(run.draft_id).rig.blocks
     assert run.ab_session
     assert any("rehearsal" in n for n in run.all_notes())
+    assert any("pickup was moved toward strat" in n for n in run.all_notes()), run.all_notes()
+    # Research was off: the gear measured from the record is not "research".
+    assert not any("named by the research" in str(r.get("reason")) for r in run.results), run.results
 
     # Re-running the last stage replaces the draft, it does not add another.
     before = len(rigs.list_drafts())

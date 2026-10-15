@@ -333,16 +333,19 @@ async function isolate() {
 }
 
 async function renderDi(part) {
-  const { profiles } = await api.get("/api/learn/profiles");
+  const [{ profiles }, pickups] = await Promise.all([api.get("/api/learn/profiles"), api.get("/api/learn/pickups").catch(() => ({ types: [] }))]);
   const answer = await prompt(`Play "${part.label}" on your guitar`, [
     { type: "note", text: "Renders the part's notes on a learned guitar, on the record's clock - then candidates can be scored frame by frame. Give a tab's MIDI path for the right notes; otherwise the stem is transcribed." },
     { name: "profile_id", label: "Guitar", type: "select", value: profiles[0]?.profile_id || "synthetic", options: [...profiles.map((p) => ({ value: p.profile_id, label: p.label || p.profile_id })), { value: "synthetic", label: "the synthetic string" }] },
     { name: "midi", label: "Tab MIDI (path, optional)", placeholder: "C:/tabs/riff.mid" },
+    { name: "like", label: "The record's guitar, if it was not yours", type: "select", value: "", options: [{ value: "", label: "same as mine" }, ...pickups.types.map((t) => ({ value: t.name, label: `${t.name} - ${t.description}` }))] },
+    { name: "amount", label: "How far toward it (%)", type: "number", value: 100 },
     { name: "power_chords", label: "Put power-chord fifths back", type: "checkbox", value: false },
   ]);
   if (!answer) return;
   await attempt(async () => {
-    const { job_id } = await api.post(`/api/songs/${songId}/parts/${part.part_id}/di`, { profile_id: answer.profile_id, midi: answer.midi || null, power_chords: answer.power_chords });
+    const amount = Math.max(0, Math.min(100, Number(answer.amount ?? 100))) / 100;
+    const { job_id } = await api.post(`/api/songs/${songId}/parts/${part.part_id}/di`, { profile_id: answer.profile_id, midi: answer.midi || null, power_chords: answer.power_chords, like: answer.like || null, amount });
     const result = await track(job_id, { onUpdate: progressInto });
     progressInto(null);
     toast(`Rendered: ${result.events} notes (${result.source})`, { kind: "ok", hint: result.warnings?.[0] });

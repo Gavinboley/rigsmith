@@ -115,6 +115,8 @@ def part_di(
     label: str | None = None,
     noise: bool = False,
     file_as_take: bool = False,
+    like: str | None = None,
+    amount: float = 1.0,
     progress: Progress | None = None,
 ) -> PartResult:
     """Render a song's part as a DI on a learned guitar.
@@ -130,6 +132,9 @@ def part_di(
             part, for when the record is known to be power chords.
         file_as_take: Add the result to the takes library as a synthetic DI,
             so its id works anywhere a filename does.
+        like: Move the DI toward another guitar's pickup - a learned
+            guitar's id, or a type such as ``strat`` or ``p90`` - by
+            ``amount`` (0-1). For a record made on a different guitar.
     """
     from ..learn import midifile
     from ..learn.align import align_events
@@ -203,7 +208,7 @@ def part_di(
     profile_label = profile_id or "synthetic"
     directory = _parts_dir()
     out = directory / f"{profiles.slugify(name)}-{profiles.slugify(profile_label)}.wav"
-    path, rendered = profiles.render_events(profile_id, events, out_path=out, label=name, noise=noise)
+    path, rendered = profiles.render_events(profile_id, events, out_path=out, label=name, noise=noise, like=like, amount=amount)
 
     # Keep the notes beside the audio - as JSON for rigsmith, as MIDI for a
     # person with a tab editor who wants to fix the two wrong ones.

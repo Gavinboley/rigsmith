@@ -278,7 +278,19 @@ class GuitarProfile:
         data["range"] = [midi_to_note(pitches[0]), midi_to_note(pitches[-1])] if pitches else None
         data["label"] = self.label
         data["describe"] = self.describe()
+        resonance = self.resonance()
+        data["resonance"] = resonance.to_dict() if resonance else None
         return data
+
+    def resonance(self):
+        """Where this guitar's pickup peaks, from its fingerprint - see
+        :mod:`.pickup`. None until something has been learned."""
+        from .pickup import estimate_from_bands
+
+        bands = self.fingerprint.bands_db
+        if not bands or not any(bands):
+            return None
+        return estimate_from_bands(BAND_CENTRES[: len(bands)], bands)
 
     @classmethod
     def from_dict(cls, data: dict) -> "GuitarProfile":
