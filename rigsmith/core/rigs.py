@@ -108,6 +108,8 @@ class WriteResult:
     report: Any = None
     """The device client's step-by-step :class:`WriteReport`, when a write
     was actually attempted."""
+    exact: bool = False
+    """Written, and every value took - the rig on the device is the draft."""
 
     def render(self) -> str:
         lines = []
@@ -128,6 +130,7 @@ class WriteResult:
         return {
             "draft_id": self.draft.draft_id,
             "written": self.written,
+            "exact": self.exact,
             "message": self.message,
             "backup_path": str(self.backup_path) if self.backup_path else None,
             "diff": [c.description for c in self.diff.changes],
@@ -598,6 +601,14 @@ def write(
         volume = find_device_volume()
         backup = timestamped_backup(settings.backups_dir, volume)
         backup_path = backup.destination
+        if "Rigs" not in backup.folders:
+            # The volume mounted but its Rigs folder was missing or empty -
+            # a backup without the rigs is not the one the gate is for.
+            backup_path = None
+            raise DeviceStorageError(
+                f"the backup at {backup.destination} copied no rigs - the "
+                "device's Rigs folder was missing or empty"
+            )
     except DeviceStorageError as exc:
         if not allow_without_backup:
             return WriteResult(
@@ -640,9 +651,9 @@ def write(
             message=(
                 backup_note
                 + f"Nothing was written: {exc}\n\n"
-                "The Remote Editor protocol has not been captured from real "
-                "hardware yet, so no verified map exists. To develop against "
-                "a stand-in, run 'rigsmith protocol simulate' and point "
+                "Check the Core is awake, on the same network with HeadRush "
+                "Remote on, and paired ('rigsmith device pair'); to rehearse "
+                "without it, run 'rigsmith protocol simulate' and point "
                 "--device at it."
             ),
         )
@@ -652,12 +663,17 @@ def write(
         diff=difference,
         validation=validation,
         written=report.ok,
+        exact=report.exact,
         backup_path=backup_path,
         report=report,
         message=(
             backup_note
             + (
                 f"Wrote '{draft.rig.name}' to the device."
+                if report.exact
+                else f"Wrote '{draft.rig.name}' to the device, but it kept "
+                f"{len(report.refused)} value(s) of its own ({', '.join(report.refused[:4])}) "
+                "- the rig on it is not exactly the draft."
                 if report.ok
                 else f"Write stopped after {report.completed} step(s)."
             )

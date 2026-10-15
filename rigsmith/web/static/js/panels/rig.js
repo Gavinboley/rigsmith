@@ -481,8 +481,9 @@ export function onJobs(jobs) {
       toast(error || "The write did not complete.", { kind: "error", timeout: 12000 });
       return;
     }
+    // Written but not exact: on the device, and not quite the draft.
     toast(result.message, {
-      kind: result.written ? "ok" : "error",
+      kind: result.written ? (result.exact ? "ok" : "warn") : "error",
       timeout: 14000,
     });
     // The unverified-protocol warning is the most important sentence in a

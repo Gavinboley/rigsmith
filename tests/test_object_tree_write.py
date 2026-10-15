@@ -293,6 +293,9 @@ async def test_a_value_the_device_keeps_refusing_is_reported(patched_catalog):
 
     assert any("Type stayed" in note for note in report.notes), report.notes
     assert any("refused" in step.detail for step in report.steps)
+    # Saved, but not the draft - and the verdict says so, not just a note.
+    assert report.ok and not report.exact and report.refused == ["Amp.Type"]
+    assert "kept 1 value(s) of its own" in report.render() and report.to_dict()["exact"] is False
 
 
 def test_scenes_are_read_raw_and_written_as_instructions():
@@ -361,3 +364,41 @@ async def test_a_refused_rig_tempo_is_reported_and_the_rig_still_saved(patched_c
 
     assert core.saved is not None, "the blocks matter more than the tempo"
     assert any("95 BPM, Tempo: Fixed" in note for note in report.notes), report.notes
+
+
+@pytest.mark.asyncio
+async def test_the_rig_being_replaced_goes_only_after_its_replacement_is_saved(patched_catalog):
+    """Deleting first lost the old rig whenever anything after it failed."""
+    core = FakeCore()
+    calls = []
+    original = core.handle
+
+    def watching(request: httpx.Request) -> httpx.Response:
+        calls.append(request.url.path.rsplit("/", 1)[-1])
+        if "deleteRig" in request.url.path:
+            return httpx.Response(200, json={"methodReturnValue": True})
+        return original(request)
+
+    import copy
+
+    replacing = copy.deepcopy(MAP)
+    replacing.operations["delete_rig"] = ProtocolMap.from_dict({"name": "x", "base": "/api/v1", "operations": {"delete_rig": {
+        "method": "POST", "path": "/object-method/Evil/API/Rigs/deleteRig", "args": ["{rig_id}"], "unwrap": "methodReturnValue"}}}).operations["delete_rig"]
+    async with DeviceClient("http://fake", replacing, transport=httpx.MockTransport(watching)) as client:
+        report = await client.write_rig(rig_with_a_doubled_amp(), replace_id="old-id")
+    assert report.ok, report.render()
+    assert calls.index("deleteRig") > calls.index("saveRigAs")
+
+
+def test_a_guessed_second_instance_says_so():
+    """Second instances sit after the first in the table - a convention, so it is reported."""
+    from rigsmith.device.writer import plan_rig
+
+    rig = Rig(name="two amps")
+    rig.blocks = [
+        Block(slot=1, category=BlockCategory.AMP, model_id="800 Bass Mod"),
+        Block(slot=2, category=BlockCategory.AMP, model_id="Treadplate Modern"),
+    ]
+    first, second = plan_rig(rig, catalog())
+    assert not first.notes and second.module_index == 2
+    assert any("taken as the one after" in note for note in second.notes)

@@ -369,6 +369,7 @@ input:focus, select:focus { outline: 1px solid var(--amber-dim); border-color: v
 }
 .toast.error { border-left-color: var(--red); }
 .toast.ok    { border-left-color: var(--green); }
+.toast.warn  { border-left-color: var(--amber); }
 .toast .hint { display: block; margin-top: 3px; }
 @keyframes rise { from { opacity: 0; transform: translateY(6px); } }
 

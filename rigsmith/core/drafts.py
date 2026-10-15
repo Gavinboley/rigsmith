@@ -96,13 +96,14 @@ class DraftStore:
             "notes": draft.notes,
             "has_baseline": draft.baseline is not None,
         }
-        import json
+        from . import storage
 
-        self._path(draft.draft_id).write_text(
-            json.dumps(payload, indent=2), encoding="utf-8"
-        )
+        # Baseline first: a crash between the two then leaves an older draft
+        # beside its baseline, never a newer draft diffed against a baseline
+        # that is not its own. Each is written beside and swapped in.
         if draft.baseline is not None:
             save_rig(draft.baseline, self._baseline_path(draft.draft_id))
+        storage.write_json(self._path(draft.draft_id), payload)
         self._cache[draft.draft_id] = draft
         return draft
 

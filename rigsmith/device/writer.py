@@ -107,11 +107,13 @@ def resolve_block(
     wanted = module_name + (SECOND_INSTANCE if instance else "")
     entry = catalog.get(wanted)
     module_index = entry.device_index if entry else None
+    guessed = False
     if module_index is None and instance:
         # The table lists second instances one after the first.
         module_index = (
             module.device_index + 1 if module.device_index is not None else None
         )
+        guessed = module_index is not None
     if module_index is None:
         module_index = module.device_index
     if module_index is None:
@@ -127,6 +129,12 @@ def resolve_block(
         module_index=int(module_index),
         node=node_name(wanted),
     )
+    if guessed:
+        placement.notes.append(
+            f"slot {block.slot}: the catalog has no entry for '{wanted}', so its "
+            f"module-table index ({module_index}) was taken as the one after "
+            f"{module_name}'s - check the block on the device"
+        )
 
     # Select the model on its module, when it is not a module itself.
     if spec.selector:

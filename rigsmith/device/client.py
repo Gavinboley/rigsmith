@@ -67,10 +67,19 @@ class WriteReport:
     map_name: str = ""
     notes: list[str] = field(default_factory=list)
     """Anything the write itself noticed, as opposed to the standing caveats."""
+    refused: list[str] = field(default_factory=list)
+    """Values the device kept its own way after being asked twice:
+    ``Amp.Type``. The rig was saved, but it is not quite the draft."""
 
     @property
     def ok(self) -> bool:
+        """Every step completed - the rig is on the device."""
         return bool(self.steps) and all(step.ok for step in self.steps)
+
+    @property
+    def exact(self) -> bool:
+        """The rig on the device is the draft: every step, every value."""
+        return self.ok and not self.refused
 
     @property
     def completed(self) -> int:
@@ -96,11 +105,18 @@ class WriteReport:
                 "Stopped at the first refusal rather than pressing on, so the "
                 "device holds a partial rig. Review it before retrying."
             )
+        if self.refused:
+            notes.append(
+                f"The device kept {len(self.refused)} value(s) of its own "
+                f"({', '.join(self.refused[:6])}), so the rig on it is not "
+                "exactly the draft. Check those on the device."
+            )
         return notes
 
     def render(self) -> str:
         header = (
             f"Wrote '{self.rig_name}' to the device"
+            + (f", but it kept {len(self.refused)} value(s) of its own" if self.refused else "")
             if self.ok
             else f"Write of '{self.rig_name}' stopped after {self.completed} step(s)"
         )
@@ -117,6 +133,8 @@ class WriteReport:
             "rig_id": self.rig_id,
             "caveats": self.caveats,
             "ok": self.ok,
+            "exact": self.exact,
+            "refused": list(self.refused),
             "completed": self.completed,
             "verified_map": self.verified_map,
             "map_name": self.map_name,
@@ -527,14 +545,12 @@ class DeviceClient:
             placements = plan_rig(rig, catalog)
             chain = chain_properties(placements)
             settings = rig_properties(rig)
+            for placement in placements:
+                report.notes.extend(placement.notes)
             record("plan", f"{len(placements)} block(s) resolved")
 
             colour = getattr(rig, "led_color_index", None)
             colour = colour if isinstance(colour, int) else 0
-
-            if replace_id is not None and self.protocol.supports("delete_rig"):
-                await self.call("delete_rig", rig_id=replace_id)
-                record("delete_rig", f"replaced {replace_id}")
 
             before = await self.call("loaded_rig")
             was = before.get(self.protocol.field("rig_id")) if isinstance(before, dict) else None
@@ -576,6 +592,7 @@ class DeviceClient:
 
                 stubborn = await self._reconcile(placement)
                 if stubborn:
+                    report.refused.extend(f"{placement.module}.{name}" for name, _, _ in stubborn)
                     report.notes.append(
                         f"{placement.module}: "
                         + ", ".join(
@@ -597,6 +614,7 @@ class DeviceClient:
                 except (Invalid, NotFound) as exc:
                     stubborn = [("Tempo", settings["Tempo"], str(exc).splitlines()[0])]
                 if stubborn:
+                    report.refused.append("Rig.Tempo")
                     report.notes.append(
                         f"the rig's tempo did not take ({stubborn[0][2]!r}) - set it to "
                         f"{rig.tempo:g} BPM, Tempo: Fixed, in Hardware Assign on the device"
@@ -606,6 +624,11 @@ class DeviceClient:
             await self.call("save_rig_as", name=rig.name, colour=colour)
             report.rig_id = rig.name
             record("save_rig_as", f"saved as '{rig.name}'")
+            # The rig being replaced goes only once its replacement is saved:
+            # deleting first lost it whenever anything after failed.
+            if replace_id is not None and self.protocol.supports("delete_rig"):
+                await self.call("delete_rig", rig_id=replace_id)
+                record("delete_rig", f"replaced {replace_id}")
             if rig.scenes:
                 report.notes.append(scene_instructions(rig))
 
@@ -643,10 +666,6 @@ class DeviceClient:
             report.steps.append(Step(operation=operation, ok=True, detail=detail))
 
         try:
-            if replace_id is not None and self.protocol.supports("delete_rig"):
-                await self.call("delete_rig", rig_id=replace_id)
-                record("delete_rig", f"replaced id {replace_id}")
-
             created = await self.call("create_rig", name=rig.name)
             rig_id = (
                 created.get(self.protocol.field("rig_id"))
@@ -687,6 +706,9 @@ class DeviceClient:
                     footswitch=scene.footswitch,
                 )
                 record("set_scene", f"'{scene.name}'")
+            if replace_id is not None and self.protocol.supports("delete_rig"):
+                await self.call("delete_rig", rig_id=replace_id)
+                record("delete_rig", f"replaced id {replace_id}")
             if rig.tempo:
                 report.notes.append(
                     f"this device shape has no rig tempo - set {rig.tempo:g} BPM on the device"

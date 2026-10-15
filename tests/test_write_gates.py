@@ -134,3 +134,15 @@ def test_read_only_mode_still_lets_you_look(draft_id, monkeypatch):
     result = rigs.write(draft_id)
     assert not result.written
     assert result.diff.changes
+
+
+def test_a_backup_that_copied_no_rigs_does_not_open_the_gate(draft_id, tmp_path, monkeypatch):
+    """The volume mounted, the Rigs folder did not come with it: that is no backup."""
+    from rigsmith.device import usbmsc
+
+    volume = tmp_path / "HEADRUSH"
+    (volume / "Setlists").mkdir(parents=True)
+    (volume / "Setlists" / "a.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(usbmsc, "find_device_volume", lambda *a, **k: usbmsc.DeviceVolume(root=volume))
+    result = rigs.write(draft_id, confirm=True)
+    assert not result.written and "copied no rigs" in result.message

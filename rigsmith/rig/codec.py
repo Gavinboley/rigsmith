@@ -159,9 +159,11 @@ def rig_from_dict(data: dict) -> Rig:
 
 
 def save_rig(rig: Rig, path: str | Path) -> Path:
+    from ..core import storage
+
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(rig_to_dict(rig), indent=2), encoding="utf-8")
+    storage.write_json(path, rig_to_dict(rig))
     return path
 
 
