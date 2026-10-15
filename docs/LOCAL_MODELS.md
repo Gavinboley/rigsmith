@@ -32,14 +32,16 @@ is reliable function calling over several rounds, not raw chat quality.
 | VRAM | Load | Why |
 |---|---|---|
 | 20-24 GB | **Qwen3-30B-A3B-Instruct-2507** (Q4_K_M or similar, ~18-20 GB) | A mixture-of-experts with ~3B active parameters: fast, and explicitly tuned for tool use. Third-party BFCL v3 puts it around 65 (instruct) to 72 (thinking). |
-| 20-24 GB, alternative | Qwen3.6-27B or Qwen3.8-27B (dense) | Newer and likely stronger generally; no tool-calling benchmark could be confirmed. |
+| 20-24 GB, alternative | **Qwen3.8-27B** (dense, ~17 GB at Q4_K_M) | Open weights since August 2026 (Apache 2.0, 262K context), first in rigsmith's auto-pick order. Only community GGUFs exist; keep the embedded chat template when a runtime offers to replace it, since tool calls depend on it. Its calls use the XML form, which rigsmith parses. Thinking is on by default; rigsmith turns it off for agents. No tool-calling benchmark could be confirmed. |
 | 12-16 GB | **Qwen3-8B** (Q4_K_M, ~5 GB) | Dense, trained with agents in mind, leaves room for context. The 30B-A3B also works here with partial CPU offload, slower. |
 | 8 GB or less | Qwen3-4B-Instruct-2507 | Works for single tool calls; multi-turn tool use is weak (BFCL multi-turn around 22%). Expect retries. |
 
 Below 4B, multi-step tool use is not reliable enough to be worth it.
 
 The 3.7 / 3.8 flagship and Omni-Flash models are API-only or far too large for
-a desktop; they are not options for local mode.
+a desktop; they are not options for local mode. Qwen 4 (including a 27B
+open-weights tier) was announced in September 2026 but, as of mid-October,
+had not shipped and had no date.
 
 ## What rigsmith does about Qwen's quirks
 

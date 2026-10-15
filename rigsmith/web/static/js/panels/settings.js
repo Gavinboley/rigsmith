@@ -78,7 +78,7 @@ async function render() {
       el("h3", { text: "Local model", style: "margin-top:14px" }),
       el("div", { class: "row" }, ...PRESETS.map(([name, url]) => el("button", { class: "btn small", text: name, onclick: () => { locUrl.value = url; detect(); } }))),
       el("div", { class: "form-grid" }, field("Server", locUrl), field("Model", locModel), el("label", { class: "check hint", style: "margin-top:18px" }, thinking, "let it think first (slower, sometimes better)")),
-      el("div", { class: "row" }, el("button", { class: "btn small", text: "Detect loaded models", onclick: () => attempt(detect) }), el("span", { class: "hint", text: "Recommended: Qwen3-30B-A3B-Instruct-2507 on 24 GB, Qwen3-8B on 12-16 GB. See docs/LOCAL_MODELS.md." }))
+      el("div", { class: "row" }, el("button", { class: "btn small", text: "Detect loaded models", onclick: () => attempt(detect) }), el("span", { class: "hint", text: "Recommended: Qwen3-30B-A3B-Instruct-2507 or Qwen3.8-27B on 24 GB, Qwen3-8B on 12-16 GB. See docs/LOCAL_MODELS.md." }))
     )
   );
   if (status) {
