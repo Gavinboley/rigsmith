@@ -188,7 +188,9 @@ function timeline() {
           class: `seg layer ${chosen.has(part.part_id) ? "chosen" : ""}`,
           style: `left:${(section.start / duration) * 100}%;width:${((section.end - section.start) / duration) * 100}%;background:rgba(90,163,224,${alpha})`,
           title: `${part.label}: ${part.sketch?.summary || ""} - click to choose`,
-          text: part.sketch?.gain_label || "",
+          // The short form - "saturated", not "saturated (fuzz or very high
+          // gain)" - with a mark for movement; the tooltip has the rest.
+          text: `${(part.sketch?.gain_label || "").split(" (")[0]}${part.sketch?.modulation ? " ~" : ""}`,
           onclick: () => toggle(part),
         })
       );

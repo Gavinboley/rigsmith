@@ -360,6 +360,16 @@ def tune(
         sink = VirtualSink() if route.backend == "virtual" else DeviceSink()
         if route.backend == "virtual":
             run.notes.append("tuned on the simulated bench, not a real Core")
+        else:
+            # The knobs live on blocks of the loaded rig; turning one that is
+            # not in the chain changes nothing, and the search would be noise.
+            loaded = bench_check().modules
+            absent = sorted({node.replace("_", " ") for node in space.by_node({k.key: 0.5 for k in space.knobs})} - {m.replace("_", " ") for m in loaded})
+            if absent:
+                raise Invalid(
+                    f"the Core's loaded rig has no {', '.join(absent)} block, so turning its knobs would change nothing",
+                    hint="Load the rig being tuned on the Core first (or write the draft), then tune again.",
+                )
 
         def render(values: dict) -> np.ndarray:
             sink.apply(space.by_node(values))

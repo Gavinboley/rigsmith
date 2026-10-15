@@ -133,3 +133,20 @@ def test_tuning_through_the_simulated_loop_moves_the_simulated_core(workspace):
     # The bench's amp was actually turned: it no longer sits at its defaults.
     amp = virtual.world().rig.amp
     assert (amp.Gain, amp.Bass, amp.Treble) != (0.5, 0.5, 0.5)
+
+
+def test_live_tuning_refuses_knobs_on_blocks_the_loaded_rig_lacks(tmp_path, monkeypatch):
+    from rigsmith.loop.routes import LoopRoute
+
+    monkeypatch.setenv("RIGSMITH_WORKSPACE", str(tmp_path / "ws"))
+    monkeypatch.delenv("RIGSMITH_READONLY", raising=False)
+    config.set_settings(config.Settings())
+    try:
+        loop.store().put(LoopRoute("real", output_device="X", input_device="X", backend="sounddevice"), make_default=True)
+        monkeypatch.setattr(tuning, "bench_check", lambda: tuning.assess_chain({"ModuleType1": 2}, ["", "Amp", "Cab"]))
+        clip = save_audio(tmp_path / "clip.wav", np.zeros(48000), 48000)
+        with pytest.raises(Invalid) as caught:
+            tuning.tune(str(clip), str(clip), renderer="loop", route_id="real", knobs=["Amp.GainA"], budget=4)
+        assert "no Amp block" in str(caught.value)
+    finally:
+        config.set_settings(None)

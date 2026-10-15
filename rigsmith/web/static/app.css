@@ -101,6 +101,8 @@ html, body {
 
 main { padding: 22px; max-width: 1180px; margin: 0 auto; }
 .panel[hidden] { display: none; }
+/* Anything given a display by class still hides when it is [hidden]. */
+[hidden] { display: none !important; }
 
 .panel-head {
   display: flex; align-items: baseline; gap: 14px;
