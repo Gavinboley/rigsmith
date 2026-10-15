@@ -903,3 +903,49 @@ def test_the_takes_panel_offers_to_record(browser, server):
         page.click("#modal-form button[value='cancel']")
         page.wait_for_selector("#modal[open]", state="detached", timeout=5000)
         assert page.locator("#take-record-progress .item").count() == 0
+
+
+# --------------------------------------------------------------------------
+# getting around, and the loop
+# --------------------------------------------------------------------------
+
+
+def test_ctrl_k_goes_to_a_page_by_name_or_asks(browser, server):
+    with page_at(browser, server) as page:
+        page.keyboard.press("Control+k")
+        page.wait_for_selector(".palette input")
+        page.keyboard.type("loop")
+        first = page.locator(".palette-item").first
+        assert "Loop" in first.inner_text()
+        assert "Ask" in page.locator(".palette-item").last.inner_text()
+        page.keyboard.press("Enter")
+        page.wait_for_selector("#tabs .tab[data-panel='loop'][aria-selected='true']")
+        assert page.locator(".palette-overlay").count() == 0
+        # Escape closes it without going anywhere.
+        page.keyboard.press("Control+k")
+        page.wait_for_selector(".palette input")
+        page.keyboard.press("Escape")
+        assert page.locator(".palette-overlay").count() == 0
+
+
+def test_every_loop_route_draws_its_wiring(browser, server):
+    with page_at(browser, server) as page:
+        page.click("#tabs .tab[data-panel='loop']")
+        page.click("text=Use the simulated bench")
+        page.wait_for_selector(".route-card details.wiring-box")
+        page.evaluate("document.querySelectorAll('details.wiring-box').forEach(d => d.open = true)")
+        labels = page.evaluate("[...document.querySelectorAll('svg.wiring')].map(s => s.textContent)")
+        assert len(labels) >= 3
+        usb = next(text for text in labels if "USB Mode: Reamp" in text)
+        assert "skip the rig" in usb and "USB out 3" in usb
+        assert any('1/4" out L' in text and "one clock" in text for text in labels)
+
+
+def test_a_new_workspace_is_shown_what_to_set_up(browser, server):
+    with page_at(browser, server) as page:
+        page.click("#tabs .tab[data-panel='autopilot']")
+        page.wait_for_selector(".setup-step")
+        steps = page.locator(".setup-step").all_inner_texts()
+        assert any("Teach it your guitar" in s for s in steps) and any("Pair with the Core" in s for s in steps)
+        page.locator(".setup-step", has_text="Teach it your guitar").locator("button").click()
+        page.wait_for_selector("#tabs .tab[data-panel='guitar'][aria-selected='true']")
