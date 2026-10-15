@@ -8,6 +8,7 @@ with every stage's decision recorded, and nothing written to a device.
 
 from __future__ import annotations
 
+import math
 import sys
 from pathlib import Path
 
@@ -474,3 +475,21 @@ def test_a_part_with_your_take_uses_it_without_being_told(workspace):
     made.part("verse-1-stem").di_take = rendered.take_id
     made.save()
     assert autopilot._own_take(songs.get(made.song_id).part("verse-1-stem")) is None, "a rendering is not your playing"
+
+
+def test_a_measured_curve_beats_the_linear_guess():
+    """A 375 ms delay on a logarithmic control is not the linear 0.455."""
+    from rigsmith.rig.catalog import Catalog, ModelSpec, ParamSpec
+    from rigsmith.rig.model import BlockCategory
+
+    delay = candidates.surrounding_blocks({"delay_ms": 375.0, "delay_strength": 0.5})[0]
+    cat = Catalog(source="test")
+    cat.models["M104 Analog Delay"] = ModelSpec(
+        id="M104 Analog Delay", name="M104 Analog Delay", category=BlockCategory.EFFECT, verified=True,
+        params=[ParamSpec(name="DelayTime", kind="float", minimum=0.0, maximum=1.0, display_min=20.0, display_max=800.0, unit="ms", taper="unknown")],
+    )
+    assert candidates.wire_params(delay, cat)["DelayTime"] == delay["params"]["DelayTime"], "unmeasured: the linear guess stands"
+    cat.models["M104 Analog Delay"].params[0].taper = "log"
+    sent = candidates.wire_params(delay, cat)["DelayTime"]
+    assert abs(sent - math.log(375 / 20) / math.log(40)) < 1e-3 and abs(sent - 0.4551) > 0.3
+    assert candidates.wire_params(delay, cat)["Mix"] == delay["params"]["Mix"]

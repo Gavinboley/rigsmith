@@ -321,6 +321,33 @@ def _linear(value: float, low: float, high: float) -> float:
     return round(min(max((value - low) / (high - low), 0.0), 1.0), 4)
 
 
+def wire_params(block: dict, catalog=None) -> dict:
+    """A suggested block's values to send, through the catalog's measured curves.
+
+    ``params`` holds wire values worked out as if each control were linear;
+    ``readings`` holds what was measured, in the units the knob shows. Where
+    the catalog has measured a control's curve, the reading is converted
+    through it instead - a delay time on a logarithmic control is a very
+    different 0-1 from the linear guess.
+    """
+    params = dict(block.get("params") or {})
+    readings = block.get("readings") or {}
+    if not readings:
+        return params
+    if catalog is None:
+        from ..rig.catalog import get_catalog
+
+        catalog = get_catalog()
+    spec = catalog.get(block["model"])
+    for name, value in readings.items():
+        param = spec.param(name) if spec else None
+        if param is None or param.taper not in ("linear", "log") or param.display_min is None:
+            continue
+        clamped = min(max(float(value), param.display_min), param.display_max)
+        params[name] = round(param.to_wire(clamped), 4)
+    return params
+
+
 def surrounding_blocks(sketch: dict, *, tempo: float | None = None) -> list[dict]:
     """Blocks the sketch suggests around the amp: ``{category, model, params, role, why}``.
 
@@ -328,8 +355,10 @@ def surrounding_blocks(sketch: dict, *, tempo: float | None = None) -> list[dict
     division it measured (and its time in milliseconds as the unsynced
     fallback), a tremolo's or chorus's rate, a reverb's type, and mixes kept
     modest - a record's effects sit under the guitar, not on top of it. The
-    millisecond and hertz settings assume a linear control until the catalog
-    is calibrated; the sync division does not depend on that. Given the
+    millisecond and hertz settings are worked out here as if the control were
+    linear, and kept as ``readings`` too, so :func:`wire_params` can send
+    them through the catalog's measured curve where it has one; the sync
+    division does not depend on either. Given the
     song's ``tempo``, a tremolo on the beat is synced too (see
     :func:`synced_rate`).
     """
@@ -341,11 +370,12 @@ def surrounding_blocks(sketch: dict, *, tempo: float | None = None) -> list[dict
         blocks.append({"category": "effect", "model": "Green JRC-OD", "role": "boost", "params": {}, "why": "a tight high-gain part usually has a boost in front"})
     if sketch.get("delay_ms"):
         params = {"DelayTime": _linear(float(sketch["delay_ms"]), 20.0, 800.0), "Mix": round(0.2 + 0.25 * min(float(sketch.get("delay_strength") or 0), 1.0), 3)}
+        readings = {"DelayTime": float(sketch["delay_ms"])}
         division = NOTE_TO_DIVISION.get(sketch.get("delay_note") or "")
         if division:
             params.update({"Sync": True, "DelayTime_Synced": DELAY_DIVISIONS.index(division)})
         blocks.append({
-            "category": "effect", "model": "M104 Analog Delay", "role": "delay", "params": params,
+            "category": "effect", "model": "M104 Analog Delay", "role": "delay", "params": params, "readings": readings,
             "why": f"a {sketch['delay_ms']:.0f} ms echo" + (f" ({sketch['delay_note']}, synced to {division})" if division else ""),
             "delay_ms": sketch["delay_ms"], "division": division,
         })
@@ -354,6 +384,7 @@ def surrounding_blocks(sketch: dict, *, tempo: float | None = None) -> list[dict
     rate = f" at {hz:.1f} Hz" if hz else ""
     if modulation == "tremolo":
         params = {"Rate": _linear(float(hz), 0.1, 12.0)} if hz else {}
+        readings = {"Rate": float(hz)} if hz else {}
         depth = sketch.get("modulation_depth")
         if depth:
             params["Depth"] = round(float(depth), 3)
@@ -361,13 +392,13 @@ def surrounding_blocks(sketch: dict, *, tempo: float | None = None) -> list[dict
         if division:
             params.update({"Sync": True, "Rate_Synced": RATE_DIVISIONS.index(division)})
         blocks.append({
-            "category": "effect", "model": "Tremolo", "role": "tremolo", "params": params,
+            "category": "effect", "model": "Tremolo", "role": "tremolo", "params": params, "readings": readings,
             "why": f"a {hz or 0:.1f} Hz wobble" + (f", {depth:.0%} deep" if depth else "") + (f" (a {division} cycle, synced)" if division else ""),
             "division": division,
         })
     elif modulation == "chorus":
         params = {"Rate": _linear(float(hz), 0.1, 10.0), "Mix": 0.5} if hz else {"Mix": 0.5}
-        blocks.append({"category": "effect", "model": "Chorus", "role": "chorus", "params": params, "why": f"sustained notes wander about {sketch.get('wobble_cents') or 0:.0f} cents{rate}"})
+        blocks.append({"category": "effect", "model": "Chorus", "role": "chorus", "params": params, "readings": {"Rate": float(hz)} if hz else {}, "why": f"sustained notes wander about {sketch.get('wobble_cents') or 0:.0f} cents{rate}"})
     elif modulation == "vibrato":
         blocks.append({"category": "effect", "model": "Vibrato", "role": "vibrato", "params": {}, "why": f"every note wobbles in pitch{rate}"})
     space = sketch.get("space") or ""

@@ -894,7 +894,7 @@ def _remaining(run: Run, best: dict) -> list[dict]:
 
 
 def _stage_rig(run: Run, *, from_ears: bool = False) -> str:
-    from ..tune.candidates import surrounding_blocks
+    from ..tune.candidates import surrounding_blocks, wire_params
     from . import matching, rigs, songs
 
     best = run.results[0] if run.results else None
@@ -928,7 +928,7 @@ def _stage_rig(run: Run, *, from_ears: bool = False) -> str:
             notes.append(f"could not add {model}: {exc}")
 
     for block in before:
-        add(block["category"], block["model"], block.get("params"))
+        add(block["category"], block["model"], wire_params(block))
     knobs = {k.split(".", 1)[1]: round(float(v), 4) for k, v in (best.get("knobs") or {}).items()}
     add("amp", best["model"], knobs)
     add("cab", best["cab"])
@@ -937,7 +937,7 @@ def _stage_rig(run: Run, *, from_ears: bool = False) -> str:
         shown = ", ".join(f"{k[4:]} {v:+.0f}" for k, v in (best.get("geq_db") or {}).items() if abs(v) >= 1)
         run.note(f"a G EQ after the cab, fitted to the record ({shown}) - it measured closer; trust your ears over it")
     for block in after:
-        add(block["category"], block["model"], block.get("params"))
+        add(block["category"], block["model"], wire_params(block))
     _carry_tempo(run, run.draft_id, after, tempo, structure=song.structure)
     for text in notes:
         run.note(text)
@@ -1004,7 +1004,7 @@ def song_rig(run_ids: list[str], *, name: str | None = None) -> dict:
     gain - and the result says which parts were moved, since those scenes
     will not be what their own runs found.
     """
-    from ..tune.candidates import ORDER, surrounding_blocks, tier_for
+    from ..tune.candidates import ORDER, surrounding_blocks, tier_for, wire_params
     from . import rigs, songs
 
     require_writable("build a song rig")
@@ -1088,7 +1088,7 @@ def song_rig(run_ids: list[str], *, name: str | None = None) -> dict:
 
     def place_role(role: str) -> None:
         for index, block in enumerate(wanted.get(role, [])):
-            slot = place(block["category"], block["model"], block.get("params"))
+            slot = place(block["category"], block["model"], wire_params(block))
             if slot:
                 slots_by_role[(role, index)] = slot
 
