@@ -535,6 +535,54 @@ class AnthropicConversation:
 # --------------------------------------------------------------------------
 
 
+#: What to do when Claude Code's session on this machine has expired.
+LOGIN_HINT = "Claude Code needs signing in again on this machine: run `claude` in a terminal and use /login, then try again."
+
+#: How Claude Code says it has no usable session - its wording varies by
+#: version and by whether the token expired or was never there. 2.1.289,
+#: signed out, ends its stream with "Failed to authenticate: OAuth session
+#: expired and could not be refreshed" (is_error, though subtype "success").
+_LOGIN_SIGNS = ("authenticat", "/login", "not logged in", "oauth", "invalid api key", "401")
+
+
+def needs_login(text: str | None) -> bool:
+    """True when Claude Code's output says it is not signed in."""
+    lowered = (text or "").lower()
+    return any(sign in lowered for sign in _LOGIN_SIGNS)
+
+
+_signed_in_cache: dict = {}
+
+#: How long a sign-in check is believed - long enough not to re-run it for
+#: every agent dispatched, short enough that a /login shows up promptly.
+SIGNED_IN_TTL_S = 60.0
+
+
+def claude_code_signed_in() -> bool | None:
+    """Whether Claude Code on this machine has a session: True, False, or None if it cannot say.
+
+    ``claude auth status`` prints JSON with ``loggedIn`` (and exits 1 when
+    signed out). It takes about 0.4 s on Windows, and costs nothing - no
+    model is asked anything.
+    """
+    import time
+
+    command = claude_code_command()
+    if not command:
+        return None
+    cached = _signed_in_cache.get("value")
+    if cached is not None and time.monotonic() - _signed_in_cache.get("at", 0.0) < SIGNED_IN_TTL_S:
+        return cached[0]
+    try:
+        done = subprocess.run(command + ["auth", "status"], capture_output=True, text=True, timeout=15)
+        found = json.loads(done.stdout).get("loggedIn")
+        value = bool(found) if isinstance(found, bool) else None
+    except (OSError, subprocess.SubprocessError, ValueError, AttributeError):
+        value = None
+    _signed_in_cache.update(value=(value,), at=time.monotonic())
+    return value
+
+
 def claude_code_command() -> list[str] | None:
     """How to start Claude Code here, if it is installed."""
     configured = os.environ.get("RIGSMITH_CLAUDE")
@@ -672,14 +720,13 @@ class ClaudeCode:
                 outcome["turns"] = event.get("num_turns") or 0
                 if event.get("is_error") or event.get("subtype", "success") != "success":
                     outcome["error"] = "error" if event.get("is_error") else (event.get("subtype") or "error")
-                    if "authenticate" in (outcome["text"] or "").lower():
-                        outcome["text"] += (
-                            "\nClaude Code needs signing in again on this machine: run `claude` "
-                            "in a terminal and use /login, then try again."
-                        )
+                    if needs_login(outcome["text"]):
+                        outcome["text"] += "\n" + LOGIN_HINT
         process.wait(timeout=30)
         if process.returncode not in (0, None) and not outcome["text"]:
             error = (process.stderr.read() if process.stderr else "")[-800:]
+            if needs_login(error):
+                raise Unavailable("Claude Code is not signed in", hint=LOGIN_HINT)
             raise Unavailable(f"Claude Code exited with {process.returncode}", hint=error or None)
         return outcome
 
@@ -716,7 +763,9 @@ def from_settings(llm=None, *, local: bool | None = None):
     if provider == "anthropic":
         return AnthropicAPI(model=llm.claude_model)
     # auto, accuracy mode: Claude Code, then the API, then whatever is local.
-    if claude_code_command():
+    # Installed but signed out is the same as absent - every request would
+    # fail - so the next one in line answers instead.
+    if claude_code_command() and claude_code_signed_in() is not False:
         return ClaudeCode(model=llm.claude_model)
     if os.environ.get("ANTHROPIC_API_KEY"):
         try:
@@ -746,6 +795,7 @@ def status() -> dict:
     return {
         "mode": settings.mode,
         "claude_code": bool(claude_code_command()),
+        "claude_code_signed_in": claude_code_signed_in(),
         "anthropic_sdk": sdk,
         "anthropic_key": bool(os.environ.get("ANTHROPIC_API_KEY")),
         "local": {"base_url": settings.local_llm.base_url, **local_state},

@@ -216,7 +216,9 @@ async function refreshProvider() {
         : `local mode - no model server at ${status.local.base_url}. Start LM Studio or Ollama.`;
     } else if (settings.llm.provider === "openai-compatible") {
       text = `model at ${settings.llm.base_url}`;
-    } else if (status.claude_code && settings.llm.provider !== "anthropic") {
+    } else if (status.claude_code && status.claude_code_signed_in === false && settings.llm.provider === "claude-code") {
+      text = "Claude Code is not signed in - run `claude` and /login";
+    } else if (status.claude_code && status.claude_code_signed_in !== false && settings.llm.provider !== "anthropic") {
       text = "Claude, through Claude Code";
     } else if (status.anthropic_sdk && status.anthropic_key) {
       text = "Claude, through the Anthropic API";

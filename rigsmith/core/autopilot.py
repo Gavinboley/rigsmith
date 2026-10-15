@@ -364,10 +364,23 @@ def _stage_research(run: Run, progress) -> str:
             progress.update(None, f"researcher at work ({int(waited)}s)")
         time.sleep(2.0)
         waited += 2.0
-    result = chat.agent_result(research_id)
+    data = chat.agent_run(research_id)
+    text = ((data.get("result") or {}).get("text") or "").strip()
+    if data["state"] == "running":
+        run.note(f"the researcher was still at work after {int(waited)}s - the run carried on from the measurements; its findings reach the recipe when it finishes")
+        raise _Skip(f"researcher run {research_id} still working - carried on without it")
+    if data["state"] == "failed":
+        from ..agent.providers import LOGIN_HINT, needs_login
+
+        if needs_login(text):
+            run.note(LOGIN_HINT + " Then resume this run from research.")
+            raise _Skip("the researcher could not sign in to Claude - the recipe holds only the measurements")
+        first = text.splitlines()[0] if text else "no reason given"
+        run.note(f"the researcher failed ({first[:200]}); the recipe holds only the measurements")
+        raise _Skip(f"researcher run {research_id} failed")
     if settings.local:
         run.note("researched by a local model with no web access - its claims are inferences, and the recipe marks them so")
-    return f"researcher run {research_id}: {result[:160]}"
+    return f"researcher run {research_id}: {chat.agent_result(research_id)[:160]}"
 
 
 def _ear_winners(run: Run) -> list[str]:

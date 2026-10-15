@@ -308,3 +308,27 @@ def test_claude_streams_and_a_fallback_is_echoed_back_cleanly(monkeypatch):
     assert echoed == ["text", "fallback", "text", "tool_use"]
     assert [c.name for c in turn.calls] == ["list_songs"]
     assert providers.echoable(content[1:3]) == content[1:3]  # no fallback: untouched
+
+
+def test_a_signed_out_claude_code_is_seen_and_passed_over(tmp_path, monkeypatch):
+    """Installed but signed out answered nothing, and accuracy mode still chose it."""
+    import sys
+
+    from rigsmith.core import appsettings, setup
+
+    fake = tmp_path / "fake_claude.py"
+    fake.write_text(
+        "import json, sys\n"
+        "print(json.dumps({'loggedIn': False, 'authMethod': 'none'}))\n"
+        "sys.exit(1)\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("RIGSMITH_WORKSPACE", str(tmp_path / "ws"))
+    monkeypatch.setattr(providers, "claude_code_command", lambda: [sys.executable, str(fake)])
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    providers._signed_in_cache.clear()
+    assert providers.claude_code_signed_in() is False
+    appsettings.update(mode="accuracy")
+    assert not isinstance(providers.from_settings(), providers.ClaudeCode), "signed out: the next in line answers"
+    step = next(s for s in setup.checklist() if s.step_id == "brains")
+    assert "not signed in" in step.detail and "/login" in step.detail

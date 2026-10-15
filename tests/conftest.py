@@ -40,6 +40,12 @@ def reset_global_state():
         virtual.set_world(None)
         audio_backend.set_backend(None)
         appsettings.reset_cache()
+        # Whether this machine's Claude Code is signed in is not the suite's
+        # business: pin the answer to "cannot say" rather than run `claude`.
+        from rigsmith.agent import providers
+
+        providers._signed_in_cache.clear()
+        providers._signed_in_cache.update(value=(None,), at=float("inf"))
 
     clear()
     yield

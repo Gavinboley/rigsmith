@@ -95,10 +95,14 @@ def _brains() -> Step:
             if ok else "local mode, but no local model server is answering - start LM Studio, Ollama or llama.cpp"
         )
         return Step("brains", "Choose who answers", bool(ok), detail, "settings", optional=True)
-    ok = state["claude_code"] or (state["anthropic_sdk"] and state["anthropic_key"]) or state["local"].get("reachable")
+    claude = state["claude_code"] and state.get("claude_code_signed_in") is not False
+    api = state["anthropic_sdk"] and state["anthropic_key"]
+    ok = claude or api or state["local"].get("reachable")
     detail = "accuracy mode: " + (
-        "Claude Code" if state["claude_code"] else "the Anthropic API" if state["anthropic_key"] else "a local model" if state["local"].get("reachable") else "nothing available - install Claude Code, or start a local model"
+        "Claude Code" if claude else "the Anthropic API" if api else "a local model" if state["local"].get("reachable") else "nothing available - install Claude Code, or start a local model"
     )
+    if state["claude_code"] and state.get("claude_code_signed_in") is False:
+        detail += " - Claude Code is installed but not signed in: run `claude` in a terminal and use /login"
     return Step("brains", "Choose who answers", bool(ok), detail, "settings", optional=True)
 
 

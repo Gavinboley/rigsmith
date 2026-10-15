@@ -17,8 +17,10 @@ machine with a local model. For local, start LM Studio, Ollama or
 llama.cpp first - see [LOCAL_MODELS.md](LOCAL_MODELS.md) - and press
 *Detect loaded models*.
 
-If Claude Code says it cannot authenticate, run `claude` once in a terminal
-and `/login`.
+If Settings shows Claude Code as *signed out*, run `claude` once in a
+terminal and `/login`; until then accuracy mode quietly uses the API or a
+local model, and an autopilot run's research stage says it was skipped and
+why.
 
 ## 2. Teach it your guitar
 

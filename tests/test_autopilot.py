@@ -420,3 +420,27 @@ def test_parts_that_want_different_delays_get_one_each(workspace):
     assert bridge.state_for(delays["1/8"].slot).value == "on", "252 ms is the verse's eighth, shared"
     assert any("different delays (1/8 and 3/16)" in note for note in result["notes"])
     assert draft.tempo == 120.0
+
+
+def test_a_researcher_that_cannot_sign_in_says_how_to_fix_it(workspace, monkeypatch):
+    """An expired Claude Code session used to pass as a finished stage."""
+    from rigsmith.agent.providers import needs_login
+    from rigsmith.core import chat, songs
+    from rigsmith.core.songs import Part
+
+    real = "Failed to authenticate: OAuth session expired and could not be refreshed"  # Claude Code 2.1.289
+    for said in (real, "Not logged in \u00b7 Please run /login", "OAuth token has expired", "API Error: 401 authentication_error"):
+        assert needs_login(said), said
+    assert not needs_login("the amp was a Mesa Dual Rectifier")
+
+    made = songs.create("Signed Out")
+    made.structure = {"tempo": 120.0, "sections": [{"start": 0.0, "end": 10.0, "label": "A", "name": "verse"}]}
+    made.parts = [Part("verse-1-stem", 0, "verse", "stem", 0.0, 10.0, sketch={"gain": 0.5, "summary": "crunch"})]
+    made.save()
+    run = autopilot.Run(run_id="signed-out", request=autopilot.Request(title="Signed Out", research=True), song_id=made.song_id, part_ids=["verse-1-stem"])
+    monkeypatch.setattr(chat, "dispatch", lambda role, task: "Dispatched the tone researcher as run r1. Check it.")
+    monkeypatch.setattr(chat, "agent_run", lambda run_id: {"state": "failed", "result": {"text": "Not logged in \u00b7 Please run /login"}})
+    with pytest.raises(autopilot._Skip) as skipped:
+        autopilot._stage_research(run, None)
+    assert "could not sign in" in str(skipped.value)
+    assert any("/login" in note and "resume this run" in note for note in run.all_notes())
