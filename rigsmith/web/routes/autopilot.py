@@ -68,3 +68,10 @@ def get_run(run_id: str) -> dict:
 @router.post("/{run_id}/resume")
 def resume(run_id: str, from_stage: str | None = None) -> dict:
     return _payload(autopilot.resume(run_id, from_stage=from_stage))
+
+
+@router.post("/{run_id}/listen")
+def listen(run_id: str) -> dict:
+    """Apply the run's blind A/B: the draft follows the ears' pick."""
+    return _payload(autopilot.listen_back(run_id))
+

@@ -98,6 +98,25 @@ def test_a_whole_run_ends_in_a_draft_and_a_listening_test(workspace):
     assert rerun.state == "done"
     assert len(rigs.list_drafts()) == before
 
+    # Ears decide: a blind test that prefers the score's runner-up moves the draft.
+    from rigsmith.core import matching, recipes
+
+    with pytest.raises(Invalid):
+        autopilot.listen_back("t1")  # nothing answered: the names stay hidden
+    session = matching.load_ab(rerun.ab_session)
+    favourite = rerun.results[1]["label"]
+    favoured = next(blind for blind, label in session.blinded.items() if label == favourite)
+    for trial in session.trials:
+        verdict = "left" if trial.left == favoured else "right" if trial.right == favoured else "tie"
+        matching.answer_ab(rerun.ab_session, trial.trial_id, verdict)
+    after = autopilot.listen_back("t1")
+    assert after.ear_pick == favourite
+    picked_model = rerun.results[1]["model"]
+    assert any(b.model_id == picked_model for b in rigs.get(after.draft_id).rig.blocks)
+    assert any("your ears picked" in n for n in after.notes)
+    heard = [m for m in recipes.get(after.recipe_id).measurements if m.kind == "listen"]
+    assert heard and any(m.won and m.label == favourite for m in heard)
+
 
 def test_a_song_with_no_audio_stops_at_the_first_stage(workspace):
     run = autopilot.Run(run_id="t2", request=autopilot.Request(title="Nothing"))

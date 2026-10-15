@@ -62,6 +62,18 @@ def autopilot_run(title, artist, mix, stem, song_id, parts, profile_id, di, midi
     click.echo("\n" + autopilot.get(run.run_id).describe())
 
 
+@group.command("listen")
+@click.argument("run_id")
+@handled
+def autopilot_listen(run_id) -> None:
+    """Apply RUN_ID's blind A/B: the draft follows your ears, the recipe learns."""
+    from ..core import autopilot
+
+    run = autopilot.listen_back(run_id)
+    for note in run.notes[-2:]:
+        click.echo(note)
+
+
 @group.command("list")
 @handled
 def autopilot_list() -> None:

@@ -378,7 +378,12 @@ two amps, fit a G EQ to what is left (it goes into the draft only if it
 scores closer), then build a draft rig - with the gate, boost, chorus,
 tremolo, delay and reverb the part measures as having - and set up a blind
 A/B of the finalists. A difference smaller than the score can resolve is called a tie,
-not a win. Every stage records what it decided and why, a failed stage
+not a win.
+
+Then listen. Once the blind test is done, `rigsmith autopilot listen <run>`
+(or the button on the run) lets your ears decide: every finalist's verdict
+goes into the song's recipe as a listening measurement, and if you preferred
+something other than the score's winner, the draft is rebuilt from your pick. Every stage records what it decided and why, a failed stage
 can be resumed, and nothing is written to the device: that stays yours.
 
 `--bench virtual` runs the whole thing on the simulated amp - a rehearsal
@@ -422,7 +427,7 @@ Ask for a tone. The agent researches the gear, finds an A2 capture, builds the r
     +---------------+---------------+
     |               |               |
   cli.py       mcp/tools/*      web/api.py
-  (click)       (114 tools)       (FastAPI)
+  (click)       (115 tools)       (FastAPI)
 ```
 
 Each surface is a thin adapter: parse input, call core, format output. That rule exists because the first version broke it — orchestration lived inside the MCP tools, so anything not reachable from a tool was reachable from nowhere, and whole subsystems ended up built and unwired.

@@ -51,3 +51,17 @@ def autopilot_status(run_id: str | None = None) -> str:
         return autopilot.get(run_id).describe()
     runs = autopilot.list_runs()[:10]
     return "\n".join(r.describe().splitlines()[0] for r in runs) or "No autopilot runs yet."
+
+
+@tool
+def autopilot_listen_back(run_id: str) -> str:
+    """Let the run's blind A/B decide the draft, once the user has listened.
+
+    Records every finalist's verdict in the song's recipe as a listening
+    measurement, and if the ears' winner is not the score's, rebuilds the
+    draft from it. Ask the user to do the blind test first - only their ears
+    count here.
+    """
+    run = autopilot.listen_back(run_id)
+    return "\n".join(run.notes[-2:]) or run.describe()
+

@@ -118,6 +118,8 @@ class Run:
     tuning_run: str | None = None
     draft_id: str | None = None
     ab_session: str | None = None
+    ear_pick: str | None = None
+    """The candidate the blind A/B chose, when it was not the score's."""
     notes: list[str] = field(default_factory=list)
     created_at: str = field(default_factory=_now)
     finished_at: str | None = None
@@ -753,13 +755,15 @@ def _with_eq(tuned: list[dict], target, rate: int, comparison) -> list[dict]:
     }]
 
 
-def _stage_rig(run: Run) -> str:
+def _stage_rig(run: Run, *, from_ears: bool = False) -> str:
     from ..tune.candidates import surrounding_blocks
     from . import matching, rigs, songs
 
     best = run.results[0] if run.results else None
     if best is None:
         raise _Skip("no result to build from")
+    if run.ear_pick:
+        best = next((r for r in run.results if r["label"] == run.ear_pick), best)
     song = songs.get(run.song_id)
     part = song.part(run.part_ids[0])
     name = f"{song.title} - {part.section_name}"[:40]
@@ -806,7 +810,9 @@ def _stage_rig(run: Run) -> str:
     clips = {}
     for entry in run.results[:3]:
         clips[entry["label"]] = entry["path"]
-    if len(clips) >= 2:
+    # Rebuilding from a listening test keeps that test - its verdicts are
+    # the reason for the rebuild.
+    if len(clips) >= 2 and not from_ears:
         session_id = f"{run.run_id}-ab"
         try:
             matching.create_ab(session_id, f"{song.title}: {part.label}", clips)
@@ -814,6 +820,65 @@ def _stage_rig(run: Run) -> str:
         except Exception as exc:
             run.note(f"the blind A/B could not be set up: {exc}")
     return f"draft '{run.draft_id}' with {best['model']} and {best['cab']}"
+
+
+# --------------------------------------------------------------------------
+# listening back
+# --------------------------------------------------------------------------
+
+
+def listen_back(run_id: str) -> Run:
+    """Let the blind A/B decide: the draft follows the ears, and the recipe learns.
+
+    Metrics rank; ears decide. Once the run's blind test is finished, every
+    finalist's verdict goes into the song's recipe as a
+    listening measurement - so research and later runs know what actually
+    sounded right - and if the ears' winner is not the score's, the draft is
+    rebuilt from it. A tie at the top changes nothing.
+    """
+    from . import matching, recipes
+
+    require_writable("apply a listening test")
+    run = get(run_id)
+    if not run.ab_session:
+        raise Invalid("this run has no listening test", hint="Runs set one up when two or more candidates were heard.")
+    session = matching.load_ab(run.ab_session)
+    if not session.complete:
+        # The names stay hidden until the test is done; reading the standings
+        # half way would tell the listener which is which.
+        raise Invalid(
+            f"the blind test is not finished ({session.answered_count} of {len(session.trials)} answered)",
+            hint="Finish it in the Match panel (or 'rigsmith match ab next') - the names stay hidden until then.",
+        )
+    standings = session.standings()
+    top_points = standings[0][1]
+    leaders = [label for label, points, _ in standings if points == top_points]
+    score_pick = run.results[0]["label"] if run.results else None
+    progress = f"{session.answered_count} of {len(session.trials)} trials"
+
+    if run.recipe_id:
+        for label, points, seen in standings:
+            try:
+                recipes.record_measurement(
+                    run.recipe_id, label, f"autopilot {run.run_id}", kind="listen",
+                    won=(label in leaders and len(leaders) == 1), trials=seen,
+                    note=f"{points:g} point(s) in {seen} blind comparison(s), {progress}",
+                )
+            except Exception as exc:  # the verdict stands even if the recipe is gone
+                run.note(f"could not record the verdict in the recipe: {exc}")
+
+    if len(leaders) > 1:
+        run.note(f"the listening test is a tie between {' and '.join(leaders)} after {progress} - the draft keeps the score's pick")
+    elif leaders[0] == score_pick:
+        run.ear_pick = None
+        run.note(f"your ears agreed with the score: {score_pick} ({progress})")
+    else:
+        run.ear_pick = leaders[0]
+        _stage_rig(run, from_ears=True)
+        run.note(f"your ears picked {leaders[0]} over the score's {score_pick} ({progress}); the draft now uses it")
+    run.save()
+    events.publish({"type": "autopilot", "run_id": run.run_id, "stage": "rig", "state": "done"})
+    return run
 
 
 # --------------------------------------------------------------------------

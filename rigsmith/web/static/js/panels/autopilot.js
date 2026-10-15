@@ -192,7 +192,26 @@ function show(run) {
   const links = el("div", { class: "row" });
   if (run.song_id) links.append(el("button", { class: "btn small", text: "Song map", onclick: () => goTo("songs", { songId: run.song_id }) }));
   if (run.draft_id) links.append(el("button", { class: "btn small", text: "Open the draft", onclick: () => goTo("rig", { draftId: run.draft_id }) }));
-  if (run.ab_session) links.append(el("button", { class: "btn small primary", text: "Blind A/B the finalists", onclick: () => goTo("match", { abSession: run.ab_session }) }));
+  if (run.ab_session) {
+    links.append(el("button", { class: "btn small primary", text: "Blind A/B the finalists", onclick: () => goTo("match", { abSession: run.ab_session }) }));
+    // Once the blind test is done, the draft can follow the ears.
+    const listening = el("span", { class: "hint" });
+    links.append(listening);
+    api.get(`/api/ab/${run.ab_session}`).then((ab) => {
+      if (!ab.complete) {
+        listening.textContent = ab.answered ? `listened ${ab.answered} of ${ab.total}` : "";
+        return;
+      }
+      listening.replaceWith(
+        el("button", {
+          class: "btn small",
+          text: run.ear_pick ? `ears picked ${run.ear_pick}` : "use what my ears picked",
+          title: "Rebuild the draft from the blind test's winner, and record the verdicts in the recipe",
+          onclick: () => attempt(async () => show(await api.post(`/api/autopilot/${run.run_id}/listen`))),
+        })
+      );
+    }).catch(() => {});
+  }
   links.append(audioLink("the part", run.target_url), audioLink("your DI", run.di_url));
   if (run.state === "failed" || run.state === "stopped") {
     links.append(el("button", { class: "btn small", text: "Resume", onclick: () => attempt(async () => show(await api.post(`/api/autopilot/${run.run_id}/resume`))) }));
