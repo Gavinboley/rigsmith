@@ -237,3 +237,34 @@ def test_what_the_ears_chose_before_is_heard_first(workspace):
     assert [c.model for c in field_[:2]] == ["69 Plexiglas 100W", "64 Fox AC30"]
     assert field_[0].reason == "your ears chose it last time" and field_[0].tier == "crunch"
     assert field_[1].tier == "edge"  # the research's amp keeps its own tier's cab and voicing
+
+
+def test_several_chosen_parts_become_one_rig_with_a_scene_each(workspace):
+    from rigsmith.core import songs
+
+    stem, _ = song(seconds_per_section=6.0)
+    mix_path = save_audio(workspace / "mix.wav", with_drums(stem), RATE)
+    stem_path = save_audio(workspace / "stem.wav", stem, RATE)
+    made = songs.create("Fixture", mix=str(mix_path), stem=str(stem_path))
+    mapped = songs.analyse(made.song_id)
+    by_gain = sorted((p for p in mapped.parts if p.layer != "stem" and p.end - p.start >= 4), key=lambda p: (p.sketch or {}).get("gain", 0))
+    chosen = [by_gain[0].part_id, by_gain[-1].part_id]  # the cleanest and the most driven
+
+    request = autopilot.Request(title="Fixture", song_id=made.song_id, parts=chosen, research=False, candidates=3, tune_budget=6)
+    run = autopilot.Run(run_id="t8", request=request)
+    run.save()
+    run = autopilot.execute("t8")
+
+    assert run.state == "done", run.describe()
+    assert run.part_runs == ["t8-2"] and autopilot.get("t8-2").part_ids == [chosen[1]]
+    rig = run.song_rig
+    assert [s["footswitch"] for s in rig["scenes"]] == [1, 2]
+    assert [s["part"] for s in rig["scenes"]] == chosen
+    draft = rigs.get(rig["draft_id"]).rig
+    amps = [b for b in draft.blocks if b.category.value == "amp"]
+    assert 1 <= len(amps) <= 2
+    first, second = (draft.scene_named(s["scene"]) for s in rig["scenes"])
+    if len(amps) == 2:  # two sounds: each scene turns its own on and the other off
+        assert {first.state_for(a.slot).value for a in amps} == {"on", "off"}
+        assert first.state_for(amps[0].slot) != second.state_for(amps[0].slot)
+    assert "song rig" in run.describe()

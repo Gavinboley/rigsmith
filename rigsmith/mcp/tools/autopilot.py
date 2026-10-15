@@ -65,3 +65,16 @@ def autopilot_listen_back(run_id: str) -> str:
     run = autopilot.listen_back(run_id)
     return "\n".join(run.notes[-2:]) or run.describe()
 
+
+@tool
+def build_song_rig(run_ids: list[str], name: str | None = None) -> str:
+    """One rig for several parts of a song, with a scene per part on its own footswitch.
+
+    Give finished autopilot runs of the same song, one per part (up to five).
+    The rig carries up to two amp-and-cab sounds; each scene turns on its
+    part's sound and the effects that part measures as having. Parts whose
+    best sound did not make the two are moved to the nearest one, and the
+    result says so. Builds a draft; writing it to the device is separate.
+    """
+    return autopilot.render_song_rig(autopilot.song_rig(run_ids, name=name))
+

@@ -123,6 +123,10 @@ class Run:
     draft was built from: ``{band, low, high, delta_db, audible, meaning, try}``."""
     ear_pick: str | None = None
     """The candidate the blind A/B chose, when it was not the score's."""
+    part_runs: list[str] = field(default_factory=list)
+    """The runs that chased this song's other chosen parts, one each."""
+    song_rig: dict | None = None
+    """When several parts were chased: the one rig with a scene per part."""
     notes: list[str] = field(default_factory=list)
     created_at: str = field(default_factory=_now)
     finished_at: str | None = None
@@ -179,6 +183,9 @@ class Run:
             lines.append(f"  draft: {self.draft_id}" + (f" (your ears' pick: {self.ear_pick})" if self.ear_pick else ""))
         if self.ab_session:
             lines.append(f"  listen: blind A/B session '{self.ab_session}'")
+        if self.song_rig:
+            lines.append(f"  song rig: {self.song_rig['draft_id']}")
+            lines.extend(f"    FS{s['footswitch']}  {s['scene']:<20} {s['sound']}  (run {s['run']})" for s in self.song_rig["scenes"])
         audible = [r for r in self.remaining if r.get("audible")]
         if audible:
             lines.append("  still different from the record:")
@@ -884,6 +891,143 @@ def _stage_rig(run: Run, *, from_ears: bool = False) -> str:
 
 
 # --------------------------------------------------------------------------
+# one rig for the whole song
+# --------------------------------------------------------------------------
+
+#: The Core has five footswitches, so five scenes.
+MAX_SONG_PARTS = 5
+
+#: Effects a scene turns on only for the parts that measure as having them.
+_SCENE_ROLES = ("gate", "boost", "chorus", "vibrato", "tremolo", "delay", "reverb")
+
+
+def _choice(run: Run) -> dict:
+    """The result a run's draft was built from: the ears' pick, or the score's."""
+    if run.ear_pick:
+        picked = next((r for r in run.results if r["label"] == run.ear_pick), None)
+        if picked:
+            return picked
+    return run.results[0]
+
+
+def song_rig(run_ids: list[str], *, name: str | None = None) -> dict:
+    """One rig for several parts of a song: two amp sounds, a scene per part.
+
+    A HeadRush scene switches blocks on and off (it cannot hold its own knob
+    values), and the Core has two of every block - so a song rig carries up
+    to two amp-and-cab sounds side by side in the chain, each scene turning
+    on its part's sound and turning off the other, and every effect any part
+    measures as having, on only in the scenes of the parts that have it.
+
+    When the parts' best sounds come to more than two, the two most used are
+    kept and every other part is given the kept sound nearest its measured
+    gain - and the result says which parts were moved, since those scenes
+    will not be what their own runs found.
+    """
+    from ..tune.candidates import ORDER, surrounding_blocks, tier_for
+    from . import rigs, songs
+
+    require_writable("build a song rig")
+    if not run_ids:
+        raise Invalid("name the autopilot runs to build from - one per part")
+    if len(run_ids) > MAX_SONG_PARTS:
+        raise Invalid(f"a rig has {MAX_SONG_PARTS} footswitches, so at most {MAX_SONG_PARTS} parts")
+    runs = [get(run_id) for run_id in run_ids]
+    for run in runs:
+        if not run.results or not run.part_ids:
+            raise Invalid(f"run {run.run_id} has nothing to build from - it has to have finished")
+    song_ids = {run.song_id for run in runs}
+    if len(song_ids) > 1:
+        raise Invalid("those runs are for different songs")
+    song = songs.get(runs[0].song_id)
+
+    parts = []
+    for run in runs:
+        part = song.part(run.part_ids[0])
+        best = _choice(run)
+        parts.append({"run": run, "part": part, "best": best, "config": (best["model"], best["cab"])})
+
+    # Keep at most two sounds: the most used, then the best-scoring.
+    counts: dict[tuple, int] = {}
+    for item in parts:
+        counts[item["config"]] = counts.get(item["config"], 0) + 1
+    ranked = sorted(counts, key=lambda c: (-counts[c], min(i["best"]["composite"] for i in parts if i["config"] == c)))
+    kept = ranked[:2]
+    notes = []
+
+    def tier_of(config) -> int:
+        owner = next(i for i in parts if (i["best"]["model"], i["best"]["cab"]) == config)
+        return ORDER.index(owner["best"].get("tier") or tier_for(float((owner["part"].sketch or {}).get("gain") or 0)))
+
+    for item in parts:
+        if item["config"] in kept:
+            continue
+        gain_tier = ORDER.index(tier_for(float((item["part"].sketch or {}).get("gain") or 0)))
+        nearest = min(kept, key=lambda c: abs(tier_of(c) - gain_tier))
+        notes.append(
+            f"{item['part'].label} found {item['config'][0]} but a rig holds two amp sounds; "
+            f"its scene uses {nearest[0]}, the nearest kept one"
+        )
+        item["config"] = nearest
+
+    title = name or f"{song.title} - song rig"
+    draft = rigs.create(title[:40], notes=f"autopilot song rig from runs {', '.join(run_ids)}").draft
+    draft_id = draft.draft_id
+
+    def place(category, model, params=None) -> int | None:
+        try:
+            result = rigs.add_block(draft_id, category, model, params=params or {})
+        except Exception as exc:
+            notes.append(f"could not add {model}: {exc}")
+            return None
+        return max(block.slot for block in result.draft.rig.blocks)
+
+    wanted = {}
+    for item in parts:
+        item["roles"] = {b["role"]: b for b in surrounding_blocks(item["part"].sketch or {})}
+        for role, block in item["roles"].items():
+            wanted.setdefault(role, block)
+
+    slots_by_role: dict[str, int] = {}
+    for role in ("gate", "boost"):
+        if role in wanted:
+            slot = place(wanted[role]["category"], wanted[role]["model"])
+            if slot:
+                slots_by_role[role] = slot
+    sound_slots: dict[tuple, list[int]] = {}
+    for config in kept:
+        owner = next(i for i in parts if i["config"] == config and (i["best"]["model"], i["best"]["cab"]) == config)
+        knobs = {k.split(".", 1)[1]: round(float(v), 4) for k, v in (owner["best"].get("knobs") or {}).items()}
+        slots = [place("amp", config[0], knobs), place("cab", config[1])]
+        if owner["best"].get("geq"):
+            slots.append(place("effect", "G EQ", owner["best"]["geq"]))
+        sound_slots[config] = [s for s in slots if s]
+    for role in ("chorus", "vibrato", "tremolo", "delay", "reverb"):
+        if role in wanted:
+            slot = place(wanted[role]["category"], wanted[role]["model"])
+            if slot:
+                slots_by_role[role] = slot
+
+    scenes = []
+    for index, item in enumerate(parts, start=1):
+        on = list(sound_slots.get(item["config"], []))
+        off = [slot for config, slots in sound_slots.items() if config != item["config"] for slot in slots]
+        for role, slot in slots_by_role.items():
+            (on if role in item["roles"] else off).append(slot)
+        scene_name = item["part"].label[:20]
+        rigs.configure_scene(draft_id, scene_name, on_slots=on, off_slots=off, footswitch=index, reset=True)
+        scenes.append({"footswitch": index, "scene": scene_name, "part": item["part"].part_id, "sound": item["config"][0], "run": item["run"].run_id})
+    return {"draft_id": draft_id, "name": title[:40], "scenes": scenes, "sounds": [list(c) for c in kept], "notes": notes}
+
+
+def render_song_rig(result: dict) -> str:
+    lines = [f"song rig '{result['draft_id']}': {len(result['scenes'])} scene(s), {len(result['sounds'])} amp sound(s)"]
+    lines.extend(f"  FS{s['footswitch']}  {s['scene']:<20} {s['sound']}" for s in result["scenes"])
+    lines.extend(f"  note: {n}" for n in result["notes"])
+    return "\n".join(lines)
+
+
+# --------------------------------------------------------------------------
 # listening back
 # --------------------------------------------------------------------------
 
@@ -1027,6 +1171,8 @@ def execute(run_id: str, *, progress: Progress | None = None) -> Run:
         stage.finished_at = _now()
         run.save()
         events.publish({"type": "autopilot", "run_id": run.run_id, "stage": name, "state": stage.state, "summary": stage.summary})
+    if len(run.part_ids) > 1 and not run.part_runs:
+        _chase_other_parts(run, progress)
     run.state = "done"
     run.finished_at = _now()
     run.save()
@@ -1034,3 +1180,40 @@ def execute(run_id: str, *, progress: Progress | None = None) -> Run:
     if progress:
         progress.update(1.0, "done")
     return run
+
+
+def _chase_other_parts(run: Run, progress) -> None:
+    """Every other chosen part gets its own run, then one rig takes them all.
+
+    A run chases one part - its own DI, candidates, cabs and tuning - so the
+    second and later chosen parts each get a run of their own (same song,
+    same guitar, same bench), one after another in this job, and their
+    results are composed into a song rig with a scene per part.
+    """
+    from dataclasses import replace
+
+    others = run.part_ids[1:]
+    if len(run.part_ids) > MAX_SONG_PARTS:
+        run.note(f"{len(run.part_ids)} parts were chosen and a rig has {MAX_SONG_PARTS} footswitches; the first {MAX_SONG_PARTS} were chased")
+        others = run.part_ids[1:MAX_SONG_PARTS]
+    for position, part_id in enumerate(others, start=1):
+        if progress:
+            progress.check()
+            progress.update(None, f"part {position + 1} of {len(others) + 1}: {part_id}")
+        child = Run(
+            run_id=f"{run.run_id}-{position + 1}",
+            request=replace(run.request, parts=[part_id], song_id=run.song_id, mix=None, stem=None),
+        )
+        child.save()
+        child = execute(child.run_id, progress=progress)
+        run.part_runs.append(child.run_id)
+        run.save()
+        if child.state != "done":
+            run.note(f"the run for {part_id} did not finish ({child.state}) - it is left out of the song rig")
+    finished = [run.run_id] + [r for r in run.part_runs if get(r).state == "done"]
+    if len(finished) > 1:
+        try:
+            run.song_rig = song_rig(finished)
+            run.note(f"song rig '{run.song_rig['draft_id']}': a scene per part on footswitches 1-{len(finished)}")
+        except Exception as exc:
+            run.note(f"the song rig could not be built: {exc}")

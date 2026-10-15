@@ -74,6 +74,17 @@ def autopilot_listen(run_id) -> None:
         click.echo(note)
 
 
+@group.command("song-rig")
+@click.argument("run_ids", nargs=-1, required=True)
+@click.option("--name", help="What to call the rig.")
+@handled
+def autopilot_song_rig(run_ids, name) -> None:
+    """One rig with a scene per part, from finished runs of one song (up to five)."""
+    from ..core import autopilot
+
+    click.echo(autopilot.render_song_rig(autopilot.song_rig(list(run_ids), name=name)))
+
+
 @group.command("list")
 @handled
 def autopilot_list() -> None:

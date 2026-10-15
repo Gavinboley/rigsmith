@@ -115,6 +115,7 @@ function renderForm() {
         like_amount: like.amount,
         match_guitar: like.like === "auto",
       };
+      if (fromSong && fromSong.title === body.title) body.song_id = fromSong.songId;
       if (!body.title) throw new Error("Give the song a title - search for it, or type it");
       const run = await api.post("/api/autopilot", body);
       show(run);
@@ -123,6 +124,7 @@ function renderForm() {
     });
 
   host.append(
+    el("div", { class: "hint", id: "ap-song-hint" }),
     el("div", { class: "row" }, query, el("button", { class: "btn", text: "Look up", onclick: search })),
     results,
     el("div", { class: "form-grid", style: "margin-top:12px" }, field("Title", title), field("Artist", artist), field("Your guitar", profile), field("Bench", bench), field("Loop route (device bench)", route)),
@@ -239,6 +241,16 @@ function show(run) {
     card.append(el("h3", { text: "Closest first", style: "margin-top:14px" }), list);
   }
   if (run.remaining?.length) card.append(remainingCard(run.remaining));
+  if (run.song_rig) {
+    card.append(
+      el("h3", { text: "One rig for the song", style: "margin-top:14px" }),
+      el("div", { class: "list" }, ...run.song_rig.scenes.map((scene) =>
+        el("div", { class: "item" }, el("span", { class: "tag a2", text: `FS${scene.footswitch}` }), el("span", { class: "title", text: scene.scene }), el("span", { class: "meta", text: scene.sound }), el("span", { class: "spacer" }), el("span", { class: "meta", text: `run ${scene.run}` }))
+      )),
+      ...(run.song_rig.notes || []).map((note) => el("div", { class: "notice", text: note })),
+      el("div", { class: "row" }, el("button", { class: "btn small primary", text: "Open the song rig", onclick: () => goTo("rig", { draftId: run.song_rig.draft_id }) }))
+    );
+  }
   for (const note of run.notes || []) card.append(el("div", { class: "notice", text: note }));
   host.append(card);
 
@@ -341,11 +353,21 @@ export function onHide() {
   clearInterval(polling);
 }
 
-onArrive("autopilot", ({ title, artist, songId }) => {
+/* A song handed over from the Songs panel: its map and chosen parts are
+ * used as they are, rather than a new song being made from the title. */
+let fromSong = null;
+
+onArrive("autopilot", ({ title, artist, songId, chosen }) => {
+  const inputs = $("#ap-form").querySelectorAll(".form-grid input");
   if (title) {
-    const inputs = $("#ap-form").querySelectorAll(".form-grid input");
     inputs[0].value = title;
     if (artist) inputs[1].value = artist;
   }
-  void songId;
+  fromSong = songId ? { songId, title, chosen: chosen || 0 } : null;
+  const hint = $("#ap-song-hint");
+  if (hint) {
+    hint.textContent = fromSong
+      ? `Using the mapped song "${title}"${fromSong.chosen > 1 ? ` - ${fromSong.chosen} chosen parts, one run each, then a rig with a scene per part` : fromSong.chosen === 1 ? " - its chosen part" : ""}.`
+      : "";
+  }
 });

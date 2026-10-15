@@ -138,7 +138,13 @@ function render() {
         el("button", { class: "btn small", text: "Look up", title: "Album, year, credits", onclick: () => attempt(async () => { song = await api.post(`/api/songs/${songId}/lookup`); render(); }) }),
         !song.stem && song.mix ? el("button", { class: "btn small", text: "Isolate guitar", onclick: isolate }) : null,
         el("button", { class: `btn small ${song.parts?.length ? "" : "primary"}`, text: song.parts?.length ? "Re-map" : "Map it", onclick: analyse }),
-        el("button", { class: "btn small", text: "Research", title: "Hand the research brief to the researcher", onclick: research })
+        el("button", { class: "btn small", text: "Research", title: "Hand the research brief to the researcher", onclick: research }),
+        song.parts?.length ? el("button", {
+          class: "btn small primary",
+          text: "Autopilot",
+          title: "Chase the chosen parts - one run each, then one rig with a scene per part",
+          onclick: () => goTo("autopilot", { songId: song.song_id, title: song.title, artist: song.artist, chosen: song.parts.filter((p) => p.chosen).length }),
+        }) : null
       ),
       el("div", { class: "hint", id: "song-progress" })
     )

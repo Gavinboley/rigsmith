@@ -60,6 +60,18 @@ def start(body: RunBody) -> dict:
     return _payload(run)
 
 
+class SongRigBody(BaseModel):
+    run_ids: list[str]
+    name: str | None = None
+
+
+@router.post("/song-rig")
+def build_song_rig(body: SongRigBody) -> dict:
+    """One rig with a scene per part, from finished runs of one song."""
+    result = autopilot.song_rig(body.run_ids, name=body.name)
+    return {**result, "render": autopilot.render_song_rig(result)}
+
+
 @router.get("/{run_id}")
 def get_run(run_id: str) -> dict:
     return _payload(autopilot.get(run_id))
