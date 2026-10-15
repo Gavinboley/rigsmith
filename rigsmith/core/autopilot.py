@@ -1126,7 +1126,7 @@ def song_rig(run_ids: list[str], *, name: str | None = None) -> dict:
         off = [slot for config, slots in sound_slots.items() if config != item["config"] for slot in slots]
         for (role, version), slot in slots_by_role.items():
             (on if item["variant"].get(role) == version else off).append(slot)
-        scene_name = item["part"].label[:20]
+        scene_name = _unique_scene_name(item["part"].label, [s["scene"] for s in scenes])
         rigs.configure_scene(draft_id, scene_name, on_slots=on, off_slots=off, footswitch=index, reset=True)
         scenes.append({"footswitch": index, "scene": scene_name, "part": item["part"].part_id, "sound": item["config"][0], "run": item["run"].run_id})
     return {"draft_id": draft_id, "name": title[:40], "scenes": scenes, "sounds": [list(c) for c in kept], "notes": notes}
@@ -1162,6 +1162,27 @@ def _carry_tempo(run: Run | None, draft_id: str, blocks: list[dict], tempo: floa
         run.note(text)
     if notes is not None:
         notes.append(text)
+
+
+#: The longest scene name a song rig gives.
+SCENE_NAME_LENGTH = 20
+
+
+def _unique_scene_name(label: str, taken: list[str]) -> str:
+    """A part's label as a scene name no other scene in the rig has.
+
+    Section names repeat - a song has two choruses - so two chosen parts can
+    share a label, and a scene is found by its name: the second would have
+    overwritten the first, footswitch and all.
+    """
+    used = {name.lower() for name in taken}
+    name = label[:SCENE_NAME_LENGTH]
+    count = 2
+    while name.lower() in used:
+        suffix = f" {count}"
+        name = label[: SCENE_NAME_LENGTH - len(suffix)].rstrip() + suffix
+        count += 1
+    return name
 
 
 #: How many versions of one effect a song rig carries - the Core has two of each block.

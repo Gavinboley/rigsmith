@@ -508,3 +508,13 @@ def test_a_fitted_eq_is_sent_through_its_bands_measured_curves():
     sent = candidates.wire_params({"model": "G EQ", "params": guessed, "readings": {"Gain800Hz": -6.0, "Gain60Hz": 3.0}}, cat)
     assert sent["Gain800Hz"] == round((-6.0 + 15) / 30, 4), "a measured band is converted"
     assert sent["Gain60Hz"] == 0.6, "an unmeasured band keeps the guess"
+
+
+def test_two_choruses_get_two_scenes():
+    """A scene is found by name; the second chorus used to overwrite the first."""
+    taken: list[str] = []
+    for label in ("chorus - left", "chorus - left", "chorus - left", "pre-chorus build - all guitars"):
+        taken.append(autopilot._unique_scene_name(label, taken))
+    assert taken[:3] == ["chorus - left", "chorus - left 2", "chorus - left 3"]
+    assert len(taken[3]) <= autopilot.SCENE_NAME_LENGTH
+    assert autopilot._unique_scene_name("pre-chorus build - all guitars", taken) == "pre-chorus build - 2"
