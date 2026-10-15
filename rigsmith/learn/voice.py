@@ -14,10 +14,11 @@ sounds like a guitar and not an organ). Those curves are smooth along a
 string, so a note between two samples - or a little past the last one - is
 an interpolation rather than an invention.
 
-Analysis/resynthesis, not a neural network: it fits in seconds, needs no
-GPU and no training data beyond the samples a profile already has. A trained
-model (:mod:`.neural`) can take the same place when one exists; this is what
-is always available.
+Analysis/resynthesis at heart: it fits in seconds, needs no GPU and no
+training data beyond the samples a profile already has. When a profile has
+heard enough notes, a small network (:mod:`.neural`) is trained alongside it
+and the two predictions are averaged - measured a few percent closer on
+notes held out than interpolation alone.
 """
 
 from __future__ import annotations
@@ -212,6 +213,20 @@ class VoiceModel:
     notes: list[NoteModel] = field(default_factory=list)
     noise_level_db: float = -24.0
     """Pick noise relative to the note peak."""
+    net: dict | None = None
+    """A trained :class:`~rigsmith.learn.neural.NeuralVoice`, when the profile
+    had enough notes for one to help."""
+
+    def _network(self):
+        if not self.net:
+            return None
+        cached = getattr(self, "_net_cache", None)
+        if cached is None:
+            from .neural import NeuralVoice
+
+            cached = NeuralVoice.from_dict(self.net)
+            object.__setattr__(self, "_net_cache", cached)
+        return cached
 
     def _neighbours(self, midi: float, string: int | None) -> list[tuple[NoteModel, float]]:
         pool = [n for n in self.notes if string is None or n.string == string] or self.notes
@@ -261,6 +276,16 @@ class VoiceModel:
             # Higher up the neck: shorter string, faster decay. Roughly 4% per
             # semitone, from the profiles this was tuned on.
             decays = decays * (1.04 ** distance)
+        network = self._network()
+        if network is not None and string:
+            # Averaged with the network's view of the whole neck - see
+            # rigsmith.learn.neural for what that buys and when.
+            from .neural import off_grid
+
+            grid_levels, grid_decays = network.predict(midi, string)
+            f0 = midi_to_hz(midi)
+            levels = (levels + off_grid(grid_levels, f0, inharm, count)) / 2
+            decays = np.minimum((decays + off_grid(grid_decays, f0, inharm, count)) / 2, -0.5)
         return levels, decays, inharm, noise
 
     def synthesize(
@@ -305,13 +330,14 @@ class VoiceModel:
         return out * (10 ** (peak_db / 20) / peak)
 
     def to_dict(self) -> dict:
-        return {"notes": [n.to_dict() for n in self.notes], "noise_level_db": self.noise_level_db}
+        return {"notes": [n.to_dict() for n in self.notes], "noise_level_db": self.noise_level_db, "net": self.net}
 
     @classmethod
     def from_dict(cls, data: dict) -> "VoiceModel":
         return cls(
             notes=[NoteModel.from_dict(n) for n in data.get("notes", [])],
             noise_level_db=float(data.get("noise_level_db", -24.0)),
+            net=data.get("net"),
         )
 
     def save(self, path: Path) -> Path:
@@ -349,6 +375,10 @@ def fit(samples: list[tuple[np.ndarray, float, int | None]], sample_rate: int) -
             if len(attack):
                 ratios.append(analysed.peak_db)
     model.notes.sort(key=lambda n: (n.string or 0, n.midi))
+    from .neural import train
+
+    trained = train(model.notes)
+    model.net = trained.to_dict() if trained is not None else None
     return model
 
 

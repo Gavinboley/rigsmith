@@ -95,6 +95,8 @@ def get_profile(profile_id: str, samples: bool = False) -> dict:
     data["coverage"] = profile.coverage(frets=24 if samples else 12)
     resonance = profile.resonance()
     data["resonance"] = resonance.to_dict() if resonance else None
+    voice = profiles.voice_model(profile.profile_id) if profile.has_voice else None
+    data["voice_net"] = bool(voice and voice.net)
     return data
 
 

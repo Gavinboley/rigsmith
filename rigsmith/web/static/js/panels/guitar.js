@@ -85,7 +85,7 @@ function render() {
     el(
       "div",
       { class: "card" },
-      el("div", { class: "chain-head" }, el("h2", { class: "rig-name", text: [profile.guitar, profile.pickup].filter(Boolean).join(" ") || profile.profile_id }), el("span", { class: "tag", text: profile.tuning }), profile.has_voice ? el("span", { class: "tag a2", text: "voice model" }) : null),
+      el("div", { class: "chain-head" }, el("h2", { class: "rig-name", text: [profile.guitar, profile.pickup].filter(Boolean).join(" ") || profile.profile_id }), el("span", { class: "tag", text: profile.tuning }), profile.has_voice ? el("span", { class: "tag a2", text: profile.voice_net ? "voice model + network" : "voice model", title: profile.voice_net ? "Unheard frets come from interpolation averaged with a small network trained on every note - a few percent closer on held-out notes" : "Unheard frets come from interpolating the nearest notes; a network joins in from 48 notes" }) : null),
       profile.note ? el("div", { class: "hint", text: profile.note }) : null,
       el(
         "div",

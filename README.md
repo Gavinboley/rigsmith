@@ -11,7 +11,7 @@ pip install -e ".[all]"
 rigsmith ui
 ```
 
-> **Status: everything runs today.** Rig authoring, validation, NAM analysis, tone matching, catalog extraction, USB backup, MIDI, guitar learning, song maps, the hardware loop, the tuner, autopilot, the chat and the web UI are covered by 890 tests. The Remote Editor protocol has been captured against a real Core and a rig written to it and read back exactly - see [docs/PROTOCOL.md](docs/PROTOCOL.md). What still wants hardware is *measuring*: the loop and the blind A/B need the Core and an interface plugged in.
+> **Status: everything runs today.** Rig authoring, validation, NAM analysis, tone matching, catalog extraction, USB backup, MIDI, guitar learning, song maps, the hardware loop, the tuner, autopilot, the chat and the web UI are covered by 891 tests. The Remote Editor protocol has been captured against a real Core and a rig written to it and read back exactly - see [docs/PROTOCOL.md](docs/PROTOCOL.md). What still wants hardware is *measuring*: the loop and the blind A/B need the Core and an interface plugged in.
 
 ---
 
@@ -193,6 +193,13 @@ and it says how much of the stem its notes explain). Candidates rendered from
 that DI play the same notes at the same moments as the record, so they can be
 scored with `--mode performance` - frame against frame, not just as a
 distribution.
+
+Frets it has not heard are built rather than stretched: a voice model of
+each string (every harmonic's level and decay, and the string's
+inharmonicity) interpolates between the nearest notes, and once a profile
+has 48 notes or more a small network trained on all of them is averaged in.
+On notes held out of a chromatic session the blend was about 5% closer than
+interpolation alone; with fewer notes the network loses, so it waits.
 
 No guitar to hand? `rigsmith learn demo --into demo` walks the whole flow on
 a synthetic string, and says so everywhere it shows up.

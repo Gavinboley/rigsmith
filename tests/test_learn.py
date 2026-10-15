@@ -352,3 +352,39 @@ def test_a_recipes_words_name_a_pickup():
     assert named("Les Paul Custom with '57 Classics").label == "paf"
     assert named("ESP with EMG 81").label == "active"
     assert named("a cardboard box") is None
+
+
+# ---------------------------------------------------------------------------
+# the learned voice
+# ---------------------------------------------------------------------------
+
+
+def test_the_network_only_learns_when_it_has_enough_notes_and_then_helps(workspace):
+    from rigsmith.learn import neural
+    from rigsmith.learn.instrument import midi_to_hz
+    from rigsmith.learn.voice import VoiceModel
+
+    take, _ = profiles.demo_take("chromatic")
+    profiles.create("full")
+    profiles.learn("full", str(take), protocol_id="chromatic", fit_voice=True)
+    model = profiles.voice_model("full")
+    assert model.net and model.net["notes"] >= neural.MIN_NOTES
+    assert neural.train(model.notes[:20]) is None  # a quick session: too few to help
+
+    # Hold notes out one at a time: the blend predicts them closer than the
+    # neighbours alone (on most notes, and on average).
+    notes = [n for n in model.notes if n.string]
+    plain_errors, blend_errors = [], []
+    for i in range(0, len(notes), 6):
+        held, rest = notes[i], notes[:i] + notes[i + 1 :]
+        f0 = midi_to_hz(held.midi)
+        truth = neural.on_grid(held.level_db, f0, held.inharmonicity)
+        audible = truth > -50
+        plain = VoiceModel(notes=rest)
+        blended = VoiceModel(notes=rest, net=neural.train(rest).to_dict())
+        for voice, errors in ((plain, plain_errors), (blended, blend_errors)):
+            levels, _, inharm, _ = voice.parameters(held.midi, held.string)
+            errors.append(np.mean(np.abs(neural.on_grid(levels, f0, inharm)[audible] - truth[audible])))
+    assert np.mean(blend_errors) < np.mean(plain_errors), (np.mean(blend_errors), np.mean(plain_errors))
+    # And it survives being saved with the profile.
+    assert VoiceModel.from_dict(model.to_dict()).net == model.net
