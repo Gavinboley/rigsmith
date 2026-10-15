@@ -71,6 +71,7 @@ function renderForm() {
   zones.mix = dropZone({ label: "Your copy of the song - drop or click", accept: "audio/*" });
   zones.stem = dropZone({ label: "An isolated guitar stem (optional)", accept: "audio/*" });
   zones.midi = dropZone({ label: "A tab's MIDI export of the part (optional)", accept: ".mid,.midi" });
+  zones.take = dropZone({ label: "Your own take of the part (optional) - lined up with the record", accept: "audio/*" });
 
   const search = async () => {
     const text = query.value.trim();
@@ -122,6 +123,7 @@ function renderForm() {
         mix: zones.mix.path(),
         stem: zones.stem.path(),
         midi: zones.midi.path(),
+        di: zones.take.path(),
         profile_id: profile.value === "synthetic" ? null : profile.value,
         bench: bench.value,
         route_id: bench.value === "device" ? route.value || null : null,
@@ -144,7 +146,7 @@ function renderForm() {
     el("div", { class: "row" }, query, el("button", { class: "btn", text: "Look up", onclick: search })),
     results,
     el("div", { class: "form-grid", style: "margin-top:12px" }, field("Title", title), field("Artist", artist), field("Your guitar", profile), field("Bench", bench), field("Loop route (device bench)", route)),
-    el("div", { class: "form-grid", style: "margin-top:12px" }, zones.mix, zones.stem, zones.midi),
+    el("div", { class: "form-grid", style: "margin-top:12px" }, zones.mix, zones.stem, zones.midi, zones.take),
     libraryHint,
     el(
       "div",
