@@ -1074,7 +1074,7 @@ def suggest_region(path: str, seconds: float = 8.0) -> dict:
     A starting point rather than a judgement - the waveform is there to drag
     when it chooses wrong.
     """
-    _allow_audio(path)
+    _require_named(path)
     region = matching.suggest_region(path, seconds=seconds)
     return {
         "region": None if region is None else [region.start, region.end],
@@ -1105,7 +1105,7 @@ def match_spectrum(
     from ..match.metrics import _stft_magnitude, normalise_rms, to_mono
     from ..match.render_offline import load_audio
 
-    _allow_audio(path)
+    _require_named(path)
     audio, sample_rate = load_audio(path)
     region = Region.parse(None if start is None and end is None else (start or 0.0, end))
     if region:
@@ -1315,6 +1315,21 @@ def _allow_audio(*paths: str | Path) -> None:
     for path in paths:
         if path:
             _NAMED_AUDIO.add(Path(path).resolve())
+
+
+def _require_named(path: str | Path) -> None:
+    """A GET may read a file the page has named, never name one itself.
+
+    Naming is what a POST the user initiated does (opening a file, scoring
+    it). A GET that named its own path let any page widen the allowance
+    with an <img> tag, after which /api/audio served the file.
+    """
+    if not _audio_is_allowed(Path(path).resolve()):
+        raise HTTPException(
+            403,
+            "audio outside the rigsmith workspace has to be opened first - "
+            "POST /api/match/open with the path",
+        )
 
 
 def _audio_is_allowed(target: Path) -> bool:

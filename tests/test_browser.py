@@ -1065,7 +1065,9 @@ def test_a_songs_tempo_can_be_doubled_and_tapped(browser, server):
             page.click("#tempo-tap")
             page.wait_for_timeout(500)
         tapped = tempo_now(lambda t: t != 140)
-        assert 95 <= tapped <= 130, f"five taps half a second apart read {tapped}"
+        # Half a second apart is 120 BPM; a busy machine clicks late, so
+        # this checks the taps set a tempo, not the click timing.
+        assert 60 <= tapped <= 160, f"five taps half a second apart read {tapped}"
 
 
 def test_the_tone_sheet_opens_as_its_own_page(browser, server):

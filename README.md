@@ -11,7 +11,7 @@ pip install -e ".[all]"
 rigsmith ui
 ```
 
-> **Status: everything runs today.** Rig authoring, validation, NAM analysis, tone matching, catalog extraction, USB backup, MIDI, guitar learning, song maps, the hardware loop, the tuner, autopilot, the chat and the web UI are covered by 953 tests. The Remote Editor protocol has been captured against a real Core and a rig written to it and read back exactly - see [docs/PROTOCOL.md](docs/PROTOCOL.md). What still wants hardware is *measuring*: the loop and the blind A/B need the Core and an interface plugged in - [docs/FIRST_SESSION.md](docs/FIRST_SESSION.md) walks through that first session.
+> **Status: everything runs today.** Rig authoring, validation, NAM analysis, tone matching, catalog extraction, USB backup, MIDI, guitar learning, song maps, the hardware loop, the tuner, autopilot, the chat and the web UI are covered by 959 tests. The Remote Editor protocol has been captured against a real Core and a rig written to it and read back exactly - see [docs/PROTOCOL.md](docs/PROTOCOL.md). What still wants hardware is *measuring*: the loop and the blind A/B need the Core and an interface plugged in - [docs/FIRST_SESSION.md](docs/FIRST_SESSION.md) walks through that first session.
 
 ---
 
@@ -29,6 +29,7 @@ This project does **not** modify, patch, or reflash device firmware, and it neve
 - Every write is gated: **validate → backup → diff → confirm → write → verify**. The backup is a gate, not a courtesy — without one the write is refused, because a rig built on the device's own screen exists nowhere else. Waiving it is explicit (`--no-backup`) and says what it cost.
 - `RIGSMITH_READONLY=1` disables every write at startup.
 - The web UI binds to **loopback only** and warns loudly if you override that — it can control an amp modeler on your network, and exposing it to that network would be a real footgun.
+- Loopback is not the whole boundary, because any page in the same browser can reach 127.0.0.1. So the UI also refuses a request whose Host is not this machine (DNS rebinding) and one a browser sends from any origin but its own page - a form on another site cannot write a rig, and another site cannot open its event stream. The CLI and scripts send no Origin and are unaffected.
 - Firmware analysis is read-only static inspection for interoperability. No vendor firmware, binaries, or assets are committed here — only derived documentation.
 - If something goes wrong on the device, holding footswitches **4+5** at power-on restores factory rigs.
 

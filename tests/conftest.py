@@ -50,3 +50,14 @@ def reset_global_state():
     clear()
     yield
     clear()
+
+
+@pytest.fixture(autouse=True, scope="session")
+def test_client_host():
+    """FastAPI's test client calls itself "testserver"; the web guard refuses
+    any Host that is not this machine, so that name is let in - here only."""
+    from rigsmith.web import guard
+
+    guard.EXTRA_HOSTS.add("testserver")
+    yield
+    guard.EXTRA_HOSTS.discard("testserver")

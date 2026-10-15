@@ -28,8 +28,13 @@ def static_dir() -> Path:
         return Path(__file__).resolve().parent / "static"
 
 
-def build_app():
-    """Build the ASGI application."""
+def build_app(*, hosts=None):
+    """Build the ASGI application.
+
+    ``hosts`` names what the Host header may say; the default is this
+    machine's loopback names (see :mod:`.guard`), and ``"*"`` accepts any -
+    only for a deliberate ``--host`` bind to a network.
+    """
     try:
         from fastapi import FastAPI
         from fastapi.responses import FileResponse
@@ -55,6 +60,10 @@ def build_app():
         redoc_url=None,
     )
     install_error_handler(app)
+    from .guard import LOOPBACK, LocalOnly
+
+    allowed = None if hosts == "*" else frozenset(hosts) if hosts else LOOPBACK
+    app.add_middleware(LocalOnly, hosts=allowed)
     app.include_router(router)
     from .routes import routers
 
@@ -119,8 +128,17 @@ def run_ui(
     if open_browser:
         threading.Timer(0.7, lambda: webbrowser.open(url)).start()
 
+    # Bound to loopback, only loopback names are answered (a rebound name is
+    # refused); bound to one address, that address too; bound to every
+    # interface, any name - the warning above is the guard then.
+    if host in ("127.0.0.1", "localhost", "::1"):
+        hosts = None
+    elif host in ("0.0.0.0", "::"):
+        hosts = "*"
+    else:
+        hosts = {"127.0.0.1", "localhost", "::1", host}
     server = uvicorn.Server(
-        uvicorn.Config(build_app(), host=host, port=port, log_level="warning")
+        uvicorn.Config(build_app(hosts=hosts), host=host, port=port, log_level="warning")
     )
     try:
         server.run()

@@ -432,6 +432,7 @@ def test_opening_a_file_that_is_not_there_is_404(client, tmp_path):
 
 
 def test_spectrum_honours_the_region(client, outside_file):
+    client.post("/api/match/open", json={"path": str(outside_file)})
     whole = client.get("/api/match/spectrum", params={"path": str(outside_file)}).json()
     part = client.get(
         "/api/match/spectrum",
@@ -443,6 +444,7 @@ def test_spectrum_honours_the_region(client, outside_file):
 
 
 def test_a_region_too_short_to_measure_is_400(client, outside_file):
+    client.post("/api/match/open", json={"path": str(outside_file)})
     response = client.get(
         "/api/match/spectrum",
         params={"path": str(outside_file), "start": 0.5, "end": 0.6},
