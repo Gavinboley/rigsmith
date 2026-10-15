@@ -271,12 +271,35 @@ def candidates(
     return found[:count]
 
 
+#: The delay's tempo-synced divisions on the Core, in its own order, and the
+#: sketch's note names for them.
+DELAY_DIVISIONS = ("1/128", "1/64", "1/32T", "1/32", "1/16T", "1/16", "1/8T", "1/8", "1/4T", "3/16", "1/4", "1/2T", "3/8", "1/2", "5/8", "3/4", "Bar")
+NOTE_TO_DIVISION = {
+    "sixteenth": "1/16", "eighth": "1/8", "dotted eighth": "3/16", "triplet quarter": "1/4T",
+    "quarter": "1/4", "dotted quarter": "3/8", "half": "1/2",
+}
+#: AIR Reverb's modes, by what the sketch heard.
+REVERB_MODES = {"a room": 0, "a plate or hall": 1, "a long wash": 7}
+
+
+def _linear(value: float, low: float, high: float) -> float:
+    """A display value as a wire value, assuming a linear control.
+
+    The real taper is measured by catalog calibration; until it is, this is
+    a starting point that the run says is one.
+    """
+    return round(min(max((value - low) / (high - low), 0.0), 1.0), 4)
+
+
 def surrounding_blocks(sketch: dict) -> list[dict]:
     """Blocks the sketch suggests around the amp: ``{category, model, params, role, why}``.
 
-    Parameter values are left to the device's defaults except where the
-    measurement gives a number (a delay time); the tuner and the person
-    decide the rest.
+    Where the measurement gives a number it is set: a delay synced to the
+    division it measured (and its time in milliseconds as the unsynced
+    fallback), a tremolo's or chorus's rate, a reverb's type, and mixes kept
+    modest - a record's effects sit under the guitar, not on top of it. The
+    millisecond and hertz settings assume a linear control until the catalog
+    is calibrated; the sync division does not depend on that.
     """
     blocks: list[dict] = []
     if sketch.get("gated"):
@@ -285,22 +308,29 @@ def surrounding_blocks(sketch: dict) -> list[dict]:
     if gain >= 0.58 and sketch.get("low_end") != "heavy low end":
         blocks.append({"category": "effect", "model": "Green JRC-OD", "role": "boost", "params": {}, "why": "a tight high-gain part usually has a boost in front"})
     if sketch.get("delay_ms"):
+        params = {"DelayTime": _linear(float(sketch["delay_ms"]), 20.0, 800.0), "Mix": round(0.2 + 0.25 * min(float(sketch.get("delay_strength") or 0), 1.0), 3)}
+        division = NOTE_TO_DIVISION.get(sketch.get("delay_note") or "")
+        if division:
+            params.update({"Sync": True, "DelayTime_Synced": DELAY_DIVISIONS.index(division)})
         blocks.append({
-            "category": "effect", "model": "M104 Analog Delay", "role": "delay", "params": {},
-            "why": f"a {sketch['delay_ms']:.0f} ms echo" + (f" ({sketch['delay_note']})" if sketch.get("delay_note") else ""),
-            "delay_ms": sketch["delay_ms"],
+            "category": "effect", "model": "M104 Analog Delay", "role": "delay", "params": params,
+            "why": f"a {sketch['delay_ms']:.0f} ms echo" + (f" ({sketch['delay_note']}, synced to {division})" if division else ""),
+            "delay_ms": sketch["delay_ms"], "division": division,
         })
     modulation = sketch.get("modulation") or ""
-    rate = f" at {sketch['modulation_hz']:.1f} Hz" if sketch.get("modulation_hz") else ""
+    hz = sketch.get("modulation_hz")
+    rate = f" at {hz:.1f} Hz" if hz else ""
     if modulation == "tremolo":
-        blocks.append({"category": "effect", "model": "Tremolo", "role": "tremolo", "params": {}, "why": f"a {sketch.get('modulation_hz', 0):.1f} Hz wobble"})
+        params = {"Rate": _linear(float(hz), 0.1, 12.0)} if hz else {}
+        blocks.append({"category": "effect", "model": "Tremolo", "role": "tremolo", "params": params, "why": f"a {hz or 0:.1f} Hz wobble"})
     elif modulation == "chorus":
-        blocks.append({"category": "effect", "model": "Chorus", "role": "chorus", "params": {}, "why": f"sustained notes wander about {sketch.get('wobble_cents') or 0:.0f} cents{rate}"})
+        params = {"Rate": _linear(float(hz), 0.1, 10.0), "Mix": 0.5} if hz else {"Mix": 0.5}
+        blocks.append({"category": "effect", "model": "Chorus", "role": "chorus", "params": params, "why": f"sustained notes wander about {sketch.get('wobble_cents') or 0:.0f} cents{rate}"})
     elif modulation == "vibrato":
         blocks.append({"category": "effect", "model": "Vibrato", "role": "vibrato", "params": {}, "why": f"every note wobbles in pitch{rate}"})
     space = sketch.get("space") or ""
     if space in ("a plate or hall", "a long wash"):
-        blocks.append({"category": "effect", "model": "AIR Reverb", "role": "reverb", "params": {}, "why": f"{space} on the part"})
+        blocks.append({"category": "effect", "model": "AIR Reverb", "role": "reverb", "params": {"Mode": REVERB_MODES[space], "Mix": 0.25}, "why": f"{space} on the part"})
     elif space == "a room":
-        blocks.append({"category": "effect", "model": "Spring Reverb", "role": "reverb", "params": {}, "why": "a short room"})
+        blocks.append({"category": "effect", "model": "Spring Reverb", "role": "reverb", "params": {"Mix": 0.2}, "why": "a short room"})
     return blocks

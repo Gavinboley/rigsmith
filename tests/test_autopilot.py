@@ -58,6 +58,14 @@ def test_the_sketch_adds_the_blocks_it_implies():
     blocks = candidates.surrounding_blocks({"gain": 0.8, "gated": True, "delay_ms": 375.0, "delay_note": "dotted eighth", "space": "a room"})
     roles = [b["role"] for b in blocks]
     assert roles == ["gate", "boost", "delay", "reverb"]
+    # The measured numbers are set: a dotted eighth is the Core's 3/16, and
+    # the milliseconds are there for when sync is off.
+    delay = blocks[2]["params"]
+    assert delay["Sync"] is True and candidates.DELAY_DIVISIONS[delay["DelayTime_Synced"]] == "3/16"
+    assert abs(delay["DelayTime"] - (375 - 20) / 780) < 1e-3 and 0.2 <= delay["Mix"] <= 0.45
+    hall = candidates.surrounding_blocks({"space": "a plate or hall", "modulation": "tremolo", "modulation_hz": 5.0})
+    assert hall[0]["params"]["Rate"] == round((5.0 - 0.1) / 11.9, 4)
+    assert hall[1]["params"]["Mode"] == 1  # Hall
 
 
 def test_a_whole_run_ends_in_a_draft_and_a_listening_test(workspace):

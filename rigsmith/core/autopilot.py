@@ -885,7 +885,7 @@ def _stage_rig(run: Run, *, from_ears: bool = False) -> str:
             notes.append(f"could not add {model}: {exc}")
 
     for block in before:
-        add(block["category"], block["model"])
+        add(block["category"], block["model"], block.get("params"))
     knobs = {k.split(".", 1)[1]: round(float(v), 4) for k, v in (best.get("knobs") or {}).items()}
     add("amp", best["model"], knobs)
     add("cab", best["cab"])
@@ -894,7 +894,11 @@ def _stage_rig(run: Run, *, from_ears: bool = False) -> str:
         shown = ", ".join(f"{k[4:]} {v:+.0f}" for k, v in (best.get("geq_db") or {}).items() if abs(v) >= 1)
         run.note(f"a G EQ after the cab, fitted to the record ({shown}) - it measured closer; trust your ears over it")
     for block in after:
-        add(block["category"], block["model"])
+        add(block["category"], block["model"], block.get("params"))
+    delay = next((b for b in after if b["role"] == "delay" and b.get("division")), None)
+    tempo = (song.structure or {}).get("tempo")
+    if delay and tempo:
+        run.note(f"the delay is synced to {delay['division']} - set the rig's tempo to {tempo:.0f} BPM, or tap it in")
     for text in notes:
         run.note(text)
     if run.request.bench == "virtual":
@@ -1025,7 +1029,7 @@ def song_rig(run_ids: list[str], *, name: str | None = None) -> dict:
     slots_by_role: dict[str, int] = {}
     for role in ("gate", "boost"):
         if role in wanted:
-            slot = place(wanted[role]["category"], wanted[role]["model"])
+            slot = place(wanted[role]["category"], wanted[role]["model"], wanted[role].get("params"))
             if slot:
                 slots_by_role[role] = slot
     sound_slots: dict[tuple, list[int]] = {}
@@ -1038,7 +1042,7 @@ def song_rig(run_ids: list[str], *, name: str | None = None) -> dict:
         sound_slots[config] = [s for s in slots if s]
     for role in ("chorus", "vibrato", "tremolo", "delay", "reverb"):
         if role in wanted:
-            slot = place(wanted[role]["category"], wanted[role]["model"])
+            slot = place(wanted[role]["category"], wanted[role]["model"], wanted[role].get("params"))
             if slot:
                 slots_by_role[role] = slot
 
