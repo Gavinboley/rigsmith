@@ -31,6 +31,7 @@ from .metrics import (
     mfcc_distance,
     multi_resolution_stft_loss,
     normalise_rms,
+    performance_distance,
     spectral_summary,
     to_mono,
 )
@@ -57,6 +58,9 @@ STFT_SCALE = 5.0
 SPECTRAL_SCALE = 3.0
 MFCC_SCALE = 1.5
 LOG_SPECTRAL_SCALE = 40.0
+#: Per-frame mel distance, dB. Identical renditions sit near 0; two clearly
+#: different amps on the same part land around 6-10.
+PERFORMANCE_SCALE = 15.0
 
 
 def _scaled(value: float, scale: float) -> float:
@@ -148,7 +152,17 @@ def score_candidate(
             )
         )
 
-    # Distribution metrics are valid in both modes and are the only thing
+    if mode is ComparisonMode.PERFORMANCE:
+        score.metrics.append(
+            MetricResult(
+                name="performance_db",
+                value=performance_distance(target, candidate, sample_rate),
+                mode=ComparisonMode.PERFORMANCE,
+                interpretation="per-frame difference on the same notes at the same moments",
+            )
+        )
+
+    # Distribution metrics are valid in every mode and are the only thing
     # reported in distribution mode.
     summary_distance = spectral_summary(target, sample_rate).distance(
         spectral_summary(candidate, sample_rate)
@@ -187,6 +201,19 @@ def score_candidate(
         score.notes.append(
             "Aligned comparison: ESR and multi-resolution STFT are meaningful "
             "because both signals are the same performance."
+        )
+    elif mode is ComparisonMode.PERFORMANCE:
+        score.composite = (
+            0.45 * _scaled(score.metric("performance_db").value, PERFORMANCE_SCALE)
+            + 0.25 * _scaled(summary_distance, SPECTRAL_SCALE)
+            + 0.20 * _scaled(score.metric("mfcc_distribution").value, MFCC_SCALE)
+            + 0.10 * _scaled(score.metric("log_spectral_db").value, LOG_SPECTRAL_SCALE)
+        )
+        score.notes.append(
+            "Performance comparison: the candidate was rendered from the "
+            "record's own notes on its own clock, so each moment is compared "
+            "with the same moment of the record. Still a ranking - the record's "
+            "guitar is not yours - but a much finer one than a distribution."
         )
     else:
         score.composite = (

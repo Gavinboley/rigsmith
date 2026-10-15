@@ -9,6 +9,7 @@ get it too.
 from . import (  # noqa: F401
     captures,
     device,
+    learn,
     matching,
     recipes,
     rigs,
@@ -19,6 +20,7 @@ from . import (  # noqa: F401
 __all__ = [
     "captures",
     "device",
+    "learn",
     "matching",
     "recipes",
     "rigs",

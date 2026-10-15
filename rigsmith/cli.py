@@ -25,38 +25,7 @@ from .core.takes import KINDS as TAKE_KINDS
 from .core.takes import ORIGINS as TAKE_ORIGINS
 
 
-def _run(coro):
-    return asyncio.run(coro)
-
-
-def handled(func):
-    """Turn a core error into a styled message and the right exit code."""
-
-    @functools.wraps(func)
-    def wrapper(*args, **kwargs):
-        try:
-            return func(*args, **kwargs)
-        except RigsmithError as exc:
-            click.echo(click.style(exc.message, fg="red"), err=True)
-            if exc.hint:
-                click.echo(exc.hint, err=True)
-            sys.exit(exc.exit_code)
-
-    return wrapper
-
-
-def _audio_label(reference) -> str:
-    """A short name for something that may be a path or a take id."""
-    text = str(reference)
-    stem = Path(text).stem
-    return stem or text
-
-
-def _emit(text: str, *, as_json: bool = False, payload=None) -> None:
-    if as_json and payload is not None:
-        click.echo(json.dumps(payload, indent=2, default=str))
-    else:
-        click.echo(text)
+from .clikit import _audio_label, _emit, _run, handled  # noqa: E402,F401
 
 
 @click.group(context_settings={"help_option_names": ["-h", "--help"]})
@@ -1960,6 +1929,13 @@ def jobs_show(job_id: str) -> None:
     from .core.jobs import get_manager
 
     click.echo(get_manager().get(job_id).render())
+
+
+# Groups that grew past what one file should hold live in rigsmith.commands
+# and attach themselves here, after every helper they import is defined.
+from .commands import register as _register_commands  # noqa: E402
+
+_register_commands(main)
 
 
 if __name__ == "__main__":

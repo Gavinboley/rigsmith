@@ -460,7 +460,9 @@ def parse_mode(value: str):
             hint=(
                 "Use 'aligned' only when target and candidates are the same "
                 "performance (your own DI through each rig). Use "
-                "'distribution' against anything separated from a record."
+                "'performance' when the DI was rendered from the record's own "
+                "notes on its clock (rigsmith learn part). Use 'distribution' "
+                "against anything else separated from a record."
             ),
         ) from None
 

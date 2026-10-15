@@ -97,6 +97,36 @@ class Settings:
         return self.workspace / "research"
 
     @property
+    def profiles_dir(self) -> Path:
+        """Learned guitars: each one's samples, fingerprint and voice model."""
+        return self.workspace / "profiles"
+
+    @property
+    def songs_dir(self) -> Path:
+        """Songs being chased: the mix, its stems, and the map of its parts."""
+        return self.workspace / "songs"
+
+    @property
+    def loop_dir(self) -> Path:
+        """Hardware loop calibrations and the recordings they were made from."""
+        return self.workspace / "loop"
+
+    @property
+    def agents_dir(self) -> Path:
+        """Chat conversations and the agent runs dispatched from them."""
+        return self.workspace / "agents"
+
+    @property
+    def autopilot_dir(self) -> Path:
+        """Autopilot runs: every stage's inputs, outputs and decisions."""
+        return self.workspace / "autopilot"
+
+    @property
+    def app_settings_path(self) -> Path:
+        """Choices made in the app - mode, model endpoints, audio routing."""
+        return self.workspace / "settings.json"
+
+    @property
     def credentials_path(self) -> Path:
         return self.workspace / "credentials.json"
 
@@ -110,6 +140,11 @@ class Settings:
             self.nam_dir,
             self.takes_dir,
             self.research_dir,
+            self.profiles_dir,
+            self.songs_dir,
+            self.loop_dir,
+            self.agents_dir,
+            self.autopilot_dir,
         ):
             path.mkdir(parents=True, exist_ok=True)
         return self.workspace

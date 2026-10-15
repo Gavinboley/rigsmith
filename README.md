@@ -11,7 +11,7 @@ pip install -e ".[all]"
 rigsmith ui
 ```
 
-> **Status: works without hardware; one thing needs it.** Rig authoring, validation, NAM analysis, tone matching, catalog extraction, USB backup, MIDI and the web UI are all done and covered by 762 tests. The Remote Editor's wire protocol still has to be captured against a powered-on Core before `write_rig` can write — everything else runs today. See [docs/PROTOCOL.md](docs/PROTOCOL.md).
+> **Status: works without hardware; one thing needs it.** Rig authoring, validation, NAM analysis, tone matching, catalog extraction, USB backup, MIDI and the web UI are all done and covered by 795 tests. The Remote Editor's wire protocol still has to be captured against a powered-on Core before `write_rig` can write — everything else runs today. See [docs/PROTOCOL.md](docs/PROTOCOL.md).
 
 ---
 
@@ -168,6 +168,35 @@ that has not been through an amp yet. A loop off the pedal has, so it arrives
 labelled as a loop: reamping through one would stack two amps, which sounds
 like neither.
 
+### Teach it your guitar
+
+A take is one recording. A **profile** is the instrument itself, learned:
+play a guided sequence once - four notes a string, or every fret of every
+string - and rigsmith cuts it into labelled notes, measures the guitar (level,
+brightness, hum, tuning), and can then play *any* part on it.
+
+```bash
+rigsmith learn new "LP bridge" --guitar "Les Paul Standard" --pickup bridge
+rigsmith learn guide chromatic --click     # what to play, and a click to play it to
+rigsmith learn from lp-bridge my-di.wav --protocol chromatic
+rigsmith learn show lp-bridge              # which frets it has heard
+
+rigsmith learn part lp-bridge --midi riff.mid --stem stem.wav --region 41.2:58.0 --take
+rigsmith learn part lp-bridge --stem stem.wav --region auto --take   # transcribe instead
+```
+
+`learn part` is the one that matters: the record's guitar part, played on
+*your* guitar, on the record's clock. A tab's MIDI export gives the right
+notes and is warped onto the record's timing; without one, the stem is
+transcribed (exact on single-note parts, approximate on distorted chords,
+and it says how much of the stem its notes explain). Candidates rendered from
+that DI play the same notes at the same moments as the record, so they can be
+scored with `--mode performance` - frame against frame, not just as a
+distribution.
+
+No guitar to hand? `rigsmith learn demo --into demo` walks the whole flow on
+a synthetic string, and says so everywhere it shows up.
+
 ### What it can read
 
 Whatever libsndfile on your machine can: **wav, aiff, flac, ogg, and mp3**
@@ -225,7 +254,7 @@ Ask for a tone. The agent researches the gear, finds an A2 capture, builds the r
     +---------------+---------------+
     |               |               |
   cli.py       mcp/tools/*      web/api.py
-  (click)       (74 tools)       (FastAPI)
+  (click)       (82 tools)       (FastAPI)
 ```
 
 Each surface is a thin adapter: parse input, call core, format output. That rule exists because the first version broke it — orchestration lived inside the MCP tools, so anything not reachable from a tool was reachable from nowhere, and whole subsystems ended up built and unwired.

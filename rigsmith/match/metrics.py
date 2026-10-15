@@ -45,6 +45,15 @@ class ComparisonMode(str, Enum):
     DISTRIBUTION = "distribution"
     """Different performances. Only aggregate character can be compared."""
 
+    PERFORMANCE = "performance"
+    """The same notes at the same moments, played on a different instrument.
+
+    What a part rendered from the record's own notes gives you (see
+    :mod:`rigsmith.core.parts`): not the same waveform - so sample-wise error
+    is still meaningless - but the same chug at the same second, so frame
+    can be compared with frame. Finer than a distribution, coarser than an
+    aligned null test."""
+
 
 @dataclass
 class MetricResult:
@@ -560,3 +569,67 @@ def render_band_differences(
         "treble taken off it. Change one thing and measure again."
     )
     return "\n".join(lines)
+
+
+# --------------------------------------------------------------------------
+# performance-aligned
+# --------------------------------------------------------------------------
+
+#: How far a frame may be matched off its own time, for onset jitter between
+#: the record and a part rendered from its transcription.
+PERFORMANCE_SHIFT_S = 0.05
+
+
+def log_mel_frames(
+    signal: np.ndarray, sample_rate: int, *, n_fft: int = 2048, hop: int = 512, bands: int = 64
+) -> np.ndarray:
+    """Frames x bands, dB, 60 Hz - 12 kHz."""
+    magnitude = _stft_magnitude(to_mono(signal), n_fft, hop)
+    if not len(magnitude):
+        return np.zeros((0, bands))
+    filters = mel_filterbank(sample_rate, n_fft, n_mels=bands, fmin=60.0, fmax=min(12000.0, sample_rate / 2))
+    power = (magnitude ** 2) @ filters.T
+    return 10 * np.log10(power + EPSILON)
+
+
+def performance_distance(
+    target: np.ndarray,
+    candidate: np.ndarray,
+    sample_rate: int,
+    *,
+    max_shift_s: float = PERFORMANCE_SHIFT_S,
+    floor_db: float = FRAME_FLOOR_DB,
+) -> float:
+    """Mean per-frame spectral distance between two renditions of one part, dB.
+
+    Each loud frame of the target is compared with the closest-matching
+    candidate frame within ``max_shift_s`` of it - so a transcription's onset
+    landing a few milliseconds off does not read as a tone difference - and
+    only frames where both are actually sounding count. Lower is closer.
+    """
+    target = normalise_rms(to_mono(target))
+    candidate = normalise_rms(to_mono(candidate))
+    hop = 512
+    t_frames = log_mel_frames(target, sample_rate, hop=hop)
+    c_frames = log_mel_frames(candidate, sample_rate, hop=hop)
+    n = min(len(t_frames), len(c_frames))
+    if n == 0:
+        return float("inf")
+    t_frames, c_frames = t_frames[:n], c_frames[:n]
+
+    t_level = 10 * np.log10(np.sum(10 ** (t_frames / 10), axis=1) + EPSILON)
+    c_level = 10 * np.log10(np.sum(10 ** (c_frames / 10), axis=1) + EPSILON)
+    loud = (t_level > t_level.max() + floor_db) & (c_level > c_level.max() + floor_db)
+    if not loud.any():
+        return float("inf")
+
+    k = max(0, int(round(max_shift_s * sample_rate / hop)))
+    best = np.full(n, np.inf)
+    for shift in range(-k, k + 1):
+        lo, hi = max(0, -shift), min(n, n - shift)
+        if hi <= lo:
+            continue
+        diff = np.mean(np.abs(t_frames[lo:hi] - c_frames[lo + shift : hi + shift]), axis=1)
+        best[lo:hi] = np.minimum(best[lo:hi], diff)
+    values = best[loud & np.isfinite(best)]
+    return float(values.mean()) if len(values) else float("inf")

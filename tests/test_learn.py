@@ -1,0 +1,285 @@
+"""Learning a guitar, and playing parts on it.
+
+Every check here runs against the synthetic plucked string, whose pitches and
+timings are known exactly. That is the point of having it: a segmenter that
+can only be tested with a guitar plugged in is one nobody tests.
+"""
+
+from __future__ import annotations
+
+import numpy as np
+import pytest
+
+pytest.importorskip("scipy", reason="needs pip install 'rigsmith[match]'")
+pytest.importorskip("soundfile", reason="needs pip install 'rigsmith[match]'")
+
+from rigsmith import config  # noqa: E402
+from rigsmith.core import profiles  # noqa: E402
+from rigsmith.core.errors import Conflict, Invalid, NotFound  # noqa: E402
+from rigsmith.learn import align, instrument, midifile, protocols, voice  # noqa: E402
+from rigsmith.learn.pluck import pluck, render_notes  # noqa: E402
+from rigsmith.learn.segment import detect_onsets, segment  # noqa: E402
+from rigsmith.learn.synth import NoteEvent, parse_events, render, shift  # noqa: E402
+from rigsmith.learn.transcribe import transcribe  # noqa: E402
+from rigsmith.match.pitch import _estimate_f0  # noqa: E402
+
+RATE = 48000
+
+
+@pytest.fixture()
+def workspace(tmp_path, monkeypatch):
+    monkeypatch.setenv("RIGSMITH_WORKSPACE", str(tmp_path / "ws"))
+    monkeypatch.delenv("RIGSMITH_READONLY", raising=False)
+    config.set_settings(config.Settings())
+    yield tmp_path
+    config.set_settings(None)
+
+
+def riff(count=16, spacing=0.25, start=0.5, pitches=(40, 43, 45, 47, 45, 43, 52, 50)):
+    return [(start + i * spacing, spacing * 0.9, pitches[i % len(pitches)], 0.8) for i in range(count)]
+
+
+# --------------------------------------------------------------------------
+# the instrument
+# --------------------------------------------------------------------------
+
+
+def test_tunings_put_strings_where_a_guitarist_numbers_them():
+    standard = instrument.tuning("E standard")
+    assert standard.open_midi(6) == 40  # low E
+    assert standard.open_midi(1) == 64  # high E
+    # The high E is four places on the neck below the 15th fret.
+    assert instrument.Position(1, 0) in standard.positions(64)
+    assert len(standard.positions(64, max_fret=15)) == 4
+
+
+def test_a_tuning_can_be_written_as_notes_either_way_round():
+    low_first = instrument.tuning("D2 A2 D3 G3 B3 E4")
+    high_first = instrument.tuning("E4 B3 G3 D3 A2 D2")
+    assert low_first.open_strings == high_first.open_strings
+    assert instrument.tuning("drop d").name == "drop D"
+    with pytest.raises(Invalid):
+        instrument.tuning("banjo tuning")
+
+
+def test_note_names_round_trip_including_flats():
+    assert instrument.note_to_midi("E2") == 40
+    assert instrument.note_to_midi("Bb1") == instrument.note_to_midi("A#1") == 34
+    assert instrument.midi_to_note(64) == "E4"
+
+
+# --------------------------------------------------------------------------
+# the synthetic string
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("midi", [40, 45.3, 64, 76])
+def test_the_synthetic_string_is_in_tune(midi):
+    note = pluck(midi, 1.0, seed=1)
+    hz, clarity = _estimate_f0(note[int(0.3 * RATE) : int(0.39 * RATE)], RATE)
+    assert clarity > 0.8
+    assert abs(instrument.cents_between(hz, midi)) < 2.0
+
+
+def test_a_harder_pick_is_louder_and_brighter():
+    from rigsmith.learn.segment import _centroid
+
+    soft = pluck(52, 1.0, velocity=0.2, seed=2)
+    hard = pluck(52, 1.0, velocity=1.0, seed=2)
+    assert np.abs(hard).max() > np.abs(soft).max() * 1.5
+    window = slice(0, int(0.05 * RATE))
+    assert _centroid(hard[window], RATE) > _centroid(soft[window], RATE)
+
+
+# --------------------------------------------------------------------------
+# segmenting
+# --------------------------------------------------------------------------
+
+
+def test_every_note_of_a_run_is_found_once():
+    notes = riff(14, spacing=0.8)
+    found = segment(render_notes(notes, seed=3), RATE)
+    assert len(found) == len(notes)
+    assert [f.nearest for f in found] == [n[2] for n in notes]
+
+
+def test_onsets_land_on_the_attack_not_a_frame_early():
+    notes = riff(12, spacing=0.3)
+    detected = np.array(detect_onsets(render_notes(notes, seed=4), RATE))
+    errors = [np.min(np.abs(detected - start)) for start, *_ in notes]
+    assert max(errors) < 0.003
+
+
+def test_a_compressed_distorted_riff_still_shows_its_onsets():
+    notes = riff(24, spacing=0.2375)
+    distorted = np.tanh(render_notes(notes, seed=3) * 20) * 0.3
+    assert len(detect_onsets(distorted, RATE)) >= 23
+
+
+def test_clipping_is_flagged():
+    loud = render_notes(riff(4, spacing=0.6), seed=5) * 20
+    loud = np.clip(loud, -1, 1)
+    assert any("clipped" in n.flags for n in segment(loud, RATE))
+
+
+# --------------------------------------------------------------------------
+# protocols
+# --------------------------------------------------------------------------
+
+
+def test_a_missed_step_is_missing_not_a_shift_of_every_later_label():
+    protocol = protocols.get("quick")
+    played = []
+    t = 0.5
+    for index, step in enumerate(protocol.steps):
+        if index == 5:
+            continue
+        midi = step.midi + (2 if index == 9 else 0)
+        played.append((t, 1.2, midi, 0.75))
+        t += 1.4
+    notes = segment(render_notes(played, seed=2), RATE)
+    result = protocols.align(protocol, notes)
+    assert result.missing == [5]
+    assert [i for i, _ in result.wrong] == [9]
+    protocols.label(protocol, notes, result)
+    assert (notes[0].string, notes[0].fret) == (6, 0)
+    # The note after the missed one keeps its own label.
+    assert notes[5].label == protocol.steps[6].label
+
+
+def test_chromatic_protocol_covers_every_fret_of_every_string():
+    protocol = protocols.get("chromatic", frets=12)
+    assert len(protocol.steps) == 6 * 13
+    assert protocol.steps[0].label == "s6f0 E2"
+    with pytest.raises(Invalid):
+        protocols.get("chromatic", frets=40)
+
+
+# --------------------------------------------------------------------------
+# a profile, end to end
+# --------------------------------------------------------------------------
+
+
+def test_learning_a_protocol_builds_a_playable_profile(workspace):
+    path, protocol = profiles.demo_take("quick")
+    profiles.create("Demo LP", guitar="Demo LP", pickup="bridge")
+    report = profiles.learn("demo-lp", str(path), protocol_id="quick")
+
+    assert report.samples_added == len(protocol.steps)
+    assert report.coverage == 1.0
+    assert report.voice_fitted
+
+    profile = profiles.get("demo-lp")
+    grid = profile.coverage(frets=12)
+    assert grid["filled"] == len(protocol.steps)
+    assert profile.fingerprint.median_peak_db < -3
+    assert abs(profile.fingerprint.tuning_cents or 0) < 5
+
+    # The same recording twice would double its weight.
+    with pytest.raises(Conflict):
+        profiles.learn("demo-lp", str(path), protocol_id="quick")
+
+
+def test_a_rendered_part_says_which_notes_were_really_the_guitar(workspace):
+    path, _ = profiles.demo_take("quick")
+    profiles.create("Demo LP")
+    profiles.learn("demo-lp", str(path), protocol_id="quick")
+
+    out, rendered = profiles.render_text("demo-lp", "0 0.4 E2\n0.5 0.4 A2\n1.0 0.5 E6")
+    assert out.is_file()
+    assert rendered.notes == 3
+    # E2 and A2 were recorded; E6 is past anything the profile heard.
+    assert rendered.voices["sample"] == 2
+    assert rendered.voices["voice"] + rendered.voices["pluck"] == 1
+
+
+def test_a_profile_that_does_not_exist_names_the_ones_that_do(workspace):
+    profiles.create("One")
+    with pytest.raises(NotFound) as caught:
+        profiles.get("two")
+    assert "one" in str(caught.value)
+
+
+def test_rendering_without_a_profile_says_so():
+    rendered = render([NoteEvent(0, 0.5, 45)], None)
+    assert rendered.voices["pluck"] == 1
+    assert any("synthetic" in w for w in rendered.warnings)
+
+
+def test_the_riff_language_reads_sharps_and_comments():
+    events = parse_events("# the intro\n0 0.5 A#2 0.9  # bend it\n0.5 0.5 64")
+    assert [e.midi for e in events] == [46, 64]
+    assert events[0].velocity == 0.9
+    with pytest.raises(Invalid):
+        parse_events("0 E2")
+
+
+def test_shifting_by_resampling_moves_pitch_and_length_together():
+    note = pluck(45, 1.0, seed=3)
+    up = shift(note, 2.0)
+    assert len(up) < len(note)
+    hz, _ = _estimate_f0(up[int(0.25 * RATE) : int(0.34 * RATE)], RATE)
+    assert abs(instrument.cents_between(hz, 47)) < 5
+
+
+def test_the_voice_model_rebuilds_a_note_at_the_right_pitch():
+    model = voice.fit([(pluck(m, 2.0, seed=m), m, 6) for m in (40, 45, 47, 52)], RATE)
+    built = model.synthesize(43, 1.5, string=6, seed=1)
+    hz, clarity = _estimate_f0(built[int(0.3 * RATE) : int(0.39 * RATE)], RATE)
+    assert clarity > 0.8
+    assert abs(instrument.cents_between(hz, 43)) < 3
+
+
+# --------------------------------------------------------------------------
+# from a record
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("drive", [None, 30])
+def test_a_single_note_riff_transcribes_exactly_clean_or_distorted(drive):
+    notes = riff(16)
+    audio = render_notes(notes, seed=1)
+    if drive:
+        audio = np.tanh(audio * drive) * 0.3
+    result = transcribe(audio, RATE)
+    assert result.mode == "monophonic"
+    found = [(round(e.start, 2), int(round(e.midi))) for e in result.events]
+    expected = [(round(start, 2), midi) for start, _, midi, _ in notes]
+    hits = sum(any(abs(s - es) <= 0.03 and m == em for s, m in found) for es, em in expected)
+    assert hits == len(notes)
+    assert len(found) == len(notes)
+
+
+def test_chords_are_heard_as_chords():
+    chords = []
+    t = 0.5
+    for shape in ([40, 47, 52], [45, 52, 57], [43, 50, 55]):
+        chords.extend((t + 0.008 * k, 0.9, m, 0.75) for k, m in enumerate(shape))
+        t += 1.0
+    result = transcribe(render_notes(chords, seed=2), RATE)
+    assert result.mode == "polyphonic"
+    # Every root is found (octave doublings are physically ambiguous).
+    for start, root in ((0.5, 40), (1.5, 45), (2.5, 43)):
+        assert any(abs(e.start - start) < 0.06 and int(round(e.midi)) % 12 == root % 12 for e in result.events)
+
+
+def test_a_midi_file_round_trips():
+    events = [NoteEvent(i * 0.25, 0.2, 40 + i, 0.8) for i in range(8)]
+    tmp = midifile.write(__import__("tempfile").mkdtemp() + "/riff.mid", events, tempo_bpm=100)
+    back = midifile.to_events(midifile.read(tmp))
+    assert [e.midi for e in back] == [e.midi for e in events]
+    assert max(abs(a.start - b.start) for a, b in zip(back, events)) < 0.002
+
+
+@pytest.mark.parametrize("tempo", [0.8, 1.12, 1.25])
+def test_a_tab_at_the_wrong_tempo_is_put_on_the_records_clock(tempo):
+    pitches = [40, 43, 45, 47, 45, 43, 52, 50, 48, 47, 45, 43, 40, 40, 47, 45]
+    tab = [NoteEvent(i * 0.25, 0.22, m, 0.8) for i, m in enumerate(pitches * 2)]
+    truth = [1.3 + e.start * tempo for e in tab]
+    record = np.tanh(render_notes([(t, 0.24, e.midi, 0.8) for t, e in zip(truth, tab)], seed=3) * 20) * 0.3
+
+    result = align.align_events(tab, record, RATE)
+    errors = [abs(e.start - t) for e, t in zip(result.events, truth)]
+    assert np.median(errors) < 0.005
+    assert sum(error > 0.05 for error in errors) <= 0.2 * len(tab)
+    assert result.tempo_ratio == pytest.approx(tempo, rel=0.06)

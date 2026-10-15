@@ -8,7 +8,7 @@ from ...core import matching
 from ...core.jobs import get_manager
 from .._shared import tool
 
-Mode = Literal["aligned", "distribution"]
+Mode = Literal["aligned", "performance", "distribution"]
 
 
 @tool

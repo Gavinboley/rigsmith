@@ -47,6 +47,8 @@ ORIGINS = {
     "looper": "played into the pedal and pulled off its storage",
     "file": "an existing file from somewhere else",
     "mic": "a microphone in front of something",
+    "synth": "rendered from a learned profile - your guitar's notes, arranged by rigsmith",
+    "loop-return": "played through the hardware loop and recorded on the way back",
 }
 
 

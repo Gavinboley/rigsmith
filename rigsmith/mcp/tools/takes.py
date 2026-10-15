@@ -8,7 +8,7 @@ from ...core import devices, takes
 from .._shared import tool
 
 Kind = Literal["di", "wet", "loop", "reference"]
-Origin = Literal["di-box", "usb", "looper", "file", "mic"]
+Origin = Literal["di-box", "usb", "looper", "file", "mic", "synth", "loop-return"]
 
 
 @tool
