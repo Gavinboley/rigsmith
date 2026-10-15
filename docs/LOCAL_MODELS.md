@@ -38,6 +38,14 @@ is reliable function calling over several rounds, not raw chat quality.
 
 Below 4B, multi-step tool use is not reliable enough to be worth it.
 
+Benchmarks say how a model does on somebody else's tools. To see how the one
+you have loaded does on rigsmith's, press **Test it on rigsmith's tools** in
+Settings (or `rigsmith settings check-model`): six everyday requests, each a
+fresh conversation with the assistant's real tools and system prompt, scored
+on whether the first reply calls the right tool with the arguments the
+request named. Nothing is run or changed, so it is safe on any workspace;
+on a 24 GB card it takes about a minute.
+
 The 3.7 / 3.8 flagship and Omni-Flash models are API-only or far too large for
 a desktop; they are not options for local mode. Neither is
 **Qwen3.8-Flash-Next** (open weights since 26 August 2026, an early look at

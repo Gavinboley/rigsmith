@@ -54,6 +54,28 @@ def models(base_url: str | None = None) -> dict:
         return {"models": [], "reachable": False, "error": str(exc).splitlines()[0]}
 
 
+class ModelCheckBody(BaseModel):
+    base_url: str | None = None
+    model: str | None = None
+
+
+@router.post("/model-check")
+def model_check(body: ModelCheckBody) -> dict:
+    """Score a local model on rigsmith's tools - as a job, since it is a minute of inference."""
+    from ...agent import modelcheck
+    from ...agent.providers import OpenAICompatible
+    from ...core.jobs import get_manager
+
+    llm = appsettings.load().local_llm
+    provider = OpenAICompatible(body.base_url or llm.base_url, model=body.model or llm.model, temperature=llm.temperature, thinking=llm.thinking)
+
+    def work(progress):
+        return modelcheck.run(provider, progress=progress).to_dict()
+
+    job = get_manager().submit("check the local model", work)
+    return {"job_id": job.id, "name": job.name}
+
+
 @router.get("/setup")
 def setup() -> dict:
     """The first-run checklist: what is set up, and what each missing piece buys."""

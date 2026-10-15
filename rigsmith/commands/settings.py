@@ -54,6 +54,22 @@ def settings_llm(which, provider, base_url, model, api_key_env, thinking) -> Non
     click.echo(json.dumps(getattr(settings, which).__dict__, indent=2))
 
 
+@group.command("check-model")
+@click.option("--url", "base_url", help="The local server; default: the one in Settings.")
+@click.option("--model", help="A loaded model; default: the one in Settings, or the best loaded.")
+@handled
+def settings_check_model(base_url, model) -> None:
+    """Ask the local model six everyday questions with rigsmith's tools, and score it."""
+    from ..agent import modelcheck
+    from ..agent.providers import OpenAICompatible
+    from ..core import appsettings
+
+    llm = appsettings.load().local_llm
+    provider = OpenAICompatible(base_url or llm.base_url, model=model or llm.model, temperature=llm.temperature, thinking=llm.thinking)
+    click.echo(f"Asking {provider.pick_model()} at {provider.base_url} - nothing is run or changed.")
+    click.echo(modelcheck.run(provider).describe())
+
+
 @group.command("set")
 @click.argument("name")
 @click.argument("value")

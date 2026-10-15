@@ -56,14 +56,17 @@ def _build_server():
     try:  # MCP SDK v2
         from mcp.server.mcpserver import MCPServer
 
+        # The SDK configures the root logger when a server is built, at INFO
+        # by default - and the registry builds one inside the CLI and the
+        # web app too, which then printed a line for every HTTP request.
         return MCPServer(
-            name="rigsmith", version=__version__, instructions=INSTRUCTIONS
+            name="rigsmith", version=__version__, instructions=INSTRUCTIONS, log_level="WARNING"
         )
     except ImportError:
         try:  # MCP SDK v1
             from mcp.server.fastmcp import FastMCP
 
-            return FastMCP("rigsmith", instructions=INSTRUCTIONS)
+            return FastMCP("rigsmith", instructions=INSTRUCTIONS, log_level="WARNING")
         except ImportError as exc:  # pragma: no cover - dependency missing
             raise SystemExit(
                 "The MCP SDK is not installed. Run:  pip install 'rigsmith[mcp]'"

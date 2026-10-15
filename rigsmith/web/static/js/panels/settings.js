@@ -1,6 +1,7 @@
 /* Settings: which mode, which model, which defaults. */
 
 import { api } from "../api.js";
+import { describeJob, track } from "../jobs.js";
 import { $, attempt, clear, el, toast } from "../ui.js";
 
 const PRESETS = [
@@ -61,6 +62,14 @@ async function render() {
   const locModel = el("select", {}, el("option", { value: "", text: "auto - the best loaded model" }));
   if (loc.model) locModel.append(el("option", { value: loc.model, text: loc.model, selected: true }));
   const thinking = el("input", { type: "checkbox", checked: loc.thinking });
+  const checkOut = el("pre", { class: "out", hidden: true });
+  const checkModel = async () => {
+    checkOut.hidden = false;
+    checkOut.textContent = "asking...";
+    const { job_id } = await api.post("/api/settings/model-check", { base_url: locUrl.value, model: locModel.value || null });
+    const result = await track(job_id, { onUpdate: (job) => (checkOut.textContent = describeJob(job)) });
+    checkOut.textContent = result.describe;
+  };
   const detect = async () => {
     const result = await api.get("/api/settings/models", { base_url: locUrl.value });
     const keep = locModel.value;
@@ -78,7 +87,8 @@ async function render() {
       el("h3", { text: "Local model", style: "margin-top:14px" }),
       el("div", { class: "row" }, ...PRESETS.map(([name, url]) => el("button", { class: "btn small", text: name, onclick: () => { locUrl.value = url; detect(); } }))),
       el("div", { class: "form-grid" }, field("Server", locUrl), field("Model", locModel), el("label", { class: "check hint", style: "margin-top:18px" }, thinking, "let it think first (slower, sometimes better)")),
-      el("div", { class: "row" }, el("button", { class: "btn small", text: "Detect loaded models", onclick: () => attempt(detect) }), el("span", { class: "hint", text: "Recommended: Qwen3-30B-A3B-Instruct-2507 or Qwen3.8-27B on 24 GB, Qwen3-8B on 12-16 GB. See docs/LOCAL_MODELS.md." }))
+      el("div", { class: "row" }, el("button", { class: "btn small", text: "Detect loaded models", onclick: () => attempt(detect) }), el("button", { class: "btn small", id: "check-model", text: "Test it on rigsmith's tools", title: "Six everyday questions with the assistant's real tools; scores whether the model calls the right one. Nothing is run or changed.", onclick: () => attempt(checkModel) }), el("span", { class: "hint", text: "Recommended: Qwen3-30B-A3B-Instruct-2507 or Qwen3.8-27B on 24 GB, Qwen3-8B on 12-16 GB. See docs/LOCAL_MODELS.md." })),
+      checkOut
     )
   );
   if (status) {

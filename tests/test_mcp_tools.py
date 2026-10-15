@@ -396,3 +396,10 @@ async def test_what_the_cli_can_do_to_a_song_an_agent_can_too(server, tmp_path):
     with pytest.raises(Exception) as caught:
         await call(server, "resume_autopilot", {"run_id": "stopped-run", "from_stage": "nonsense"})
     assert "no stage" in str(caught.value)
+
+
+def test_building_the_server_does_not_turn_on_request_logging(server):
+    """The SDK set the root logger to INFO, and every HTTP request was printed."""
+    import logging
+
+    assert logging.getLogger().level >= logging.WARNING
