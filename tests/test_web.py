@@ -986,3 +986,25 @@ def test_a_drafts_blocks_come_with_their_readings(client):
     rows = added["readings"]["1"]
     assert ["Gain", "~62% of travel"] in rows, rows
     assert not any(label == "Type" for label, _ in rows), "the model picker is not a control"
+
+
+def test_a_parts_di_says_whose_playing_it_is(client, tmp_path):
+    sf = pytest.importorskip("soundfile")
+    import numpy as np
+
+    from rigsmith.core import songs, takes
+    from rigsmith.core.songs import Part
+
+    made = songs.create("Whose DI")
+    made.parts = [Part("verse-1-stem", 0, "verse", "stem", 0.0, 5.0), Part("chorus-2-stem", 1, "chorus", "stem", 5.0, 10.0)]
+    made.save()
+    for name, origin, scale in (("mine", "di-box", 0.2), ("synth", "synth", 0.1)):
+        path = tmp_path / f"{name}.wav"
+        sf.write(str(path), (scale * np.sin(np.arange(48000) / 48000 * 2 * np.pi * 110)).astype("float32"), 48000)
+        takes.add(path, take_id=name, kind="di", origin=origin, copy=False)
+    made = songs.get(made.song_id)
+    made.part("verse-1-stem").di_take, made.part("chorus-2-stem").di_take = "mine", "synth"
+    made.save()
+    parts = {p["part_id"]: p for p in client.get(f"/api/songs/{made.song_id}").json()["parts"]}
+    assert parts["verse-1-stem"]["di"]["kind"] == "yours" and parts["chorus-2-stem"]["di"]["kind"] == "rendered"
+    assert client.get(parts["verse-1-stem"]["di"]["url"]).status_code == 200

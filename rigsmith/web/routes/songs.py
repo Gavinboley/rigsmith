@@ -59,6 +59,24 @@ def _payload(song) -> dict:
         if path:
             urls[f"layer-{layer}"] = _audio_url(path)
     data["urls"] = urls
+    # Whose playing each part's DI is - autopilot uses yours over a rendering.
+    from ...core import takes
+    from ...core.errors import NotFound
+
+    for part in data.get("parts", []):
+        if not part.get("di_take"):
+            continue
+        try:
+            take = takes.get(part["di_take"])
+        except NotFound:
+            continue
+        _allow_audio(take.path)
+        part["di"] = {
+            "kind": "rendered" if take.origin == "synth" else "yours",
+            "take_id": take.take_id,
+            "url": _audio_url(take.path),
+            "guitar": take.guitar,
+        }
     return data
 
 

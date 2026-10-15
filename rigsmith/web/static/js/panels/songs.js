@@ -315,6 +315,15 @@ function partsGrid() {
       el("div", { class: "p-sketch", text: sketch.summary || "" }),
       part.layer !== "stem" ? el("div", { class: "hint", text: `present ${Math.round(part.presence * 100)}% of its loudest` }) : null,
       part.best ? el("div", { class: "p-best", text: `best so far: ${part.best.label} (${part.best.composite.toFixed(3)}, ${part.best.mode})` }) : null,
+      part.di
+        ? el(
+            "div",
+            { class: "p-di hint" },
+            el("span", { class: `tag ${part.di.kind === "yours" ? "a2" : ""}`, text: part.di.kind === "yours" ? "your take" : "rendered DI" }),
+            el("span", { text: part.di.kind === "yours" ? " autopilot uses it" : ` on ${part.di.guitar || "the synthetic string"}` }),
+            el("button", { class: "btn small ghost", text: "play DI", onclick: (e) => play(part.di.url, e.target) })
+          )
+        : null,
       sketch.suggestions?.length ? el("details", {}, el("summary", { class: "hint", text: "what the measurements suggest" }), el("ul", { class: "hint" }, ...sketch.suggestions.map((s) => el("li", { text: s })))) : null,
       el(
         "div",

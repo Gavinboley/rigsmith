@@ -316,6 +316,7 @@ input:focus, select:focus { outline: 1px solid var(--amber-dim); border-color: v
 .tag.a1   { color: var(--blue);   border-color: #244560; }
 .tag.warn { color: var(--amber);  border-color: var(--amber-dim); }
 .tempo-line { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 4px; }
+.p-di { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
 .tempo-line .btn.small { padding: 2px 7px; }
 .tag.bad  { color: var(--red);    border-color: #5b2723; }
 
