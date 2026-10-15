@@ -118,6 +118,16 @@ def block_settings(block: Block, spec: ModelSpec | None, module: ModelSpec | Non
     return rows, assumed
 
 
+def readings(rig: Rig, catalog: Catalog) -> dict[int, list[tuple[str, str]]]:
+    """Every block's controls as the screen shows them, by slot - for the board."""
+    found = {}
+    for block in rig.blocks:
+        spec = catalog.get(block.model_id)
+        module = catalog.get(spec.selector.split(".", 1)[0]) if spec and spec.selector else None
+        found[block.slot] = block_settings(block, spec, module)[0]
+    return found
+
+
 @dataclass
 class Sheet:
     title: str

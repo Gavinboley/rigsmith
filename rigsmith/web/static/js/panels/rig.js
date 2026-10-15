@@ -36,12 +36,20 @@ function renderMeter(validation) {
   $("#cpu-value").textContent = pct(cpu);
 }
 
+/* The controls as the Core's screen reads them (from the server, which has
+ * the catalog), not as the wire stores them - "Gain 62%", not "GainA 0.62". */
+function readingsFor(block) {
+  const rows = current?.readings?.[String(block.slot)];
+  if (rows) return rows;
+  return Object.entries(block.params || {}).map(([key, value]) => [key, String(value)]);
+}
+
 function paramSummary(block) {
-  const entries = Object.entries(block.params || {});
-  if (!entries.length) return null;
-  return entries
+  const rows = readingsFor(block);
+  if (!rows.length) return null;
+  return rows
     .slice(0, 3)
-    .map(([key, value]) => `${key} ${value}`)
+    .map(([label, value]) => `${label} ${value.replace(" of travel", "")}`)
     .join("  ");
 }
 
@@ -58,7 +66,11 @@ function blockTile(block) {
     el("span", { class: "slot-cat", text: block.category }),
     el("span", { class: "slot-name", text: name }),
     paramSummary(block)
-      ? el("span", { class: "slot-params", text: paramSummary(block) })
+      ? el("span", {
+          class: "slot-params",
+          text: paramSummary(block),
+          title: readingsFor(block).map(([label, value]) => `${label}: ${value}`).join("\n"),
+        })
       : null,
     el(
       "div",

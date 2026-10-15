@@ -496,6 +496,9 @@ def catalog_search(q: str = "", category: str | None = None, limit: int = 60) ->
 
 
 def _draft_payload(draft) -> dict:
+    from ..rig.catalog import get_catalog
+    from ..rig.sheet import readings
+
     result = rigs.validate(draft.draft_id)
     return {
         "draft_id": draft.draft_id,
@@ -504,6 +507,7 @@ def _draft_payload(draft) -> dict:
         "chain": draft.rig.signal_chain(),
         "stereo": draft.rig.is_stereo,
         "free_slots": draft.rig.free_slots,
+        "readings": {str(slot): rows for slot, rows in readings(draft.rig, get_catalog()).items()},
         "validation": {
             "ok": result.ok,
             "estimated_cpu": result.estimated_cpu,

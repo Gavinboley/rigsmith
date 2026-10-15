@@ -978,3 +978,11 @@ def test_a_drafts_tone_sheet_is_text_and_a_printable_page(client):
     assert page.status_code == 200 and page.headers["content-type"].startswith("text/html")
     assert "<h1>Sheet</h1>" in page.text
     assert client.get("/api/drafts/ghost/sheet.html").status_code == 404
+
+
+def test_a_drafts_blocks_come_with_their_readings(client):
+    draft = client.post("/api/drafts", json={"name": "Readings"}).json()
+    added = client.post(f"/api/drafts/{draft['draft_id']}/blocks", json={"category": "amp", "model_id": "Some Amp", "params": {"GainA": 0.62, "Type": 3}}).json()
+    rows = added["readings"]["1"]
+    assert ["Gain", "~62% of travel"] in rows, rows
+    assert not any(label == "Type" for label, _ in rows), "the model picker is not a control"
