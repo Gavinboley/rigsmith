@@ -25,8 +25,9 @@ from ..core import captures, devices, matching, recipes, rigs, workspace
 from ..core.errors import Invalid, NotFound, RigsmithError
 from ..core.jobs import get_manager
 from ..rig.codec import rig_to_dict
+from .plain import PlainRoute
 
-router = APIRouter(prefix="/api")
+router = APIRouter(prefix="/api", route_class=PlainRoute)
 
 
 # --------------------------------------------------------------------------

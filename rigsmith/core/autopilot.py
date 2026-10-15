@@ -343,6 +343,11 @@ def _researched_amps(run: Run) -> list[str]:
     names = []
     for gear in getattr(recipe, "gear", []) or []:
         category = getattr(gear, "category", "")
+        sources = getattr(gear, "sources", []) or []
+        # The measured seed is the record's say-so, not research: counting it
+        # here would label it "named by the research" in the ranking.
+        if sources and all(getattr(source, "kind", "") == "measurement" for source in sources):
+            continue
         if str(getattr(category, "value", category)) in ("amp",):
             for name in (getattr(gear, "resolved_model_id", None), getattr(gear, "model", None), getattr(gear, "name", None)):
                 if name:

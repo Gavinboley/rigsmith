@@ -11,6 +11,7 @@ nothing to do with tone.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
@@ -54,6 +55,14 @@ class LoopRoute:
     def same_device(self) -> bool:
         return self.output_device == self.input_device
 
+    @property
+    def same_clock(self) -> bool:
+        """One box, even when Windows lists its input and output separately."""
+        if self.same_device:
+            return True
+        tag = hardware_tag(self.output_device)
+        return tag is not None and tag == hardware_tag(self.input_device)
+
     def check(self) -> list[str]:
         """What is wrong or worth knowing about this wiring."""
         problems: list[str] = []
@@ -72,7 +81,7 @@ class LoopRoute:
                     "channels 1-2 to the Core bypass the rig; sending the DI there "
                     "mixes an unprocessed copy into the result"
                 )
-        if not self.same_device:
+        if not self.same_clock:
             problems.append(
                 "output and input are different devices, so their clocks drift; "
                 "each capture is resampled from its sync marks to undo it"
@@ -169,66 +178,186 @@ class RouteStore:
         self._save(data)
 
 
+#: Host APIs in the order they are worth using for a loop. Windows lists
+#: every device once per API; WASAPI is the one that neither resamples
+#: silently (MME, DirectSound) nor drops the box's name (WDM-KS).
+HOSTAPI_PREFERENCE = ("ASIO", "Core Audio", "Windows WASAPI", "ALSA", "MME", "Windows DirectSound", "Windows WDM-KS")
+
+#: Names that are the operating system's mixer, not a box with jacks.
+GENERIC = re.compile(r"sound mapper|primary sound|stereo mix|what u hear|^default$|^sysdefault|^pulse|^pipewire", re.I)
+#: Ports that carry the computer's own audio back, not a cable.
+LOOPBACK = re.compile(r"loopback|stereo mix|what u hear|monitor of", re.I)
+INPUT_PORT = re.compile(r"analog|analogue|input|line|mic|inst|\bin\b", re.I)
+OUTPUT_PORT = re.compile(r"playback 1|output 1|analog|analogue|line out|main|speakers|monitor|out", re.I)
+
+
+def hardware_tag(name: str) -> str | None:
+    """The box a Windows device name belongs to: ``Analog 1/2 (E2x2)`` -> ``E2x2``.
+
+    WDM-KS repeats the port instead (``Analog 1/2 (Analog 1/2)``), which says
+    nothing about the box, so that is no tag.
+    """
+    match = re.match(r"^(.*?)\s*\(([^()]+)\)\s*$", name or "")
+    if not match or match.group(1).strip().lower() == match.group(2).strip().lower():
+        return None
+    return match.group(2).strip()
+
+
+def _rank(hostapi: str | None) -> int:
+    return HOSTAPI_PREFERENCE.index(hostapi) if hostapi in HOSTAPI_PREFERENCE else len(HOSTAPI_PREFERENCE)
+
+
+def hardware(devices) -> list[dict]:
+    """The boxes behind the device list, one entry each.
+
+    Windows shows a two-in, six-out interface as seven devices four times
+    over; this is the view a person thinks in - the box, its ports, and the
+    host APIs it can be reached through.
+    """
+    boxes: dict[str, dict] = {}
+    for device in devices:
+        if GENERIC.search(device.name):
+            continue
+        tag = hardware_tag(device.name)
+        if tag is None and device.hostapi == "Windows WDM-KS":
+            continue  # the same ports again, without the box's name
+        key = tag or device.name
+        box = boxes.setdefault(key, {"name": key, "inputs": [], "outputs": [], "hostapis": [], "headrush": False})
+        port = device.name if tag is None else device.name[: device.name.rfind("(")].strip()
+        if device.inputs and port not in box["inputs"]:
+            box["inputs"].append(port)
+        if device.outputs and port not in box["outputs"]:
+            box["outputs"].append(port)
+        if device.hostapi and device.hostapi not in box["hostapis"]:
+            box["hostapis"].append(device.hostapi)
+        box["headrush"] = box["headrush"] or "headrush" in device.name.lower()
+    for box in boxes.values():
+        box["hostapis"].sort(key=_rank)
+    return sorted(boxes.values(), key=lambda b: (not b["headrush"], not (b["inputs"] and b["outputs"]), b["name"].lower()))
+
+
+def _pairs(devices) -> list[tuple[str, object, object]]:
+    """(box, input device, output device) for boxes Windows splits in two.
+
+    One host API per box - the best one that has both directions - and the
+    ports a cable would be in: the first analog input, the first main output,
+    never a loopback.
+    """
+    found = []
+    by_tag: dict[str, list] = {}
+    for device in devices:
+        tag = hardware_tag(device.name)
+        if tag and not GENERIC.search(device.name):
+            by_tag.setdefault(tag, []).append(device)
+    for tag, members in by_tag.items():
+        for hostapi in sorted({d.hostapi for d in members}, key=_rank):
+            here = [d for d in members if d.hostapi == hostapi]
+            ins = [d for d in here if d.inputs and not LOOPBACK.search(d.name)]
+            outs = [d for d in here if d.outputs and not LOOPBACK.search(d.name)]
+            if not ins or not outs:
+                continue
+            ins.sort(key=lambda d: (not INPUT_PORT.search(d.name), d.name))
+            outs.sort(key=lambda d: (not OUTPUT_PORT.search(d.name), d.name))
+            found.append((tag, ins[0], outs[0]))
+            break
+    return found
+
+
+def _rate(device) -> int:
+    """The box's own rate when it is one the Core speaks - so nothing resamples."""
+    rate = int(round(getattr(device, "sample_rate", 0) or 0))
+    return rate if rate in (44100, 48000, 96000) else 48000
+
+
+def _slug(name: str) -> str:
+    return "".join(ch if ch.isalnum() else "-" for ch in name.lower()).strip("-")[:24]
+
+
 def suggest(devices) -> list[LoopRoute]:
     """Routes that make sense for the devices that are actually connected."""
+    devices = [d for d in devices if not GENERIC.search(d.name)]
+    devices.sort(key=lambda d: _rank(d.hostapi))
     suggestions: list[LoopRoute] = []
-    cores = [d for d in devices if d.looks_like_headrush and d.inputs >= 2 and d.outputs >= CORE_REAMP_OUTPUT]
-    interfaces = [d for d in devices if not d.looks_like_headrush and d.inputs >= 1 and d.outputs >= 1]
     backend = "virtual" if any(d.hostapi == "Virtual" for d in devices) else "sounddevice"
 
-    # One entry per device name - Windows lists each device once per host API.
-    def unique(items):
-        seen, out = set(), []
-        for item in items:
-            if item.name not in seen:
-                seen.add(item.name)
-                out.append(item)
-        return out
+    # A box is (name, input device, output device, host API); a box Windows
+    # lists as one device has the same device on both sides.
+    boxes = []
+    seen: set[str] = set()
+    for device in devices:
+        if device.inputs >= 1 and device.outputs >= 1 and device.name not in seen:
+            seen.add(device.name)
+            boxes.append((device.name, device, device))
+    covered = {hardware_tag(name) or name for name, _, _ in boxes}
+    for tag, inp, out in _pairs(devices):
+        if tag not in covered:
+            covered.add(tag)
+            boxes.append((tag, inp, out))
 
-    for core in unique(cores):
+    def is_core(box) -> bool:
+        name, inp, out = box
+        return "headrush" in f"{name} {inp.name} {out.name}".lower()
+
+    cores = [b for b in boxes if is_core(b) and b[1].inputs >= 2 and b[2].outputs >= CORE_REAMP_OUTPUT]
+    interfaces = [b for b in boxes if not is_core(b)]
+
+    for name, inp, out in cores[:1]:
         suggestions.append(
             LoopRoute(
                 route_id="core-usb",
                 kind="usb-reamp",
-                output_device=core.name,
+                output_device=out.name,
                 output_channels=[CORE_REAMP_OUTPUT],
-                input_device=core.name,
+                input_device=inp.name,
                 input_channels=list(CORE_WET_INPUTS),
-                hostapi=core.hostapi,
+                hostapi=out.hostapi,
+                sample_rate=_rate(out),
                 note="Set the Core's USB Mode to Reamp. All digital, one clock.",
                 backend=backend,
             )
         )
-    for interface in unique(interfaces)[:2]:
-        slug = "".join(ch if ch.isalnum() else "-" for ch in interface.name.lower()).strip("-")[:24]
+    for name, inp, out in interfaces[:2]:
+        slug = _slug(name)
         suggestions.append(
             LoopRoute(
                 route_id=f"analog-{slug}",
                 kind="analog",
-                output_device=interface.name,
+                output_device=out.name,
                 output_channels=[1],
-                input_device=interface.name,
+                input_device=inp.name,
                 input_channels=[1],
-                hostapi=interface.hostapi,
-                note="Output 1 to the Core's guitar input (a reamp box if you have one); "
+                hostapi=out.hostapi,
+                sample_rate=_rate(out),
+                note=f"{name} output 1 to the Core's guitar input (a reamp box if you have one); "
                 "the Core's 1/4\" output L back to input 1.",
                 backend=backend,
             )
         )
-        for core in unique(cores)[:1]:
+        for core_name, core_in, _ in cores[:1]:
+            if core_in.hostapi != out.hostapi and backend != "virtual":
+                continue  # two streams on two host APIs is asking for trouble
+            note = (
+                "Output 1 to the Core's guitar input, recorded over the Core's USB. "
+                "Channel 5 shows the level the Core actually received."
+            )
+            if _rate(out) != _rate(core_in):
+                note += (
+                    f" {name} runs at {_rate(out)} Hz and the Core at {_rate(core_in)} Hz - "
+                    "set both to the same rate in the system's sound settings first."
+                )
             suggestions.append(
                 LoopRoute(
                     route_id=f"hybrid-{slug}",
                     kind="hybrid",
-                    output_device=interface.name,
+                    output_device=out.name,
                     output_channels=[1],
-                    input_device=core.name,
+                    input_device=core_in.name,
                     input_channels=list(CORE_WET_INPUTS),
-                    reference_device=core.name,
+                    reference_device=core_in.name,
                     reference_channel=CORE_DRY_INPUT,
-                    hostapi=interface.hostapi,
-                    note="Output 1 to the Core's guitar input, recorded over the Core's USB. "
-                    "Channel 5 shows the level the Core actually received.",
+                    hostapi=out.hostapi,
+                    sample_rate=_rate(core_in),
+                    note=note,
                     backend=backend,
                 )
             )

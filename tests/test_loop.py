@@ -175,3 +175,31 @@ def test_no_route_says_how_to_make_one(workspace):
     with pytest.raises(NotFound) as caught:
         loop.get_route()
     assert "loop suggest" in caught.value.hint
+
+
+def test_a_box_windows_splits_in_two_is_still_one_suggestion():
+    from rigsmith.loop.backend import DeviceInfo
+    from rigsmith.loop.routes import hardware
+
+    listed = []
+    for api in ("MME", "Windows WASAPI", "Windows WDM-KS"):
+        for name, ins, outs in (("Analog 1/2", 2, 0), ("Loopback 1/2", 2, 0), ("Playback 1/2", 0, 2), ("Playback 3/4", 0, 2)):
+            label = f"{name} ({name})" if api == "Windows WDM-KS" else f"{name} (E2x2)"
+            listed.append(DeviceInfo(label, len(listed), ins, outs, 44100.0, api))
+    listed.insert(0, DeviceInfo("Microsoft Sound Mapper - Input", 99, 2, 0, 44100.0, "MME"))
+
+    (route,) = suggest(listed)
+    assert route.kind == "analog"
+    assert (route.output_device, route.input_device) == ("Playback 1/2 (E2x2)", "Analog 1/2 (E2x2)")
+    assert route.hostapi == "Windows WASAPI" and route.sample_rate == 44100
+    assert route.same_clock and not any("drift" in p for p in route.check())
+
+    (box,) = hardware(listed)
+    assert box["name"] == "E2x2" and box["inputs"] == ["Analog 1/2", "Loopback 1/2"]
+    assert box["hostapis"][0] == "Windows WASAPI"
+
+    # A Core that Windows splits the same way gets its USB reamp route.
+    listed += [DeviceInfo("Input 1-6 (HeadRush Core)", 200, 6, 0, 48000.0, "Windows WASAPI"), DeviceInfo("Output 1-4 (HeadRush Core)", 201, 0, 4, 48000.0, "Windows WASAPI")]
+    kinds = {r.kind: r for r in suggest(listed)}
+    assert kinds["usb-reamp"].output_device == "Output 1-4 (HeadRush Core)"
+    assert "same rate" in kinds["hybrid"].note

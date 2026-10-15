@@ -4,14 +4,14 @@
 
 Three ways in, all over the same core: a **web UI**, a **CLI**, and an **MCP server** so an AI agent can do the slow parts for you.
 
-The web UI has seven panels: **Research** (the recipe, with every claim's source and confidence), **Rig** (a 14-slot pedalboard you drag), **My playing** (your own takes, labelled with the guitar that made them), **Captures**, **Match** (waveforms and blind A/B), **Device**, and **Workspace**. They hand work to each other: an unresolved amp goes looking for a capture, a compiled recipe opens as a rig, a rig goes off to be measured.
+The web UI is grouped the way the work goes. **Chase a tone**: **Autopilot** (a song in, a draft rig and a listening test out, every decision shown), **Songs** (the record mapped into sections and guitar layers - pick the part you are chasing) and **Research** (the recipe, with every claim's source and confidence). **Your gear**: **Guitar lab** (teach it your guitar with a guided, clicked session, then play any riff on it), **My playing** and **Captures**. **Build and test**: **Rig** (a 14-slot pedalboard you drag), **Match** (waveforms and blind A/B), **Tune** (let it turn the knobs, and see the search) and **Loop** (the real Core between an output and an input). Then **Device**, **Workspace** and **Settings** (accuracy or local mode, and which model answers). An **Ask** drawer on every page is a chat with agents that can use all of it. The panels hand work to each other: a chosen part goes to the tuner, an unresolved amp goes looking for a capture, a compiled recipe opens as a rig.
 
 ```bash
 pip install -e ".[all]"
 rigsmith ui
 ```
 
-> **Status: works without hardware; one thing needs it.** Rig authoring, validation, NAM analysis, tone matching, catalog extraction, USB backup, MIDI and the web UI are all done and covered by 856 tests. The Remote Editor's wire protocol still has to be captured against a powered-on Core before `write_rig` can write — everything else runs today. See [docs/PROTOCOL.md](docs/PROTOCOL.md).
+> **Status: everything runs today.** Rig authoring, validation, NAM analysis, tone matching, catalog extraction, USB backup, MIDI, guitar learning, song maps, the hardware loop, the tuner, autopilot, the chat and the web UI are covered by 866 tests. The Remote Editor protocol has been captured against a real Core and a rig written to it and read back exactly - see [docs/PROTOCOL.md](docs/PROTOCOL.md). What still wants hardware is *measuring*: the loop and the blind A/B need the Core and an interface plugged in.
 
 ---
 
@@ -197,6 +197,12 @@ distribution.
 No guitar to hand? `rigsmith learn demo --into demo` walks the whole flow on
 a synthetic string, and says so everywhere it shows up.
 
+To hear a riff on a learned guitar (`rigsmith learn play`, or the Guitar lab),
+type it the way you would hum it: `@140 E2 G2 A2:4 (E2+B2+E3):2 - (A2 A#2)x2 A2!`
+- an eighth note unless `:4`, `:16` or a dotted `:8.` says otherwise, `+`
+stacks a chord, `-` rests, `x2` repeats, `!` accents. Exact timings work too:
+one `start duration note [velocity]` per line.
+
 ### Map the song, then pick the part
 
 A track is not one tone - the clean intro, the double-tracked verse and the
@@ -236,7 +242,7 @@ through whatever rig is loaded, and comes back in.
 
 ```bash
 rigsmith loop suggest                 # routes that fit what is plugged in
-rigsmith loop suggest --adopt analog-focusrite-usb-audio
+rigsmith loop suggest --adopt analog-e2x2
 rigsmith loop tone                    # is anything actually connected?
 rigsmith loop calibrate --profile lp-bridge --direct guitar-straight-in
 rigsmith loop reamp cherub-riff-di --label jcm800-try --take
@@ -251,6 +257,12 @@ actually received). Every capture carries sync marks at both ends, found
 again by GCC-PHAT, so latency, polarity and clock drift are measured on
 every pass rather than trusted from an old calibration - and the return comes
 back on the DI's own timeline, ready for a sample-aligned comparison.
+
+Windows lists one interface as a handful of devices per host API -
+`Analog 1/2 (E2x2)` in, `Playback 1/2 (E2x2)` out, four times over.
+`loop suggest` pairs them back into one box on one clock, prefers WASAPI
+(which neither resamples behind your back like MME nor drops the box's name
+like WDM-KS), skips loopback ports, and runs at the box's own sample rate.
 
 Calibration matters more than it looks: an interface's line output is far
 hotter than a pickup, so an uncalibrated reamp drives the amp like a guitar

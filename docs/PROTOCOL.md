@@ -1,6 +1,15 @@
 # The HeadRush Remote Editor protocol
 
-**Status: not yet captured.** This document records what is established from the vendor's own documentation, what is unknown, and how `rigsmith` goes about closing the gap. It will be updated with real endpoint data once capture has run against hardware.
+**Status: captured and verified against a Core.** The verified map is [`rigsmith/protocol/maps/headrush-core.json`](../rigsmith/protocol/maps/headrush-core.json) (`verified: true`); every method signature in it was read from the device's own declarations, and a full rig was written with it and read back with zero mismatches. The sections after this one are kept as the record of how that was reached.
+
+## What the capture found
+
+- **Pairing, not passwords.** `POST /api/auth` starts a pairing; the person at the hardware accepts it with a PIN shown on the device, and the reply sets a session cookie. rigsmith keeps that cookie so the next process is still paired. The server identifies as `AZ0X Web Server`.
+- **An object tree, not a REST API.** Everything lives under `/api/v1` as nodes rooted at `/Evil`: `GET /subtree{node}` (metadata, methods, live values), `GET /object-meta{node}` (types, ranges, option lists), `GET`/`PUT /object-properties{node}` (live values), and `POST /object-method{node}/{method}` (calls, answered in `methodReturnValue`).
+- **A rig is whatever is loaded.** There is no rig resource to post. Building one is: `Rigs/makeNewRig` (with `makeNewRigConfirm` if the loaded rig is dirty), set `Engine/Patch/Chain` `ModuleType1..14` to module-table indices, set each block's properties, then `Rigs/saveRigAs` under a name.
+- **Values are 0-1 on the wire.** The minimum and maximum a node publishes are its display range. The taper between the two is not published, so `protocol/calibrate.py` measures it per control.
+- **Every block type exists twice** (`Amp` and `Amp 2`), so a rig can hold two of anything; the second is addressed by its own node.
+- `Blocks/serializeBlock` returns a block's whole state as JSON in display units - the cheapest read-only snapshot of a block before a write.
 
 There is, as far as public sources show, no existing documentation of this protocol anywhere — no published API, no third-party editor for the Prime/Core generation, and no reverse-engineering write-up. So this starts from zero.
 

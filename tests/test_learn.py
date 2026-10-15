@@ -214,6 +214,18 @@ def test_the_riff_language_reads_sharps_and_comments():
         parse_events("0 E2")
 
 
+def test_the_quick_form_counts_beats():
+    events = parse_events("# a riff\n@120 E2 G2:4 (E2+B2)x2 - A2! E2' x2")
+    starts = [round(e.start, 3) for e in events]
+    assert starts == [0.0, 0.25, 0.75, 0.75, 1.0, 1.0, 1.5, 1.75, 2.0]
+    assert [e.midi for e in events][:4] == [40, 43, 40, 47]
+    assert events[6].velocity == 0.95 and events[7].velocity == 0.4
+    assert round(parse_events("@60 E2:8. G2")[1].start, 3) == 0.75
+    for bad in ("E2:7", "(E2 G2", "E2 H9"):
+        with pytest.raises(Invalid):
+            parse_events(bad)
+
+
 def test_shifting_by_resampling_moves_pitch_and_length_together():
     note = pluck(45, 1.0, seed=3)
     up = shift(note, 2.0)

@@ -17,24 +17,107 @@
     <span class="brand-sub">HeadRush Core</span>
   </div>
 
-  <nav class="tabs" id="tabs">
-    <button class="tab" data-panel="recipes">Research</button>
-    <button class="tab" data-panel="rig">Rig</button>
-    <button class="tab" data-panel="takes">My playing</button>
-    <button class="tab" data-panel="captures">Captures</button>
-    <button class="tab" data-panel="match">Match</button>
-    <button class="tab" data-panel="device">Device</button>
-    <button class="tab" data-panel="workspace">Workspace</button>
-  </nav>
-
   <div class="status" id="status-cluster">
+    <button class="pill mode-pill" id="pill-mode" title="Accuracy or local mode - click to change">mode</button>
     <span class="pill" id="pill-device" title="Device connection">device</span>
     <span class="pill" id="pill-catalog" title="Model catalog">catalog</span>
     <span class="pill" id="pill-jobs" title="Background jobs" hidden>jobs</span>
+    <button class="btn small chat-toggle" id="chat-toggle" title="Ask the assistant (Ctrl+K)">Ask</button>
   </div>
 </header>
 
+<div class="shell">
+<nav class="tabs sidebar" id="tabs" aria-label="Sections">
+  <div class="nav-group">Chase a tone</div>
+  <button class="tab" data-panel="autopilot">Autopilot</button>
+  <button class="tab" data-panel="songs">Songs</button>
+  <button class="tab" data-panel="recipes">Research</button>
+
+  <div class="nav-group">Your gear</div>
+  <button class="tab" data-panel="guitar">Guitar lab</button>
+  <button class="tab" data-panel="takes">My playing</button>
+  <button class="tab" data-panel="captures">Captures</button>
+
+  <div class="nav-group">Build and test</div>
+  <button class="tab" data-panel="rig">Rig</button>
+  <button class="tab" data-panel="match">Match</button>
+  <button class="tab" data-panel="tune">Tune</button>
+  <button class="tab" data-panel="loop">Loop</button>
+
+  <div class="nav-group">System</div>
+  <button class="tab" data-panel="device">Device</button>
+  <button class="tab" data-panel="workspace">Workspace</button>
+  <button class="tab" data-panel="settings">Settings</button>
+</nav>
+
 <main id="panels">
+
+  <!-- ================= AUTOPILOT ================= -->
+  <section class="panel" data-panel="autopilot" hidden>
+    <div class="panel-head">
+      <h2>Autopilot</h2>
+      <span class="hint">A song in, a rig and a listening test out. Nothing is written to the device without you.</span>
+    </div>
+    <div class="card hero" id="ap-form"></div>
+    <div id="ap-current"></div>
+    <div class="card">
+      <h3>Past runs</h3>
+      <div id="ap-runs" class="list"></div>
+    </div>
+  </section>
+
+  <!-- ================= SONGS ================= -->
+  <section class="panel" data-panel="songs" hidden>
+    <div class="panel-head">
+      <div class="draft-picker">
+        <select id="song-select" aria-label="Song"></select>
+        <button class="btn" id="song-new">New song</button>
+        <button class="btn ghost danger" id="song-delete">Delete</button>
+      </div>
+      <span class="hint">The record, its stems, and a map of its parts - pick the part you are chasing.</span>
+    </div>
+    <div id="song-body"></div>
+  </section>
+
+  <!-- ================= GUITAR LAB ================= -->
+  <section class="panel" data-panel="guitar" hidden>
+    <div class="panel-head">
+      <div class="draft-picker">
+        <select id="profile-select" aria-label="Guitar profile"></select>
+        <button class="btn" id="profile-new">New guitar</button>
+        <button class="btn ghost danger" id="profile-delete">Delete</button>
+      </div>
+      <span class="hint">Teach rigsmith your guitar once; then it can play any part on it.</span>
+    </div>
+    <div id="guitar-body"></div>
+  </section>
+
+  <!-- ================= TUNE ================= -->
+  <section class="panel" data-panel="tune" hidden>
+    <div class="panel-head">
+      <h2>Tune</h2>
+      <span class="hint">Turn a rig's knobs towards a target by listening - offline, or live on the Core through the loop.</span>
+    </div>
+    <div id="tune-body"></div>
+  </section>
+
+  <!-- ================= LOOP ================= -->
+  <section class="panel" data-panel="loop" hidden>
+    <div class="panel-head">
+      <h2>Hardware loop</h2>
+      <span class="hint">Interface out, into the Core, and back - aligned to the sample on every pass.</span>
+    </div>
+    <div id="loop-body"></div>
+  </section>
+
+  <!-- ================= SETTINGS ================= -->
+  <section class="panel" data-panel="settings" hidden>
+    <div class="panel-head">
+      <h2>Settings</h2>
+      <span class="hint">Accuracy or local mode, which model runs the agents, and the defaults everything starts from.</span>
+    </div>
+    <div id="settings-body"></div>
+  </section>
 
   <!-- ================= RIG ================= -->
   <section class="panel" data-panel="rig">
@@ -468,6 +551,28 @@
   </section>
 
 </main>
+
+<aside class="chat-drawer" id="chat-drawer" hidden aria-label="Assistant">
+  <div class="chat-head">
+    <select id="chat-select" aria-label="Conversation"></select>
+    <select id="chat-role" aria-label="Agent role" title="Who you are talking to"></select>
+    <button class="btn small" id="chat-new" title="A new conversation">New</button>
+    <button class="btn small ghost" id="chat-close" title="Close (Esc)">Close</button>
+  </div>
+  <div class="chat-provider hint" id="chat-provider"></div>
+  <div class="chat-log" id="chat-log"></div>
+  <div class="chat-approvals" id="chat-approvals"></div>
+  <form class="chat-input" id="chat-form">
+    <textarea id="chat-text" rows="2" placeholder="Ask anything - 'map Going Under and find the verse riff', 'tune my rig against the solo'..."></textarea>
+    <div class="row">
+      <label class="hint check"><input type="checkbox" id="chat-writes"> let it change the device without asking</label>
+      <span class="grow"></span>
+      <button type="button" class="btn small ghost" id="chat-stop" hidden>Stop</button>
+      <button type="submit" class="btn primary small" id="chat-send">Send</button>
+    </div>
+  </form>
+</aside>
+</div>
 
 <div class="toasts" id="toasts"></div>
 

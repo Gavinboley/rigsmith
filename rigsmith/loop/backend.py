@@ -70,6 +70,11 @@ class AudioBackend:
         if hostapi:
             preferred = [d for d in candidates if d.hostapi == hostapi]
             candidates = preferred or candidates
+        else:
+            from .routes import HOSTAPI_PREFERENCE
+
+            order = {api: i for i, api in enumerate(HOSTAPI_PREFERENCE)}
+            candidates.sort(key=lambda d: order.get(d.hostapi, len(order)))
         if not candidates:
             known = "\n".join(f"  {d.describe()}" for d in self.devices())
             raise Unavailable(
@@ -169,6 +174,17 @@ class SoundDeviceBackend(AudioBackend):
             )
         return found
 
+    def _extra(self, device: DeviceInfo, sample_rate) -> object | None:
+        """WASAPI's shared mode refuses any rate but the device's own; ask
+        Windows to convert rather than fail. Routes suggested here already run
+        at the device's rate, so this only catches ones set up by hand."""
+        if device.hostapi == "Windows WASAPI" and int(round(device.sample_rate)) != int(sample_rate):
+            try:
+                return self.sd.WasapiSettings(auto_convert=True)
+            except (AttributeError, TypeError):  # an older sounddevice
+                return None
+        return None
+
     def _mapping(self, channels) -> list[int]:
         mapping = [int(c) for c in channels]
         if not mapping or min(mapping) < 1:
@@ -191,6 +207,7 @@ class SoundDeviceBackend(AudioBackend):
                 input_mapping=in_map,
                 output_mapping=out_map,
                 blocking=True,
+                extra_settings=self._extra(out_dev, sample_rate),
             )
             return np.asarray(recorded, dtype=np.float64)
         return self._two_streams(playback, out_dev, in_dev, out_map, in_map, sample_rate)
@@ -209,7 +226,10 @@ class SoundDeviceBackend(AudioBackend):
 
         def capture():
             try:
-                data = sd.rec(frames + sample_rate // 2, samplerate=sample_rate, device=in_dev.index, mapping=in_map, blocking=True)
+                data = sd.rec(
+                    frames + sample_rate // 2, samplerate=sample_rate, device=in_dev.index, mapping=in_map,
+                    blocking=True, extra_settings=self._extra(in_dev, sample_rate),
+                )
                 recorded["data"] = np.asarray(data, dtype=np.float64)
             except BaseException as exc:  # surfaced below
                 errors.append(exc)
@@ -217,7 +237,7 @@ class SoundDeviceBackend(AudioBackend):
         thread = threading.Thread(target=capture, daemon=True)
         thread.start()
         time.sleep(0.05)
-        sd.play(playback, samplerate=sample_rate, device=out_dev.index, mapping=out_map, blocking=True)
+        sd.play(playback, samplerate=sample_rate, device=out_dev.index, mapping=out_map, blocking=True, extra_settings=self._extra(out_dev, sample_rate))
         thread.join(timeout=len(playback) / sample_rate + 5)
         if errors:
             raise Unavailable(f"recording from {in_dev.name} failed: {errors[0]}")
@@ -228,7 +248,7 @@ class SoundDeviceBackend(AudioBackend):
     def record(self, seconds, *, input_device, input_channels, sample_rate, hostapi=None):
         in_map = self._mapping(input_channels)
         device = self.find(input_device, hostapi=hostapi, need_inputs=max(in_map))
-        data = self.sd.rec(int(seconds * sample_rate), samplerate=sample_rate, device=device.index, mapping=in_map, blocking=True)
+        data = self.sd.rec(int(seconds * sample_rate), samplerate=sample_rate, device=device.index, mapping=in_map, blocking=True, extra_settings=self._extra(device, sample_rate))
         return np.asarray(data, dtype=np.float64)
 
     def play(self, audio, *, output_device, output_channels, sample_rate, hostapi=None) -> None:
@@ -237,7 +257,7 @@ class SoundDeviceBackend(AudioBackend):
         audio = np.asarray(audio, dtype=np.float32)
         if audio.ndim == 1:
             audio = np.repeat(audio[:, None], len(out_map), axis=1)
-        self.sd.play(audio, samplerate=sample_rate, device=device.index, mapping=out_map, blocking=True)
+        self.sd.play(audio, samplerate=sample_rate, device=device.index, mapping=out_map, blocking=True, extra_settings=self._extra(device, sample_rate))
 
 
 _override: AudioBackend | None = None

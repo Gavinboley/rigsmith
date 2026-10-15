@@ -56,6 +56,10 @@ def build_app():
     )
     install_error_handler(app)
     app.include_router(router)
+    from .routes import routers
+
+    for extra in routers():
+        app.include_router(extra)
     install_websocket(app)
 
     assets = static_dir()

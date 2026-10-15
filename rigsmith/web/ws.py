@@ -40,10 +40,19 @@ def install_websocket(app: FastAPI) -> None:
         manager = get_manager()
         unsubscribes = [job.listen(on_event) for job in manager.list_jobs()]
 
+        # Chats, dispatched agents and autopilot publish on their own bus;
+        # everything on it goes to the page as it happens.
+        from ..core import events
+
+        def on_bus(event: dict) -> None:
+            loop.call_soon_threadsafe(queue.put_nowait, dict(event))
+
+        unsubscribes.append(events.subscribe(on_bus))
+
         async def pump_queue() -> None:
             while True:
                 message = await queue.get()
-                await websocket.send_text(json.dumps(message))
+                await websocket.send_text(json.dumps(message, default=str))
 
         async def poll_jobs() -> None:
             known: set[str] = {j.id for j in manager.list_jobs()}

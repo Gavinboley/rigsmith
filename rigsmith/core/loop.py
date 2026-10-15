@@ -39,6 +39,14 @@ def backend_for(route=None, name: str | None = None):
         return get_backend(name)
     if route is not None and route.backend == "virtual":
         return get_backend("virtual")
+    # The app's own setting, unless the environment pins one for this process.
+    import os
+
+    if not os.environ.get("RIGSMITH_AUDIO"):
+        from . import appsettings
+
+        if appsettings.load().audio_backend == "virtual":
+            return get_backend("virtual")
     return get_backend()
 
 
@@ -402,7 +410,7 @@ def record_input(
     *,
     device: str,
     channel: int = 1,
-    sample_rate: int = 48000,
+    sample_rate: int | None = None,
     hostapi: str | None = None,
     backend: str | None = None,
     take_id: str | None = None,
@@ -421,6 +429,10 @@ def record_input(
     if seconds <= 0 or seconds > 900:
         raise Invalid("record between a moment and fifteen minutes")
     chosen = backend_for(name=backend)
+    if sample_rate is None:
+        # The device's own rate, so nothing in between resamples the DI.
+        native = int(round(chosen.find(device, hostapi=hostapi, need_inputs=channel).sample_rate))
+        sample_rate = native if native in (44100, 48000, 88200, 96000) else 48000
     if progress:
         progress.update(0.05, f"recording {seconds:.0f}s - play now")
     data = chosen.record(seconds, input_device=device, input_channels=[channel], sample_rate=sample_rate, hostapi=hostapi)
@@ -491,8 +503,8 @@ def test_tone(route_id: str | None = None, *, frequency: float = 440.0, level_db
     data = np.asarray(data, dtype=np.float64)
     back = data.mean(axis=1) if data.ndim > 1 else data
     peak = float(np.max(np.abs(back))) if len(back) else 0.0
-    peak_db = 20 * np.log10(max(peak, 1e-9))
-    connected = peak_db > -60
+    peak_db = float(20 * np.log10(max(peak, 1e-9)))
+    connected = bool(peak_db > -60)
     return {
         "route_id": route.route_id,
         "sent_db": level_db,

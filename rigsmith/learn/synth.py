@@ -308,6 +308,128 @@ def events_from_notes(notes, *, velocity_from_peak: bool = True) -> list[NoteEve
     return events
 
 
+#: Note lengths for the sequence form, in beats.
+LENGTHS = {"1": 4.0, "2": 2.0, "4": 1.0, "8": 0.5, "16": 0.25, "32": 0.125, "w": 4.0, "h": 2.0, "q": 1.0, "e": 0.5, "s": 0.25}
+
+
+def _strip_comments(text: str) -> list[str]:
+    import re
+
+    return [re.sub(r"(^|\s)#.*$", "", line).strip() for line in text.splitlines()]
+
+
+def _is_number(token: str) -> bool:
+    try:
+        float(token)
+    except ValueError:
+        return False
+    return True
+
+
+def _suffixed(item, suffix: str):
+    if isinstance(item, list):
+        return [_suffixed(inner, suffix) for inner in item]
+    if item.startswith("@"):
+        return item
+    length = suffix if suffix.startswith(":") and ":" not in item else ""
+    accent = suffix.lstrip(":0123456789whqes.") if not item.endswith(("!", "'")) else ""
+    head = item.rstrip("!'")
+    tail = item[len(head):]
+    if length:
+        length = length.rstrip("!'")
+    return f"{head}{length}{tail or accent}"
+
+
+def parse_sequence(text: str, *, bpm: float = 120.0) -> list[NoteEvent]:
+    """The quick form: notes in order, the way a riff is hummed.
+
+    ``@140  E2 E2 G2 E2 A2:4 G2 (E2+B2+E3):2 -`` - ``@140`` sets the tempo,
+    each note is an eighth unless ``:4`` (quarter), ``:16``, ``:2`` or a
+    dotted ``:8.`` says otherwise, ``+`` stacks a chord, ``-`` rests, a
+    trailing ``!`` accents and ``'`` ghosts a note, and ``x3`` repeats the
+    note or the bracketed group before it.
+    """
+    import re
+
+    from ..core.errors import Invalid
+    from .instrument import note_to_midi
+
+    body = " ".join(_strip_comments(text))
+    tokens = re.findall(r"\(|\)[^\s()]*|[^\s()]+", body)
+    beat = 60.0 / bpm
+
+    def expand(items: list[str], position: int, depth: int) -> tuple[list[str], int]:
+        out: list[str] = []
+        while position < len(items):
+            token = items[position]
+            position += 1
+            if token == "(":
+                group, position = expand(items, position, depth + 1)
+                out.append(group)  # type: ignore[arg-type]
+                continue
+            if token.startswith(")"):
+                if depth == 0:
+                    raise Invalid("a ')' with no '(' before it")
+                # ")x2" repeats the group; ")" followed by a length or an
+                # accent gives it to every note inside that has none.
+                suffix = token[1:]
+                repeat = re.search(r"x(\d+)$", suffix)
+                times = int(repeat.group(1)) if repeat else 1
+                suffix = suffix[: repeat.start()] if repeat else suffix
+                if suffix:
+                    out = [_suffixed(item, suffix) for item in out]
+                return out * times, position
+            match = re.fullmatch(r"x(\d+)", token)
+            if match and out:
+                last = out.pop()
+                out.extend([last] * int(match.group(1)))
+                continue
+            out.append(token)
+        if depth:
+            raise Invalid("a '(' that is never closed")
+        return out, position
+
+    def flatten(items) -> list[str]:
+        flat: list[str] = []
+        for item in items:
+            flat.extend(flatten(item) if isinstance(item, list) else [item])
+        return flat
+
+    raw, _ = expand(tokens, 0, 0)
+    events: list[NoteEvent] = []
+    clock = 0.0
+    for token in flatten(raw):
+        if token.startswith("@"):
+            try:
+                beat = 60.0 / float(token[1:])
+            except (ValueError, ZeroDivisionError):
+                raise Invalid(f"'{token}' is not a tempo", hint="For example:  @140") from None
+            continue
+        velocity = 0.75
+        if token.endswith("!"):
+            velocity, token = 0.95, token[:-1]
+        elif token.endswith("'"):
+            velocity, token = 0.4, token[:-1]
+        length = 0.5
+        if ":" in token:
+            token, _, spec = token.partition(":")
+            dotted = spec.endswith(".")
+            spec = spec.rstrip(".")
+            if spec not in LENGTHS:
+                raise Invalid(f"'{spec}' is not a note length", hint="Use 1, 2, 4, 8, 16 or 32 (w h q e s), with a '.' for dotted")
+            length = LENGTHS[spec] * (1.5 if dotted else 1.0)
+        seconds = length * beat
+        if token not in ("-", "r", "_"):
+            for name in token.split("+"):
+                try:
+                    midi = float(name) if _is_number(name) else note_to_midi(name)
+                except Exception:
+                    raise Invalid(f"'{name}' is not a note", hint="Note names like E2, A#2, Bb3, or MIDI numbers") from None
+                events.append(NoteEvent(clock, seconds * 0.92, midi, velocity))
+        clock += seconds
+    return events
+
+
 def parse_events(text: str) -> list[NoteEvent]:
     """Read a tiny note language: ``start dur note [velocity]`` per line.
 
@@ -315,15 +437,20 @@ def parse_events(text: str) -> list[NoteEvent]:
     A ``#`` that starts a word begins a comment; one inside a word is a sharp,
     so ``A#2`` is a note and ``# the riff`` is not. Notes may be names or MIDI
     numbers.
-    """
-    import re
 
+    Text whose first word is not a time is the quick form instead - see
+    :func:`parse_sequence`.
+    """
     from ..core.errors import Invalid
     from .instrument import note_to_midi
 
+    lines = _strip_comments(text)
+    first = next((line.split()[0] for line in lines if line), "")
+    if first and not _is_number(first.replace(",", "")):
+        return parse_sequence(text)
+
     events = []
-    for number, line in enumerate(text.splitlines(), start=1):
-        line = re.sub(r"(^|\s)#.*$", "", line).strip()
+    for number, line in enumerate(lines, start=1):
         if not line:
             continue
         parts = line.replace(",", " ").split()

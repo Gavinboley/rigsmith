@@ -2,7 +2,15 @@
 
 import { api } from "./api.js";
 import { $, $$, setPill, toast } from "./ui.js";
+import { jobsTick } from "./jobs.js";
+import * as chat from "./chat.js";
 
+import * as autopilot from "./panels/autopilot.js";
+import * as songs from "./panels/songs.js";
+import * as guitar from "./panels/guitar.js";
+import * as tune from "./panels/tune.js";
+import * as loop from "./panels/loop.js";
+import * as settings from "./panels/settings.js";
 import * as recipes from "./panels/recipes.js";
 import * as rig from "./panels/rig.js";
 import * as takes from "./panels/takes.js";
@@ -11,7 +19,7 @@ import * as match from "./panels/match.js";
 import * as device from "./panels/device.js";
 import * as workspace from "./panels/workspace.js";
 
-const PANELS = { recipes, rig, takes, captures, match, device, workspace };
+const PANELS = { autopilot, songs, recipes, guitar, takes, captures, rig, match, tune, loop, device, workspace, settings };
 
 let activePanel = null;
 
@@ -57,7 +65,15 @@ function connectLive() {
         return;
       }
 
+      // Chats, dispatched agents and autopilot stream on the same socket.
+      if (message.type === "chat" || message.type === "agent" || message.type === "autopilot") {
+        chat.onEvent(message);
+        for (const panel of Object.values(PANELS)) panel.onEvent?.(message);
+        return;
+      }
+
       if (message.type === "jobs") {
+        jobsTick(message.jobs);
         const running = message.jobs.filter((j) => !j.finished);
         if (running.length) {
           setPill("pill-jobs", `${running.length} running`, "busy");
@@ -114,6 +130,20 @@ async function refreshStatus() {
   } catch {
     setPill("pill-catalog", "offline", "bad");
   }
+  await refreshMode();
+}
+
+async function refreshMode() {
+  try {
+    const settings = await api.get("/api/settings");
+    const pill = document.getElementById("pill-mode");
+    if (!pill) return;
+    pill.textContent = settings.mode === "local" ? "local mode" : "accuracy mode";
+    pill.className = `pill mode-pill ${settings.mode === "local" ? "local" : "ok"}`;
+    pill.title = settings.modes[settings.mode] + " - click to change";
+  } catch {
+    /* the pill is a nicety */
+  }
 }
 
 /* -------------------------------------------------------------------- boot */
@@ -131,15 +161,19 @@ async function boot() {
     show(event.detail.panel);
   });
 
-  await Promise.allSettled(
-    Object.values(PANELS).map((panel) => panel.init?.())
-  );
+  $("#pill-mode").onclick = () => show("settings");
+  document.addEventListener("rigsmith:settings", refreshMode);
+
+  await Promise.allSettled([
+    ...Object.values(PANELS).map((panel) => panel.init?.()),
+    chat.init(),
+  ]);
 
   await refreshStatus();
   connectLive();
 
   const wanted = location.hash.replace("#", "");
-  show(PANELS[wanted] ? wanted : "rig");
+  show(PANELS[wanted] ? wanted : "autopilot");
 }
 
 boot();

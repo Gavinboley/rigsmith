@@ -832,8 +832,16 @@ export const onShow = refreshSessions;
 
 // Arriving from the rig builder: say which rig is being tested, so a
 // ranking saved later is not one of several anonymous ones.
-onArrive("match", ({ rigName, recipeId, diTakeId, targetTakeId }) => {
+onArrive("match", async ({ rigName, recipeId, diTakeId, targetTakeId, abSession }) => {
   arrivedFrom = recipeId || arrivedFrom;
+
+  // Autopilot hands over its finalists as a ready blind test.
+  if (abSession) {
+    await refreshSessions();
+    $("#ab-session").value = abSession;
+    await renderSession(abSession);
+    $("#ab-trial").scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
 
   // A take id works anywhere a path does, so handing one over is just
   // filling in the box.
