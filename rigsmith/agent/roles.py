@@ -87,9 +87,12 @@ ROLES: dict[str, Role] = {
         "decides what the user's DI is made to sound like). Start from "
         "song_brief: its measured sketches say what the part sounds like, so "
         "flag where sources and measurements disagree. Then resolve each piece "
-        "of gear to a model on the Core (search_models) or a NAM capture.",
+        "of gear to a model on the Core (search_models) or a NAM capture. If "
+        "a source states the song's tempo and the brief's is half, double or "
+        "more than 2% off it, correct it with set_song_tempo - synced delays "
+        "and the rig's saved tempo follow it.",
         groups=["recipes"],
-        tools=["song_brief", "show_song", "search_models", "describe_model", "search_captures", "scan_captures", "app_mode"],
+        tools=["song_brief", "show_song", "search_models", "describe_model", "search_captures", "scan_captures", "app_mode", "set_song_tempo"],
     ),
     "song-mapper": Role(
         "song-mapper",

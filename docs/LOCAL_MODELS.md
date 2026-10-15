@@ -39,9 +39,14 @@ is reliable function calling over several rounds, not raw chat quality.
 Below 4B, multi-step tool use is not reliable enough to be worth it.
 
 The 3.7 / 3.8 flagship and Omni-Flash models are API-only or far too large for
-a desktop; they are not options for local mode. Qwen 4 (including a 27B
-open-weights tier) was announced in September 2026 but, as of mid-October,
-had not shipped and had no date.
+a desktop; they are not options for local mode. Neither is
+**Qwen3.8-Flash-Next** (open weights since 26 August 2026, an early look at
+the Qwen 4 architecture), despite only 6B active parameters: it is 180B in
+total, about 100 GB even at 4 bits, under its own qwen-community-1.0
+license, and its card names no tool-call format - a 128 GB workstation
+might hold it, a desktop GPU will not. Qwen 4 (including a 27B open-weights
+tier) was announced in September 2026 but, as of mid-October, had not
+shipped and had no date.
 
 ## What rigsmith does about Qwen's quirks
 

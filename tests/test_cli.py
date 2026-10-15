@@ -130,6 +130,17 @@ def test_build_a_rig_end_to_end(runner):
     assert "Verse" in shown.output
 
 
+def test_a_tone_sheet_is_printed_or_written_as_a_page(runner, tmp_path):
+    invoke(runner, "rig", "new", "Sheet")
+    invoke(runner, "rig", "tempo", "sheet", "96")
+    printed = invoke(runner, "rig", "sheet", "sheet")
+    assert printed.exit_code == 0 and "# Sheet" in printed.output and "96 BPM, fixed" in printed.output
+    page = tmp_path / "sheet.html"
+    written = invoke(runner, "rig", "sheet", "sheet", "--out", str(page))
+    assert written.exit_code == 0, written.output
+    assert page.read_text(encoding="utf-8").startswith("<!doctype html>")
+
+
 def test_scene_updates_merge_from_the_cli(runner):
     invoke(runner, "rig", "new", "S")
     for index in range(4):
