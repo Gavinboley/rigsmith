@@ -949,3 +949,66 @@ def test_a_new_workspace_is_shown_what_to_set_up(browser, server):
         assert any("Teach it your guitar" in s for s in steps) and any("Pair with the Core" in s for s in steps)
         page.locator(".setup-step", has_text="Teach it your guitar").locator("button").click()
         page.wait_for_selector("#tabs .tab[data-panel='guitar'][aria-selected='true']")
+
+
+@contextmanager
+def streaming_model(words, delay=0.12):
+    """A tiny OpenAI-compatible server that streams one reply word by word."""
+    import json
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, *args):
+            pass
+
+        def do_GET(self):
+            body = json.dumps({"data": [{"id": "qwen3-8b"}]}).encode()
+            self.send_response(200)
+            self.send_header("content-type", "application/json")
+            self.end_headers()
+            self.wfile.write(body)
+
+        def do_POST(self):
+            self.rfile.read(int(self.headers["content-length"]))
+            self.send_response(200)
+            self.send_header("content-type", "text/event-stream")
+            self.end_headers()
+            for i, word in enumerate(words):
+                chunk = {"choices": [{"delta": {"content": (" " if i else "") + word}}]}
+                self.wfile.write(f"data: {json.dumps(chunk)}\n\n".encode())
+                self.wfile.flush()
+                time.sleep(delay)
+            self.wfile.write(b'data: {"choices": [{"delta": {}, "finish_reason": "stop"}]}\n\ndata: [DONE]\n\n')
+            self.wfile.flush()
+
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    try:
+        yield f"http://127.0.0.1:{httpd.server_address[1]}/v1"
+    finally:
+        httpd.shutdown()
+
+
+def test_a_local_model_reply_streams_into_the_chat_without_its_thinking(browser, server):
+    import urllib.request
+
+    words = "<think>hmm</think>The verse is a Plexi pushed hard with the mids up.".split(" ")
+    with streaming_model(words) as base_url:
+        request = urllib.request.Request(
+            f"{server}/api/settings", method="PATCH",
+            data=f'{{"mode": "local", "local_llm": {{"base_url": "{base_url}"}}}}'.encode(),
+            headers={"content-type": "application/json"},
+        )
+        urllib.request.urlopen(request).read()
+        with page_at(browser, server) as page:
+            page.keyboard.press("Control+j")
+            page.wait_for_selector("#chat-text")
+            page.locator("#chat-text").fill("what amp is the verse?")
+            page.locator("#chat-text").press("Enter")
+            page.wait_for_selector("#chat-drawer .msg.assistant.live", timeout=10000)
+            partial = page.locator("#chat-drawer .msg.assistant").last.inner_text()
+            page.wait_for_selector("#chat-drawer .msg.assistant:not(.live)", timeout=15000)
+            final = page.locator("#chat-drawer .msg.assistant").last.inner_text()
+    assert final == "The verse is a Plexi pushed hard with the mids up."
+    assert final.startswith(partial.strip()) and len(partial.strip()) < len(final)
+    assert "hmm" not in partial and "think" not in partial
