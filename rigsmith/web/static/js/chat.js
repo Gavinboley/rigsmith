@@ -139,6 +139,7 @@ async function loadChat(id) {
   }
   const chat = await api.get(`/api/chat/${id}`);
   $("#chat-writes").checked = chat.allow_writes;
+  $("#chat-drawer").classList.toggle("unguarded", Boolean(chat.allow_writes));
   $("#chat-role").value = chat.role;
   if (!chat.transcript.length) renderEmpty();
   for (const entry of chat.transcript) renderEntry(entry);
@@ -300,6 +301,13 @@ export async function init() {
     }
   };
   $("#chat-writes").onchange = (event) => {
+    // Switching approvals off lets an agent write rigs and delete work on
+    // its own; ask once, plainly, rather than on a stray click.
+    if (event.target.checked && !window.confirm("Let this chat write to the Core and delete work without asking you each time?\n\nRig writes still back up first. You can switch this off at any time.")) {
+      event.target.checked = false;
+      return;
+    }
+    $("#chat-drawer").classList.toggle("unguarded", event.target.checked);
     if (chatId) attempt(() => api.patch(`/api/chat/${chatId}`, { allow_writes: event.target.checked }));
   };
   $("#chat-stop").onclick = () => chatId && attempt(() => api.post(`/api/chat/${chatId}/stop`));

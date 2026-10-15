@@ -739,3 +739,6 @@ input:focus, select:focus { outline: 1px solid var(--amber-dim); border-color: v
 .wiring .w-wire-label { fill: var(--text-dim); font-size: 11px; }
 .wiring .w-note { fill: var(--text-faint); font-size: 11px; }
 .wiring .w-warn { fill: var(--amber); font-size: 11px; }
+/* A chat allowed to change the device without asking says so, all the time. */
+.chat-drawer.unguarded { box-shadow: inset 3px 0 0 #e0574b; }
+.chat-drawer.unguarded label:has(#chat-writes) { color: #e0574b; }
