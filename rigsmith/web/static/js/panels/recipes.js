@@ -8,7 +8,7 @@
 
 import { api } from "../api.js";
 import { $, attempt, clear, el, prompt } from "../ui.js";
-import { crossLink, goTo } from "../nav.js";
+import { crossLink, goTo, onArrive } from "../nav.js";
 
 const CONFIDENCE = [
   { value: "stated", label: "stated - someone who was there said so" },
@@ -397,3 +397,7 @@ export function init() {
 }
 
 export const onShow = () => refresh(current?.recipe_id ?? null);
+
+onArrive("recipes", ({ recipeId }) => {
+  if (recipeId) attempt(() => refresh(recipeId));
+});

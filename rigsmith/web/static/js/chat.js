@@ -405,7 +405,8 @@ export async function init() {
     }
   });
   document.addEventListener("keydown", (event) => {
-    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+    // Ctrl+J: Ctrl+K is the palette, which can ask too.
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "j") {
       event.preventDefault();
       toggle();
       if (isOpen()) refreshProvider();

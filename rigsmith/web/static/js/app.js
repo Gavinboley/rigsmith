@@ -4,6 +4,7 @@ import { api } from "./api.js";
 import { $, $$, setPill, toast } from "./ui.js";
 import { jobsTick } from "./jobs.js";
 import * as chat from "./chat.js";
+import * as palette from "./palette.js";
 
 import * as autopilot from "./panels/autopilot.js";
 import * as songs from "./panels/songs.js";
@@ -168,6 +169,8 @@ async function boot() {
 
   $("#pill-mode").onclick = () => show("settings");
   $("#pill-jobs").onclick = () => show("workspace");
+  palette.install();
+  $("#palette-open")?.addEventListener("click", () => palette.open());
   document.addEventListener("rigsmith:settings", refreshMode);
 
   await Promise.allSettled([
