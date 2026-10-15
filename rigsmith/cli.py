@@ -448,6 +448,25 @@ def rig_export(draft_id: str, out: Path | None) -> None:
     click.echo(f"Exported to {rigs.export(draft_id, out)}")
 
 
+@rig.command("sheet")
+@click.argument("draft_id")
+@click.option("--html", "as_html", is_flag=True, help="A printable page instead of text.")
+@click.option("--out", type=click.Path(dir_okay=False, path_type=Path), help="Write it to a file (.html for the page).")
+@handled
+def rig_sheet(draft_id: str, as_html: bool, out: Path | None) -> None:
+    """The rig as you would dial it in by hand, and where it came from."""
+    from .core import sheets
+
+    sheet = sheets.tone_sheet(draft_id)
+    page = as_html or bool(out and out.suffix.lower() in (".html", ".htm"))
+    text = sheet.html() if page else sheet.markdown()
+    if out is None:
+        click.echo(text)
+        return
+    out.write_text(text, encoding="utf-8")
+    click.echo(f"Wrote the tone sheet for '{sheet.title}' to {out}")
+
+
 @rig.command("write")
 @click.argument("draft_id")
 @click.option("--yes", is_flag=True, help="Skip the confirmation prompt.")

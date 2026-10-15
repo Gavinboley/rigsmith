@@ -84,6 +84,9 @@ Nothing reaches the Core without this step. A draft with a synced delay or
 tremolo carries the song's tempo (the BPM beside the signal path), saved as
 the rig's *Fixed* tempo so it loads on the beat; tap tempo still moves it.
 
+Not paired yet, or would rather dial it in yourself? **Tone sheet** shows
+every block's settings the way the Core's screen reads them.
+
 A song rig's **scenes are not written over the network yet** - the write
 report lists what each footswitch should do, to set by hand. While you are
 there, two minutes settles it for next time: make FS1 a scene that turns

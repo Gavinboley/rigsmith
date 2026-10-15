@@ -11,7 +11,7 @@ pip install -e ".[all]"
 rigsmith ui
 ```
 
-> **Status: everything runs today.** Rig authoring, validation, NAM analysis, tone matching, catalog extraction, USB backup, MIDI, guitar learning, song maps, the hardware loop, the tuner, autopilot, the chat and the web UI are covered by 915 tests. The Remote Editor protocol has been captured against a real Core and a rig written to it and read back exactly - see [docs/PROTOCOL.md](docs/PROTOCOL.md). What still wants hardware is *measuring*: the loop and the blind A/B need the Core and an interface plugged in - [docs/FIRST_SESSION.md](docs/FIRST_SESSION.md) walks through that first session.
+> **Status: everything runs today.** Rig authoring, validation, NAM analysis, tone matching, catalog extraction, USB backup, MIDI, guitar learning, song maps, the hardware loop, the tuner, autopilot, the chat and the web UI are covered by 923 tests. The Remote Editor protocol has been captured against a real Core and a rig written to it and read back exactly - see [docs/PROTOCOL.md](docs/PROTOCOL.md). What still wants hardware is *measuring*: the loop and the blind A/B need the Core and an interface plugged in - [docs/FIRST_SESSION.md](docs/FIRST_SESSION.md) walks through that first session.
 
 ---
 
@@ -126,7 +126,16 @@ rigsmith rig scene cherub-rock "Big chorus"  --on 1 --on 4 --fs 2
 
 rigsmith rig validate cherub-rock
 rigsmith rig preview  cherub-rock
+rigsmith rig sheet    cherub-rock --out cherub-rock.html   # printable, in the screen's units
 ```
+
+The **tone sheet** is the rig as you would dial it in by hand: each block's
+controls as the Core's screen shows them (front-panel order, synced delays
+by their note value), the scenes, and - for a draft autopilot built - the
+song and part it chased, what the research said, which candidate won and
+by whose judgement, and what still differs from the record. *Tone sheet* on
+the Rig page or an autopilot run opens it as a page to print or keep open
+beside the Core.
 
 ### Use your own guitar
 
@@ -464,7 +473,7 @@ Ask for a tone. The agent researches the gear, finds an A2 capture, builds the r
     +---------------+---------------+
     |               |               |
   cli.py       mcp/tools/*      web/api.py
-  (click)       (120 tools)       (FastAPI)
+  (click)       (121 tools)       (FastAPI)
 ```
 
 Each surface is a thin adapter: parse input, call core, format output. That rule exists because the first version broke it — orchestration lived inside the MCP tools, so anything not reachable from a tool was reachable from nowhere, and whole subsystems ended up built and unwired.

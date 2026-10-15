@@ -19,7 +19,11 @@
 with its own tempo) and `Current` (true, the default: it keeps the tempo the
 device is already at). A rig with a synced delay or tremolo is written
 Fixed at the song's tempo - `rigsmith rig tempo`, or set by autopilot -
-so its dotted eighth lands on the beat without tapping. The global tempo is
+so its dotted eighth lands on the beat without tapping. On the device the
+same choice is the Tempo option in Hardware Assign, and a Fixed rig still
+follows an incoming MIDI clock while the clock plays ([HeadRush on MIDI
+clocks](https://support.headrushfx.com/en/support/solutions/articles/69000823523-headrush-fx-setting-internal-and-external-midi-clocks)).
+The global tempo is
 `/Evil/Engine/Tempo` (`Tempo`, plus `TempoMaj`/`TempoSub` for the screen's
 whole and fractional parts).
 

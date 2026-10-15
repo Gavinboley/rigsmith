@@ -968,3 +968,13 @@ def test_a_songs_tempo_is_corrected_through_the_api(client):
     assert set_["structure"]["tempo"] == 88 and set_["structure"]["tempo_source"] == "hand"
     halved = client.post(f"/api/songs/{created['song_id']}/tempo", json={"factor": 0.5}).json()
     assert halved["structure"]["tempo"] == 44
+
+
+def test_a_drafts_tone_sheet_is_text_and_a_printable_page(client):
+    draft = client.post("/api/drafts", json={"name": "Sheet"}).json()
+    text = client.get(f"/api/drafts/{draft['draft_id']}/sheet").json()
+    assert text["title"] == "Sheet" and text["markdown"].startswith("# Sheet")
+    page = client.get(f"/api/drafts/{draft['draft_id']}/sheet.html")
+    assert page.status_code == 200 and page.headers["content-type"].startswith("text/html")
+    assert "<h1>Sheet</h1>" in page.text
+    assert client.get("/api/drafts/ghost/sheet.html").status_code == 404

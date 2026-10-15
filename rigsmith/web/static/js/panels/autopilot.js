@@ -213,7 +213,10 @@ function show(run) {
 
   const links = el("div", { class: "row" });
   if (run.song_id) links.append(el("button", { class: "btn small", text: "Song map", onclick: () => goTo("songs", { songId: run.song_id }) }));
-  if (run.draft_id) links.append(el("button", { class: "btn small", text: "Open the draft", onclick: () => goTo("rig", { draftId: run.draft_id }) }));
+  if (run.draft_id) {
+    links.append(el("button", { class: "btn small", text: "Open the draft", onclick: () => goTo("rig", { draftId: run.draft_id }) }));
+    links.append(el("button", { class: "btn small ghost", text: "Tone sheet", title: "The draft as you would dial it in by hand, and why - printable", onclick: () => window.open(`/api/drafts/${encodeURIComponent(run.draft_id)}/sheet.html`, "_blank") }));
+  }
   if (run.ab_session) {
     links.append(el("button", { class: "btn small primary", text: "Blind A/B the finalists", onclick: () => goTo("match", { abSession: run.ab_session }) }));
     // Once the blind test is done, the draft can follow the ears.

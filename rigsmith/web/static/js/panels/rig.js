@@ -541,6 +541,10 @@ export function init() {
       );
     });
 
+  $("#sheet-btn").onclick = () => {
+    if (current) window.open(`/api/drafts/${encodeURIComponent(current.draft_id)}/sheet.html`, "_blank");
+  };
+
   $("#export-btn").onclick = () =>
     attempt(async () => {
       const { path } = await api.exportDraft(current.draft_id);

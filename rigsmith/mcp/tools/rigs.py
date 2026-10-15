@@ -84,6 +84,16 @@ def explain_rig(draft_id: str) -> str:
 
 
 @tool
+def tone_sheet(draft_id: str) -> str:
+    """The rig as it would be dialled in by hand - each block's controls as
+    the Core's screen shows them, and the scenes - plus where it came from:
+    the song and part, the research, and what still differs from the record."""
+    from ...core import sheets
+
+    return sheets.tone_sheet(draft_id).markdown()
+
+
+@tool
 def delete_draft(draft_id: str) -> str:
     """Discard a draft.
 

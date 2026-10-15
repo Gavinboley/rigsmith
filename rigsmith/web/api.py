@@ -19,7 +19,7 @@ from urllib.parse import quote
 
 from pydantic import BaseModel
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 
 from ..core import captures, devices, matching, recipes, rigs, workspace
 from ..core.errors import Invalid, NotFound, RigsmithError
@@ -546,6 +546,22 @@ def get_draft(draft_id: str) -> dict:
 @router.delete("/drafts/{draft_id}")
 def delete_draft(draft_id: str) -> dict:
     return {"message": rigs.delete(draft_id)}
+
+
+@router.get("/drafts/{draft_id}/sheet")
+def draft_sheet(draft_id: str) -> dict:
+    from ..core import sheets
+
+    sheet = sheets.tone_sheet(draft_id)
+    return {"title": sheet.title, "markdown": sheet.markdown()}
+
+
+@router.get("/drafts/{draft_id}/sheet.html")
+def draft_sheet_page(draft_id: str) -> HTMLResponse:
+    """The printable page - opened in its own tab, so it is a page, not JSON."""
+    from ..core import sheets
+
+    return HTMLResponse(sheets.tone_sheet(draft_id).html())
 
 
 @router.post("/drafts/{draft_id}/duplicate")

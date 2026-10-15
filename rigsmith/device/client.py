@@ -599,7 +599,7 @@ class DeviceClient:
                 if stubborn:
                     report.notes.append(
                         f"the rig's tempo did not take ({stubborn[0][2]!r}) - set it to "
-                        f"{rig.tempo:g} BPM (Fixed) in the rig settings on the device"
+                        f"{rig.tempo:g} BPM, Tempo: Fixed, in Hardware Assign on the device"
                     )
                 record("set_rig", f"tempo {rig.tempo:g} BPM, fixed" + (" (refused)" if stubborn else ""))
 

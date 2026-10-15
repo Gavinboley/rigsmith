@@ -360,4 +360,4 @@ async def test_a_refused_rig_tempo_is_reported_and_the_rig_still_saved(patched_c
         report = await client.write_rig(rig)
 
     assert core.saved is not None, "the blocks matter more than the tempo"
-    assert any("95 BPM (Fixed)" in note for note in report.notes), report.notes
+    assert any("95 BPM, Tempo: Fixed" in note for note in report.notes), report.notes

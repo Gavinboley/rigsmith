@@ -355,3 +355,27 @@ def test_synced_blocks_give_the_draft_the_songs_tempo(workspace):
     assert "guess" not in notes[0], "a tempo set by hand is not a guess"
     with pytest.raises(Exception):
         rigs.set_tempo(other, 20.0)
+
+
+def test_a_drafts_tone_sheet_says_where_it_came_from(workspace):
+    from rigsmith.core import sheets
+
+    draft_id = rigs.create("Fixture - verse").draft.draft_id
+    run = autopilot.Run(run_id="sheet-run", request=autopilot.Request(title="Fixture", artist="Synthetic"))
+    run.draft_id = draft_id
+    run.state = "done"
+    run.results = [
+        {"label": "92 Treadplate Modern", "composite": 0.21, "model": "92 Treadplate Modern"},
+        {"label": "82 Lead 800 100W", "composite": 0.25, "model": "82 Lead 800 100W"},
+    ]
+    run.ear_pick = "92 Treadplate Modern"
+    run.remaining = [{"band": "presence", "low": 2000, "high": 5000, "delta_db": -3.2, "audible": True, "meaning": "duller than the record", "try": "Presence up"}]
+    run.notes = ["the rig carries the song's tempo"]
+    run.save()
+
+    text = sheets.tone_sheet(draft_id).markdown()
+    assert "**Song:** Fixture - Synthetic" in text
+    assert "by your ears in the blind test" in text and "82 Lead 800 100W (0.250)" in text
+    assert "presence -3.2 dB - duller than the record; try Presence up" in text
+    assert "the rig carries the song's tempo" in text
+    assert sheets.origin(rigs.create("Hand made").draft.draft_id) == {}, "a draft nobody's run built has no history"

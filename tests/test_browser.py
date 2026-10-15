@@ -1066,3 +1066,21 @@ def test_a_songs_tempo_can_be_doubled_and_tapped(browser, server):
             page.wait_for_timeout(500)
         tapped = tempo_now(lambda t: t != 140)
         assert 95 <= tapped <= 130, f"five taps half a second apart read {tapped}"
+
+
+def test_the_tone_sheet_opens_as_its_own_page(browser, server):
+    from rigsmith.core import rigs
+
+    draft_id = rigs.create("Sheet").draft.draft_id
+    rigs.set_tempo(draft_id, 120.0)
+    with page_at(browser, server) as page:
+        page.click("#tabs .tab[data-panel='rig']")
+        page.wait_for_selector("#sheet-btn")
+        page.select_option("#draft-select", draft_id)
+        with page.expect_popup() as opened:
+            page.click("#sheet-btn")
+        sheet = opened.value
+        sheet.wait_for_load_state()
+        assert sheet.locator("h1").inner_text() == "Sheet"
+        assert "120 BPM, fixed" in sheet.inner_text("body")
+        sheet.close()
