@@ -60,6 +60,16 @@ a desktop; they are not options for local mode.
   size, and without the `anyOf` some servers are reported to drop.
 - **Small toolsets.** Each agent role sees only its own tools (14-26), not all
   100+, so a small model's context goes on the task rather than on schemas.
+- **Streaming.** Replies are requested as server-sent events and shown as they
+  are written, so a model that takes a minute does not look hung. The live
+  text hides `<think>` (finished, unfinished, or opened by the chat template)
+  and anything from a tool call written as text onwards, including one half
+  written at the end; tool calls that arrive in pieces are reassembled by
+  index. A server that answers in one piece still works.
+- **Finding the server.** Status checks open a bare socket with a short
+  timeout first: Windows retries a refused connection to localhost for about
+  two seconds, which made every page that asked "is a model running?" stall
+  when none was.
 
 ## What local mode cannot do
 
