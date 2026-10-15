@@ -689,3 +689,37 @@ def test_changing_an_unrelated_label_leaves_the_notes_alone(workspace):
     take = takes.add(_played(workspace / "src", "riff"), kind="di", guitar="Strat")
     before = list(take.concerns)
     assert takes.update(take.take_id, pickup="neck").concerns == before
+
+
+def test_an_unreadable_index_is_kept_not_emptied(workspace):
+    """It used to read as an empty library, which the next add then saved."""
+    from rigsmith.core import takes as library
+    from rigsmith.core.errors import Invalid
+
+    index = library._index_path()
+    index.write_text("{ not json", encoding="utf-8")
+    with pytest.raises(Invalid) as refused:
+        library.list_takes()
+    assert "set aside" in str(refused.value)
+    kept = list(index.parent.glob("index.json.unreadable-*"))
+    assert kept and kept[0].read_text(encoding="utf-8") == "{ not json"
+    assert library.list_takes() == [], "after saying so once, the library starts again"
+
+
+def test_takes_added_at_once_are_all_kept(workspace, tmp_path):
+    """An add reads, analyses for seconds, then writes - two at once lost one."""
+    import threading
+
+    from rigsmith.core import takes as library
+
+    paths = []
+    for index in range(4):
+        path = tmp_path / f"together-{index}.wav"
+        sf.write(str(path), (0.1 * (index + 1) * np.sin(np.arange(24000) / 48000 * 2 * np.pi * 220)).astype("float32"), 48000)
+        paths.append(path)
+    threads = [threading.Thread(target=library.add, args=(path,)) for path in paths]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert {t.take_id for t in library.list_takes()} >= {f"together-{i}" for i in range(4)}

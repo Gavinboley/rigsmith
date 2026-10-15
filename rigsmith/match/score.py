@@ -64,7 +64,14 @@ PERFORMANCE_SCALE = 15.0
 
 
 def _scaled(value: float, scale: float) -> float:
-    """A metric as a 0..1 share of the range it is informative over."""
+    """A metric as a 0..1 share of the range it is informative over.
+
+    A metric that could not be computed (NaN) counts as far as it goes: it
+    is not evidence of a match, and a NaN would make the composite NaN,
+    which sorts anywhere - first included.
+    """
+    if value != value:
+        return 1.0
     return min(max(value, 0.0), scale) / scale
 
 
@@ -249,7 +256,7 @@ def rank_candidates(
         score_candidate(target, audio, sample_rate, mode=mode, label=label)
         for label, audio in candidates.items()
     ]
-    scores.sort(key=lambda s: s.composite)
+    scores.sort(key=lambda s: s.composite if s.composite == s.composite else float("inf"))
     return scores
 
 

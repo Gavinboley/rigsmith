@@ -192,6 +192,16 @@ def multi_resolution_stft_loss(
         )
         losses.append(convergence + log_l1)
 
+    if not losses and len(target) >= 64:
+        # Shorter than every window asked for: one that fits, rather than
+        # no answer - a NaN here made the whole composite NaN.
+        n_fft = 1 << (len(target).bit_length() - 1)
+        target_mag = _stft_magnitude(target, n_fft, max(1, n_fft // 4))
+        pred_mag = _stft_magnitude(prediction, n_fft, max(1, n_fft // 4))
+        losses.append(
+            spectral_convergence(target_mag, pred_mag)
+            + float(np.mean(np.abs(np.log(target_mag + EPSILON) - np.log(pred_mag + EPSILON))))
+        )
     if not losses:
         return float("nan")
     return float(np.mean(losses))

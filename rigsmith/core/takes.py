@@ -225,8 +225,22 @@ def _load_index() -> dict[str, Take]:
         return {}
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return {}
+    except (json.JSONDecodeError, OSError) as exc:
+        # An unreadable index used to read as an empty library - and the
+        # next add then wrote that emptiness over it. Keep it instead, and
+        # say so once; the recordings themselves are untouched.
+        from datetime import datetime
+
+        kept = path.with_name(f"{path.name}.unreadable-{datetime.now().strftime('%Y%m%d-%H%M%S')}")
+        try:
+            path.replace(kept)
+        except OSError:
+            kept = path
+        raise Invalid(
+            f"the takes index could not be read ({type(exc).__name__}) and was set aside",
+            hint=f"It is kept as {kept.name} in {path.parent}; the recordings there are untouched. "
+            "The library starts again empty - add the takes back, or repair the file and put it back as index.json.",
+        ) from exc
     takes = {}
     for entry in raw.get("takes", []):
         try:
@@ -244,7 +258,10 @@ def _save_index(takes: dict[str, Take]) -> None:
     for entry in payload["takes"]:
         for derived in ("exists", "reamps", "in_concert_pitch", "describe"):
             entry.pop(derived, None)
-    _index_path().write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    from . import storage
+
+    # Written beside and swapped in, so a crash mid-write cannot leave half a library.
+    storage.write_json(_index_path(), payload)
 
 
 def list_takes(*, kind: str | None = None, guitar: str | None = None) -> list[Take]:
@@ -376,14 +393,29 @@ def add(
     )
     if report and report.measured:
         take.concerns.extend(report.concerns(stated_tuning=tuning))
-    takes[identifier] = take
-    _save_index(takes)
+    # Read again under the lock: the analysis above takes seconds, and an
+    # index read before it would write back over anything added meanwhile.
+    from . import storage
+
+    with storage.locked(_index_path()):
+        takes = _load_index()
+        if identifier in takes:
+            raise Conflict(f"a take called '{identifier}' was added meanwhile")
+        takes[identifier] = take
+        _save_index(takes)
     return take
 
 
 def update(take_id: str, **changes) -> Take:
     """Change a take's labels. The audio itself is never edited."""
     require_writable("edit a take")
+    from . import storage
+
+    with storage.locked(_index_path()):
+        return _update(take_id, changes)
+
+
+def _update(take_id: str, changes: dict) -> Take:
     takes = _load_index()
     take = takes.get(take_id)
     if take is None:
@@ -443,11 +475,14 @@ def _refresh_concerns(take: Take) -> None:
 def delete(take_id: str, *, remove_file: bool = False) -> str:
     """Forget a take. The audio stays unless you say otherwise."""
     require_writable("delete a take")
-    takes = _load_index()
-    take = takes.pop(take_id, None)
-    if take is None:
-        raise NotFound(f"no take '{take_id}'")
-    _save_index(takes)
+    from . import storage
+
+    with storage.locked(_index_path()):
+        takes = _load_index()
+        take = takes.pop(take_id, None)
+        if take is None:
+            raise NotFound(f"no take '{take_id}'")
+        _save_index(takes)
 
     if remove_file and take.file.is_file():
         # Only files this library brought in - never one it was pointed at.

@@ -219,3 +219,23 @@ def test_a_guitar_input_level_is_judged_before_it_matters():
     assert judge_level(np.clip(scale(playing, 3), -1, 1), RATE)["verdict"] == "too hot"
     hum = 10 ** (-30 / 20) * np.sin(2 * np.pi * 60 * np.arange(RATE * 3) / RATE)
     assert judge_level(scale(playing, -12) + hum, RATE)["verdict"] == "noisy"
+
+
+def test_one_box_listed_as_two_devices_is_one_clock(monkeypatch):
+    """Windows lists the E2x2 as an input and an output; it still has one clock."""
+    import types
+
+    from rigsmith.loop import run as loop_run
+
+    seen = []
+    monkeypatch.setattr(loop_run, "align_capture", lambda wet, positions, rate, *, two_clocks, reference=None: seen.append(two_clocks) or types.SimpleNamespace())
+
+    class Silent:
+        def playrec(self, columns, **kwargs):
+            return np.zeros((len(columns), len(kwargs["input_channels"])))
+
+    one_box = LoopRoute("e2x2", output_device="Playback 1/2 (E2x2)", input_device="Analog 1/2 (E2x2)", sample_rate=44100)
+    two_boxes = LoopRoute("hybrid", output_device="Playback 1/2 (E2x2)", input_device="Line (HeadRush Core)", sample_rate=44100)
+    for route in (one_box, two_boxes):
+        loop_run.reamp(route, np.zeros(4410), backend=Silent())
+    assert seen == [False, True], "drift is only corrected between two clocks"

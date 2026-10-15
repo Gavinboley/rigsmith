@@ -397,7 +397,9 @@ class TakeAlignment:
     def describe(self) -> str:
         verdict = "on the record's clock" if self.usable else "too loose to put on the record's clock"
         return (
-            f"{verdict}: {abs(self.rate - 1) * 100:.1f}% {'slower' if self.rate > 1 else 'faster'}, "
+            # record time = rate x take time + offset: above 1, the take
+            # gets through the music in less time - it is faster.
+            f"{verdict}: {abs(self.rate - 1) * 100:.1f}% {'faster' if self.rate > 1 else 'slower'}, "
             f"starting {self.offset_s:+.2f} s, notes within {self.residual_s * 1000:.0f} ms of the line, "
             f"pitch agreement {self.agreement:.2f} ({self.contrast:+.2f} over chance), loudness follows {self.level:.2f}"
         )

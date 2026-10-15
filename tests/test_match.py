@@ -559,3 +559,16 @@ def test_a_noise_floor_is_gated_the_same_as_true_silence():
         f"digital silence kept {quiet} frames and a noise floor kept {hissy} - "
         "the gate is measuring the wrong thing"
     )
+
+
+def test_a_part_too_short_for_the_stft_still_gets_a_number():
+    """A NaN composite sorted anywhere - first included."""
+    from rigsmith.match.metrics import multi_resolution_stft_loss
+    from rigsmith.match.score import ComparisonMode, rank_candidates
+
+    rate = 48000
+    t = np.arange(400) / rate
+    target = np.sin(2 * np.pi * 440 * t)
+    assert np.isfinite(multi_resolution_stft_loss(target, 0.5 * target))
+    ranked = rank_candidates(target, {"close": 0.9 * target, "far": np.sin(2 * np.pi * 900 * t)}, rate, mode=ComparisonMode.ALIGNED)
+    assert all(np.isfinite(s.composite) for s in ranked) and ranked[0].label == "close"

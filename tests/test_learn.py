@@ -411,3 +411,12 @@ def test_a_take_played_along_is_put_on_the_records_clock():
 
     other = pluck([(0.5 + i * 0.3, 0.27, int(rng.integers(62, 76)), 0.8) for i in range(48)], seed=4)
     assert not align_take(other, record, 48000).usable  # a different part is not stretched onto it
+
+
+def test_a_take_that_rushes_is_called_faster():
+    """record = rate x take + offset: a rate above 1 gets through the music sooner."""
+    from rigsmith.learn.align import TakeAlignment
+
+    rushing = TakeAlignment(rate=1.1, offset_s=0.0, residual_s=0.01, agreement=0.9, contrast=0.3, tonality=2.0, level=0.5)
+    dragging = TakeAlignment(rate=0.9, offset_s=0.0, residual_s=0.01, agreement=0.9, contrast=0.3, tonality=2.0, level=0.5)
+    assert "10.0% faster" in rushing.describe() and "10.0% slower" in dragging.describe()

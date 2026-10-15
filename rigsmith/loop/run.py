@@ -276,7 +276,9 @@ def reamp(
         wet,
         positions,
         route.sample_rate,
-        two_clocks=not route.same_device,
+        # same_clock, not same_device: an interface Windows lists as a
+        # separate input and output is still one box with one clock.
+        two_clocks=not route.same_clock,
         reference=reference,
     )
     capture.send_gain_db = gain

@@ -208,7 +208,7 @@ def calibrate(
     capture, analysis = measure_sweep(route, backend=backend)
     result.latency_samples = round(capture.latency_samples, 2)
     result.polarity = capture.polarity
-    result.drift_ppm = round(capture.drift_ppm, 2) if not route.same_device else 0.0
+    result.drift_ppm = round(capture.drift_ppm, 2) if not route.same_clock else 0.0
     result.response_db = [round(v, 2) for v in analysis.response_db]
     from .signals import ANALYSIS_BANDS
 
