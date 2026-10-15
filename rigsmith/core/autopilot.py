@@ -11,17 +11,20 @@ start from a title and a file and walk away from:
 5. **research** - a researcher agent fills in the recipe with sources
    (accuracy mode), or the recipe is seeded from the measurements alone,
    every claim marked inferred.
-6. **di** - the part played on your guitar, on the record's clock.
+6. **di** - the part played on your guitar, on the record's clock, moved
+   toward the record's guitar when the research names one.
 7. **candidates** - amps worth trying, from the research and the measured
-   gain; each one heard through the bench and scored against the part.
-8. **tune** - the best two get their knobs turned, then a match EQ.
-9. **rig** - a draft with the winning amp, its cab, and the blocks the part
-   implies; scored candidates set up as a blind A/B.
+   gain; each one heard through its tier's cab and scored against the part.
+8. **cabs** - the best amp through the other cabs worth hearing (and any
+   the research names), so the tuner starts from the right pair.
+9. **tune** - the best two get their knobs turned, then a match EQ.
+10. **rig** - a draft with the winning amp, its cab, and the blocks the part
+    implies; scored candidates set up as a blind A/B.
 
 Two benches. ``virtual`` runs the whole thing on the simulated amp - fast,
 needs nothing, and says on every result that it was a rehearsal. ``device``
-switches the Core's amp model live over the network and reamps through the
-hardware loop, so every score is the Core's own sound.
+switches the Core's amp and cab models live over the network and reamps
+through the hardware loop, so every score is the Core's own sound.
 
 Nothing is written to the device. The run ends with a draft and a listening
 test; writing is the usual gated step, and stays yours.
@@ -37,10 +40,10 @@ from pathlib import Path
 
 from ..config import get_settings, require_writable
 from . import events
-from .errors import Invalid, NotFound
+from .errors import Invalid, NotFound, Unavailable
 from .jobs import Progress
 
-STAGES = ("song", "stem", "map", "parts", "research", "di", "candidates", "tune", "rig")
+STAGES = ("song", "stem", "map", "parts", "research", "di", "candidates", "cabs", "tune", "rig")
 
 #: Stages whose failure ends the run; the rest become notes.
 ESSENTIAL = {"song", "map", "parts", "di", "candidates"}
@@ -130,7 +133,11 @@ class Run:
         stages = {name: Stage(**value) for name, value in (data.get("stages") or {}).items()}
         known = set(cls.__dataclass_fields__) - {"request", "stages"}
         run = cls(run_id=data["run_id"], request=request, **{k: v for k, v in data.items() if k in known and k != "run_id"})
-        run.stages = {name: stages.get(name, Stage(name)) for name in STAGES}
+        finished = data.get("state") in ("done", "failed", "stopped")
+        run.stages = {
+            name: stages.get(name) or (Stage(name, state="skipped", summary="added after this run") if finished else Stage(name))
+            for name in STAGES
+        }
         return run
 
     def note(self, text: str) -> None:
@@ -338,7 +345,15 @@ def _stage_research(run: Run, progress) -> str:
     return f"researcher run {research_id}: {result[:160]}"
 
 
+def _researched_cabs(run: Run) -> list[str]:
+    return _researched(run, "cab")
+
+
 def _researched_amps(run: Run) -> list[str]:
+    return _researched(run, "amp")
+
+
+def _researched(run: Run, wanted: str) -> list[str]:
     from . import recipes
 
     if not run.recipe_id:
@@ -355,7 +370,7 @@ def _researched_amps(run: Run) -> list[str]:
         # here would label it "named by the research" in the ranking.
         if sources and all(getattr(source, "kind", "") == "measurement" for source in sources):
             continue
-        if str(getattr(category, "value", category)) in ("amp",):
+        if str(getattr(category, "value", category)) == wanted:
             for name in (getattr(gear, "resolved_model_id", None), getattr(gear, "model", None), getattr(gear, "name", None)):
                 if name:
                     names.append(name)
@@ -479,6 +494,79 @@ class _Skip(Exception):
     pass
 
 
+#: Below this relative difference two cabs are a tie: run-to-run variation
+#: in a reamp is about this size, so a smaller "win" is not one.
+CAB_NOISE = 0.01
+
+
+def _stage_cabs(run: Run, progress) -> str:
+    """The best amp through the cabs worth hearing, before anything is tuned.
+
+    Tuning the knobs of an amp through the wrong cab spends the budget
+    making up for the cab; hearing the cabs first is cheap (one render each)
+    and the tuner then starts from the right pair.
+    """
+    from ..match.metrics import ComparisonMode
+    from ..match.render_offline import load_audio, resample, save_audio
+    from ..match.score import score_candidate
+    from ..rig.catalog import get_catalog
+    from ..tune.candidates import Candidate, cab_options, virtual_cab, with_cab
+    from . import songs
+
+    if not run.results:
+        raise _Skip("no amp to hear cabs with")
+    best = run.results[0]
+    amp = Candidate.from_dict(best)
+    options = cab_options(amp.tier, researched=_researched_cabs(run), catalog=get_catalog(), count=4)
+    options = [o for o in options if o[0] != amp.cab]
+    if run.request.bench == "virtual":
+        # Four simulated cabs, so one option per simulated cab - and none
+        # that sounds the same as the cab the amp was already heard through.
+        heard, kept = {virtual_cab(amp.cab)}, []
+        for option in options:
+            if virtual_cab(option[0]) not in heard:
+                heard.add(virtual_cab(option[0]))
+                kept.append(option)
+        if len(kept) < len(options):
+            run.note(f"the simulated bench has four cab shapes, so {len(kept)} of {len(options)} cabs were heard; the device bench hears every one")
+        options = kept
+    if not options:
+        raise _Skip(f"no other cab to try with {amp.model}")
+
+    target, rate = load_audio(run.target_path)
+    di, di_rate = load_audio(run.di_path)
+    if di_rate != rate:
+        di = resample(di, di_rate, rate)
+    comparison = ComparisonMode.PERFORMANCE if run.mode == "performance" else ComparisonMode.DISTRIBUTION
+    if comparison is ComparisonMode.PERFORMANCE:
+        di = di[: len(target) + rate // 2]
+    render = _bench(run, rate)
+    heard = []
+    for index, (cab, why, cab_index, selector) in enumerate(options):
+        if progress:
+            progress.check()
+            progress.update(index / len(options), f"hearing {amp.model} through {cab}")
+        candidate = with_cab(amp, cab, why=why, index=cab_index, selector=selector)
+        audio = render(candidate, di, None)
+        if comparison is ComparisonMode.PERFORMANCE:
+            audio = audio[: len(target)]
+        scored = score_candidate(target, audio, rate, mode=comparison)
+        label = f"{amp.model} + {cab}"
+        path = save_audio(_dir() / run.run_id / f"{songs.slugify(label)}.wav", audio, rate)
+        heard.append({**candidate.to_dict(), "label": label, "composite": scored.composite, "path": str(path), "mode": comparison.value})
+    run.results = sorted(run.results + heard, key=lambda r: r["composite"])
+    winner = run.results[0]
+    if winner["cab"] == amp.cab:
+        return f"{amp.cab} stays: {len(heard)} other cab(s) heard, none closer"
+    margin = 1 - winner["composite"] / best["composite"] if best["composite"] else 0.0
+    if margin < CAB_NOISE:
+        return (
+            f"{winner['cab']} and {amp.cab} are a tie with {amp.model} ({margin:.1%} apart, "
+            "inside what the score can tell apart) - both go forward, the ear decides"
+        )
+    return f"{winner['cab']} beats {amp.cab} with {amp.model}, {margin:.0%} closer"
+
+
 def _bench(run: Run, rate: int):
     """A function that plays a DI through a candidate amp, on the chosen bench."""
     if run.request.bench == "virtual":
@@ -486,6 +574,8 @@ def _bench(run: Run, rate: int):
 
         def render(candidate, di, knobs):
             amp = SimAmp(Type=candidate.voicing if candidate.voicing is not None else 1)
+            if candidate.cab_voicing is not None:
+                amp.set(CabType=candidate.cab_voicing)
             if knobs:
                 amp.set(**{k.split(".", 1)[1]: v for k, v in knobs.items() if k.startswith("Amp")})
             return amp.process(di, rate)
@@ -503,15 +593,23 @@ def _bench(run: Run, rate: int):
         sink = VirtualSink() if route.backend == "virtual" else DeviceSink()
 
         def render(candidate, di, knobs):
-            values = {"Amp": {}}
             if route.backend == "virtual":
-                values["Amp"]["Type"] = candidate.voicing if candidate.voicing is not None else 1
-            elif candidate.device_index is not None:
-                values["Amp"]["Type"] = candidate.device_index
+                values = {"Amp": {"Type": candidate.voicing if candidate.voicing is not None else 1}}
+                values["Amp"]["CabType"] = candidate.cab_voicing if candidate.cab_voicing is not None else -1
+            else:
+                # Each model by its own selector: a ReValver amp lives on the
+                # ReValver Amp block, not on Amp's Type.
+                values = candidate.device_values()
             for key, value in (knobs or {}).items():
                 node, param = key.split(".", 1)
                 values.setdefault(node, {})[param] = value
-            sink.apply(values)
+            try:
+                sink.apply(values)
+            except Exception as exc:
+                raise Unavailable(
+                    f"could not switch the Core to {candidate.model} / {candidate.cab}: {exc}",
+                    hint="The loaded rig needs the blocks being switched - an Amp (or ReValver Amp) and a Cab.",
+                ) from exc
             capture = loop_reamp(route, di, backend=backend)
             audio = capture.wet
             if route.sample_rate != rate:
@@ -544,8 +642,18 @@ def _stage_tune(run: Run, progress) -> str:
     space = virtual_amp(("GainA", "Bass", "Mid", "Treble", "Presence", "Master"))
     budget = max(6, run.request.tune_budget // 2)
     tuned = []
-    for entry in run.results[:2]:
-        candidate = Candidate(entry["model"], entry["tier"], entry["cab"], entry["reason"], entry.get("device_index"), entry.get("voicing"))
+    # The best two *amps*, each through its best cab - after the cab stage
+    # the top two results can be one amp through two cabs, and tuning both
+    # would spend the whole budget on one amp.
+    chosen, seen = [], set()
+    for entry in run.results:
+        if entry["model"] not in seen:
+            seen.add(entry["model"])
+            chosen.append(entry)
+        if len(chosen) == 2:
+            break
+    for entry in chosen:
+        candidate = Candidate.from_dict(entry)
 
         def evaluate(values, candidate=candidate):
             audio = render(candidate, di, values)
@@ -677,6 +785,7 @@ def execute(run_id: str, *, progress: Progress | None = None) -> Run:
         "research": lambda: _stage_research(run, progress),
         "di": lambda: _stage_di(run, progress),
         "candidates": lambda: _stage_candidates(run, progress),
+        "cabs": lambda: _stage_cabs(run, progress),
         "tune": lambda: _stage_tune(run, progress),
         "rig": lambda: _stage_rig(run),
     }

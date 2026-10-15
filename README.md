@@ -11,7 +11,7 @@ pip install -e ".[all]"
 rigsmith ui
 ```
 
-> **Status: everything runs today.** Rig authoring, validation, NAM analysis, tone matching, catalog extraction, USB backup, MIDI, guitar learning, song maps, the hardware loop, the tuner, autopilot, the chat and the web UI are covered by 872 tests. The Remote Editor protocol has been captured against a real Core and a rig written to it and read back exactly - see [docs/PROTOCOL.md](docs/PROTOCOL.md). What still wants hardware is *measuring*: the loop and the blind A/B need the Core and an interface plugged in.
+> **Status: everything runs today.** Rig authoring, validation, NAM analysis, tone matching, catalog extraction, USB backup, MIDI, guitar learning, song maps, the hardware loop, the tuner, autopilot, the chat and the web UI are covered by 874 tests. The Remote Editor protocol has been captured against a real Core and a rig written to it and read back exactly - see [docs/PROTOCOL.md](docs/PROTOCOL.md). What still wants hardware is *measuring*: the loop and the blind A/B need the Core and an interface plugged in.
 
 ---
 
@@ -361,16 +361,20 @@ Then the same panel runs the blind listening test — both clips are decoded up 
 
 ```bash
 rigsmith autopilot run "Going Under" --artist Evanescence --mix going-under.flac \
-    --profile lp-bridge --bench device --route analog-focusrite
+    --profile lp-bridge --bench device --route analog-e2x2
 ```
 
-One run, nine stages: find the song and its credits, isolate the guitar, map
+One run, ten stages: find the song and its credits, isolate the guitar, map
 it, pick the part (yours, or the most prominent), research the gear into a
 recipe (every claim sourced, or marked as measured), play the part on your
-guitar, hear a field of the Core's amps chosen from the part's measured gain
-- each one switched live on the device and reamped through the loop - tune
-the best two and fit an EQ, then build a draft rig and set up a blind A/B of
-the finalists. Every stage records what it decided and why, a failed stage
+guitar (moved to the record's pickup when the research names the guitar),
+hear a field of the Core's amps chosen from the part's measured gain - each
+one switched live on the device, through its usual cab, and reamped through
+the loop - hear the best amp through the other cabs worth trying (a
+Greenback and a V30 4x12 on one head are different records), tune the best
+two amps and fit an EQ, then build a draft rig and set up a blind A/B of the
+finalists. A difference smaller than the score can resolve is called a tie,
+not a win. Every stage records what it decided and why, a failed stage
 can be resumed, and nothing is written to the device: that stays yours.
 
 `--bench virtual` runs the whole thing on the simulated amp - a rehearsal

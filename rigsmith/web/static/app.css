@@ -625,7 +625,7 @@ input:focus, select:focus { outline: 1px solid var(--amber-dim); border-color: v
 .match-card .t { font-weight: 550; font-size: 13px; }
 .match-card .m { color: var(--text-faint); font-size: 11.5px; }
 
-.stages { display: grid; grid-template-columns: repeat(9, 1fr); gap: 6px; margin: 4px 0 14px; }
+.stages { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin: 4px 0 14px; }
 @media (max-width: 1000px) { .stages { grid-template-columns: repeat(3, 1fr); } }
 .stage { border: 1px solid var(--line); border-radius: 8px; padding: 8px; background: var(--bg-raised); min-height: 64px; }
 .stage .s-name { font-size: 11px; letter-spacing: .07em; text-transform: uppercase; color: var(--text-faint); }

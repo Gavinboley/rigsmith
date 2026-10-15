@@ -92,6 +92,18 @@ VOICINGS = {
 }
 
 
+#: Simulated cabs, by ``CabType``: (name, high-pass, low resonance Hz and dB,
+#: a mid/presence peak Hz, dB and Q, top roll-off). Four shapes that differ
+#: the way real ones do - an open-back 1x12 is light and bright, a Greenback
+#: 4x12 humps in the mids and rolls off early, V30s bark at 2-3 kHz.
+CAB_VOICINGS = {
+    0: ("Sim 1x12 open back", 90.0, 130.0, 2.0, 2000.0, 1.0, 1.0, 6000.0),
+    1: ("Sim 2x12 open back", 80.0, 110.0, 3.0, 2400.0, 2.0, 1.2, 5600.0),
+    2: ("Sim 4x12 V30", 70.0, 100.0, 4.0, 2800.0, 4.0, 1.5, 5000.0),
+    3: ("Sim 4x12 Greenback", 70.0, 95.0, 4.5, 1500.0, 3.0, 1.0, 4300.0),
+}
+
+
 @dataclass
 class SimAmp:
     """A deterministic amp-and-cab with the Core's knob names, 0-1 each."""
@@ -105,6 +117,8 @@ class SimAmp:
     Level: float = 0.5
     enabled: bool = True
     cab: bool = True
+    CabType: int = -1
+    """A simulated cab from :data:`CAB_VOICINGS`; -1 keeps the voicing's own."""
 
     #: The Core's Amp block calls these GainA, Presence and Master; the
     #: simulated amp answers to both, so a tuner written against the real
@@ -116,13 +130,15 @@ class SimAmp:
             name = self.ALIASES.get(name, name)
             if name == "Type":
                 self.Type = int(value) if int(value) in VOICINGS else self.Type
+            elif name == "CabType":
+                self.CabType = int(value) if int(value) in CAB_VOICINGS else -1
             elif name in CONTROLS:
                 setattr(self, name, float(np.clip(value, 0.0, 1.0)))
             elif name in ("enabled", "cab"):
                 setattr(self, name, bool(value))
 
     def params(self) -> dict:
-        return {"Type": self.Type, **{name: getattr(self, name) for name in CONTROLS}}
+        return {"Type": self.Type, "CabType": self.CabType, **{name: getattr(self, name) for name in CONTROLS}}
 
     @property
     def voicing(self) -> str:
@@ -144,7 +160,14 @@ class SimAmp:
         y = _filter(y, *_biquad("peak", voice["mid_hz"], sample_rate, q=0.8, gain_db=24 * (self.Mid - 0.5)))
         y = _filter(y, *_biquad("highshelf", 2800.0, sample_rate, gain_db=24 * (self.Treble - 0.5)))
         y = _filter(y, *_biquad("highshelf", 5500.0, sample_rate, gain_db=18 * (self.Pres - 0.5)))
-        if self.cab:
+        if self.cab and self.CabType in CAB_VOICINGS:
+            _, hp, res_hz, res_db, peak_hz, peak_db, peak_q, lp = CAB_VOICINGS[self.CabType]
+            y = _filter(y, *_biquad("highpass", hp, sample_rate, q=0.8))
+            y = _filter(y, *_biquad("peak", res_hz, sample_rate, q=1.4, gain_db=res_db))
+            y = _filter(y, *_biquad("peak", peak_hz, sample_rate, q=peak_q, gain_db=peak_db))
+            y = _filter(y, *_biquad("lowpass", lp, sample_rate, q=0.9))
+            y = _filter(y, *_biquad("lowpass", lp * 1.2, sample_rate, q=0.6))
+        elif self.cab:
             # A 4x12 in three filters: no sub, a low resonance, and the steep
             # top roll-off that is most of why a cab is a cab.
             y = _filter(y, *_biquad("highpass", 75.0, sample_rate, q=0.8))

@@ -78,6 +78,10 @@ def test_a_whole_run_ends_in_a_draft_and_a_listening_test(workspace):
 
     assert run.state == "done", run.describe()
     assert run.stages["research"].state == "skipped"
+    # The best amp was heard through other cabs, each pinned to its own sim cab.
+    assert run.stages["cabs"].state == "done", run.stages["cabs"].summary
+    cabbed = [r for r in run.results if " + " in r["label"]]
+    assert cabbed and all(r["cab_voicing"] is not None for r in run.results)
     assert run.mode == "performance"
     assert run.results and run.results[0]["composite"] <= run.results[-1]["composite"]
     assert any("(tuned)" in r["label"] for r in run.results)
@@ -118,3 +122,36 @@ def test_the_researched_guitar_is_what_the_di_is_moved_to(workspace):
     assert autopilot._researched_guitar(run) == "Fender Stratocaster"
     recipes.set_instrument(recipe_id, pickup="bridge P-90")
     assert autopilot._researched_guitar(run) == "bridge P-90"
+
+
+def test_each_model_is_switched_by_its_own_selector():
+    from rigsmith.tune.candidates import Candidate, cab_options, with_cab
+
+    revalver = Candidate("Angel P-Ball", "modern", "4x12 Classic 30W", "named by the research", device_index=7, selector="ReValver Amp.Type", cab_index=10, cab_selector="Cab.CabType")
+    assert revalver.device_values() == {"ReValver_Amp": {"Type": 7}, "Cab": {"CabType": 10}}
+    plain = Candidate("82 Lead 800 100W", "high", "4x12 Green 20W", "x", device_index=23)
+    assert plain.device_values() == {"Amp": {"Type": 23}}
+    through = with_cab(plain, "4x12 Classic 30W", why="V30s", index=10, selector="Cab.CabType")
+    assert through.cab_voicing == 2 and through.device_values()["Cab"] == {"CabType": 10}
+    options = [name for name, *_ in cab_options("high", researched=["2x12 B30"])]
+    assert options[0] == "2x12 B30" and "4x12 Green 20W" in options
+
+
+def test_the_device_bench_switches_amp_and_cab_through_the_loop(workspace):
+    from rigsmith.core import loop
+
+    stem, _ = song(seconds_per_section=6.0)
+    mix_path = save_audio(workspace / "mix.wav", with_drums(stem), RATE)
+    stem_path = save_audio(workspace / "stem.wav", stem, RATE)
+    routes = loop.demo_bench()
+    analog = next(r for r in routes if r.kind == "analog")
+    request = autopilot.Request(
+        title="Fixture", mix=str(mix_path), stem=str(stem_path), research=False,
+        bench="device", route_id=analog.route_id, candidates=3, tune_budget=6, match_guitar=False,
+    )
+    run = autopilot.Run(run_id="t4", request=request)
+    run.save()
+    run = autopilot.execute("t4")
+    assert run.state == "done", run.describe()
+    assert run.stages["cabs"].state in ("done", "skipped")
+    assert run.results[0]["composite"] <= run.results[-1]["composite"]

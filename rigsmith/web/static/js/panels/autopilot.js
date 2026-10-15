@@ -13,7 +13,7 @@ import { $, attempt, clear, el, toast, when } from "../ui.js";
 import { dropZone } from "../upload.js";
 import { ask } from "../chat.js";
 
-let stages = ["song", "stem", "map", "parts", "research", "di", "candidates", "tune", "rig"];
+let stages = ["song", "stem", "map", "parts", "research", "di", "candidates", "cabs", "tune", "rig"];
 let current = null;
 let polling = null;
 let chosenMatch = null;
