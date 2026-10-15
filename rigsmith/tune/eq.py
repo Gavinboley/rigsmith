@@ -220,3 +220,36 @@ def informed_start(space, differences, *, current: dict | None = None) -> dict:
         start[knob.key] = start.get(knob.key, (knob.low + knob.high) / 2) + move * (knob.high - knob.low)
     return space.clip(start)
 
+
+#: What to reach for when a band is off, (too much, not enough). Only a
+#: starting point - the same band can be the amp, the cab or the record.
+BAND_MOVES = {
+    "sub": ("a high-pass around 80 Hz", "a cab with more low end"),
+    "low end": ("Bass down", "Bass up, or a 4x12"),
+    "body": ("Bass or Mid down a little", "Mid up a little"),
+    "mud": ("Mid down, or a cut around 500 Hz", "Mid up"),
+    "mids": ("Mid down", "Mid up"),
+    "presence": ("Presence down", "Presence up"),
+    "bite": ("Treble down", "Treble up"),
+    "fizz": ("a low-pass around 7 kHz, or a darker cab", "Treble or Presence up, or a brighter cab"),
+    "air": ("nothing - usually the record's own top end", "nothing - usually the record's own top end"),
+}
+
+
+def remaining(target, audio, sample_rate: int) -> list[dict]:
+    """Band by band, where ``audio`` still differs from ``target``, and what to try.
+
+    ``{band, low, high, delta_db, audible, meaning, try}`` per guitar band -
+    what a run hands over so the next move is a knob, not a number.
+    """
+    from ..match.metrics import band_differences
+
+    rows = []
+    for diff in band_differences(target, audio, sample_rate):
+        too_much, too_little = BAND_MOVES.get(diff.name, ("", ""))
+        rows.append({
+            "band": diff.name, "low": diff.low, "high": diff.high, "delta_db": round(diff.delta_db, 1),
+            "audible": diff.audible, "meaning": diff.meaning, "try": too_much if diff.delta_db > 0 else too_little,
+        })
+    return rows
+

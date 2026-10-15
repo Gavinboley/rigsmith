@@ -11,6 +11,7 @@ import { COLOURS, lineChart } from "../charts.js";
 import { describeJob, track } from "../jobs.js";
 import { onArrive } from "../nav.js";
 import { $, attempt, clear, el, toast } from "../ui.js";
+import { remainingCard } from "../remaining.js";
 import { dropZone } from "../upload.js";
 
 const KNOBS = ["GainA", "Bass", "Mid", "Treble", "Presence", "Master"];
@@ -172,6 +173,7 @@ function show(run) {
     const running = finite.map((loss) => (loss === null ? best : (best = Math.min(best, loss))));
     requestAnimationFrame(() => lineChart(chart, { x: trials.map((t) => t.index), height: 180, yLabel: "loss", series: [{ label: "each try", values: finite, color: COLOURS.dim, points: true }, { label: "best so far", values: running, color: COLOURS.amber }] }));
   }
+  if (run.remaining?.length) card.append(remainingCard(run.remaining));
   if (run.eq?.curve?.length) {
     const chart = el("div", { class: "chart" });
     card.append(el("h3", { text: "What an EQ would still do", style: "margin-top:12px" }), el("div", { class: "hint", text: run.eq.describe }), chart);

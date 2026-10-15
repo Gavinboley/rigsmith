@@ -143,6 +143,7 @@ def test_a_song_is_mapped_chosen_and_tuned_from_the_page(client, tmp_path):
         client.post("/api/tune", json={"target": target, "di": upload(client, di), "budget": 6, "method": "random", "knobs": ["Amp.GainA", "Amp.Treble"]}).json()["job_id"],
     )
     assert run["result"]["trials"] and run["best_url"]
+    assert {r["band"] for r in run["remaining"]} >= {"low end", "mids", "bite"}
     assert client.get("/api/tune/runs").json()["runs"][0]["run_id"] == run["run_id"]
 
 

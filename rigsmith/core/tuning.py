@@ -190,6 +190,8 @@ class TuneRun:
     result: dict = field(default_factory=dict)
     best_audio: str | None = None
     eq: dict | None = None
+    remaining: list[dict] = field(default_factory=list)
+    """Where the best setting still differs from the target, band by band."""
     applied_to: str | None = None
     song: dict | None = None
     """``{"song_id", "part_id"}`` when the target is a song's part."""
@@ -406,8 +408,10 @@ def tune(
         audio = render(best.values)
         directory = _dir() / run.run_id
         run.best_audio = str(save_audio(directory / "best.wav", audio, rate))
-        plan = match_eq.match(target_audio, audio[: len(target_audio)] if comparison is ComparisonMode.PERFORMANCE else audio, rate)
+        heard = audio[: len(target_audio)] if comparison is ComparisonMode.PERFORMANCE else audio
+        plan = match_eq.match(target_audio, heard, rate)
         run.eq = plan.to_dict()
+        run.remaining = match_eq.remaining(target_audio, heard, rate)
         if renderer == "loop":
             # Leave the device where the search ended up, not on its last try.
             pass

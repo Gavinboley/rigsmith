@@ -790,25 +790,10 @@ def _with_eq(tuned: list[dict], target, rate: int, comparison) -> list[dict]:
     }]
 
 
-#: What to reach for when a band is off, in the order worth trying. Only a
-#: starting point - the same band can be the amp, the cab or the record.
-BAND_MOVES = {
-    "sub": ("a high-pass around 80 Hz", "a cab with more low end"),
-    "low end": ("Bass down", "Bass up, or a 4x12"),
-    "body": ("Bass or Mid down a little", "Mid up a little"),
-    "mud": ("Mid down, or a cut around 500 Hz", "Mid up"),
-    "mids": ("Mid down", "Mid up"),
-    "presence": ("Presence down", "Presence up"),
-    "bite": ("Treble down", "Treble up"),
-    "fizz": ("a low-pass around 7 kHz, or a darker cab", "Treble or Presence up, or a brighter cab"),
-    "air": ("nothing - usually the record's own top end", "nothing - usually the record's own top end"),
-}
-
-
 def _remaining(run: Run, best: dict) -> list[dict]:
     """Band by band: where the result the draft was built from still differs."""
-    from ..match.metrics import band_differences
     from ..match.render_offline import load_audio, resample
+    from ..tune.eq import remaining
 
     try:
         target, rate = load_audio(run.target_path)
@@ -817,14 +802,7 @@ def _remaining(run: Run, best: dict) -> list[dict]:
         return []
     if audio_rate != rate:
         audio = resample(audio, audio_rate, rate)
-    rows = []
-    for diff in band_differences(target, audio, rate):
-        too_much, too_little = BAND_MOVES.get(diff.name, ("", ""))
-        rows.append({
-            "band": diff.name, "low": diff.low, "high": diff.high, "delta_db": round(diff.delta_db, 1),
-            "audible": diff.audible, "meaning": diff.meaning, "try": too_much if diff.delta_db > 0 else too_little,
-        })
-    return rows
+    return remaining(target, audio, rate)
 
 
 def _stage_rig(run: Run, *, from_ears: bool = False) -> str:
