@@ -1008,6 +1008,19 @@ def song_rig(run_ids: list[str], *, name: str | None = None) -> dict:
             if slot:
                 slots_by_role[role] = slot
 
+    # Two amps, two cabs and their EQs is a lot of DSP. Past the warning
+    # line, the fitted EQs go first - the least essential blocks here.
+    from ..rig.validate import CPU_WARN_THRESHOLD
+
+    if rigs.validate(draft_id).estimated_cpu >= CPU_WARN_THRESHOLD:
+        for config, slots in sound_slots.items():
+            for slot in list(slots):
+                block = next((b for b in rigs.get(draft_id).rig.blocks if b.slot == slot), None)
+                if block is not None and block.model_id == "G EQ":
+                    rigs.remove_block(draft_id, slot)
+                    slots.remove(slot)
+        notes.append("the fitted EQs were left out to keep the rig inside the Core's DSP budget")
+
     scenes = []
     for index, item in enumerate(parts, start=1):
         on = list(sound_slots.get(item["config"], []))
