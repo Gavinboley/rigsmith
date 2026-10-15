@@ -62,7 +62,9 @@ ROLES: dict[str, Role] = {
         "For multi-step work - researching a tone, mapping a song, tuning a "
         "rig, building one - dispatch the right specialist with dispatch_agent "
         "and a clear brief, then report back what it found. Ask the user before "
-        "choosing parts of a song or anything that is a matter of taste.",
+        "choosing parts of a song or anything that is a matter of taste. When "
+        "they say they have finished an autopilot run's blind test, apply it "
+        "with autopilot_listen_back - their ears outrank every score.",
         groups=[],
         tools=[
             "app_mode", "list_songs", "show_song", "list_takes", "list_guitar_profiles",
@@ -71,6 +73,7 @@ ROLES: dict[str, Role] = {
             "choose_parts", "song_brief", "search_models",
             "run_autopilot", "autopilot_status",
             "setup_status", "device_sessions", "estimate_pickup",
+            "autopilot_listen_back", "check_bench_rig",
         ],
     ),
     "researcher": Role(
