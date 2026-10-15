@@ -67,13 +67,25 @@ class VirtualSink:
                 self.world.rig.amp.set(**values)
 
 
+#: How long the Core takes to settle after a change, before a reamp starts.
+#: Loading another amp or cab model swaps a whole block's DSP (and mutes it
+#: while it does); a knob only ramps. Measuring through a change prints the
+#: change into the capture - and the capture's sync marks come first.
+MODEL_SETTLE_S = 0.8
+KNOB_SETTLE_S = 0.1
+
+
 class DeviceSink:
     """Knob changes written live to the paired Core's loaded patch."""
 
     name = "the Core"
 
+    def __init__(self, *, settle: bool = True) -> None:
+        self.settle = settle
+
     def apply(self, by_node: dict[str, dict[str, float]]) -> None:
         import asyncio
+        import time
 
         from ..device.client import connect
 
@@ -83,6 +95,9 @@ class DeviceSink:
                     await client.call("set_properties", node=f"/Evil/Engine/Patch/{node}", properties=values)
 
         asyncio.run(send())
+        if self.settle and by_node:
+            models = any(key in ("Type", "CabType") for values in by_node.values() for key in values)
+            time.sleep(MODEL_SETTLE_S if models else KNOB_SETTLE_S)
 
 
 # --------------------------------------------------------------------------

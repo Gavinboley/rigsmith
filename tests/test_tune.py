@@ -164,3 +164,32 @@ def test_the_search_starts_where_the_untuned_sound_says_to_turn():
     assert start["Amp.Bass"] < 0.4 and start["Amp.Treble"] > 0.6
     assert start["Amp.GainA"] == 0.5  # no band rule for gain: left where it was
     assert all(abs(start[k] - 0.5) <= 0.3 + 1e-9 for k in start)
+
+
+def test_the_core_is_given_time_to_settle_before_it_is_heard(monkeypatch):
+    import time as time_module
+
+    from rigsmith.device import client as client_module
+
+    sent, slept = [], []
+
+    class Fake:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+        async def call(self, operation, **kwargs):
+            sent.append(kwargs["node"])
+
+    async def connect(*args, **kwargs):
+        return Fake()
+
+    monkeypatch.setattr(client_module, "connect", connect)
+    monkeypatch.setattr(time_module, "sleep", slept.append)
+    sink = tuning.DeviceSink()
+    sink.apply({"Amp": {"Type": 23}, "Cab": {"CabType": 12}})
+    sink.apply({"Amp": {"Bass": 0.4}})
+    assert sent == ["/Evil/Engine/Patch/Amp", "/Evil/Engine/Patch/Cab", "/Evil/Engine/Patch/Amp"]
+    assert slept == [tuning.MODEL_SETTLE_S, tuning.KNOB_SETTLE_S]
