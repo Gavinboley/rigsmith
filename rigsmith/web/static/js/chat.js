@@ -157,6 +157,7 @@ function renderEmpty() {
 
 async function loadChat(id) {
   live = null;
+  agentCards.clear();
   chatId = id;
   pendingCards.clear();
   clear(log());
@@ -266,14 +267,67 @@ async function decide(id, allow, node) {
   node.remove();
 }
 
+/* Agents this chat dispatched, as cards that fill in while they work. */
+const agentCards = new Map();
+
+function agentCard(runId, role, task) {
+  const body = el("div", { class: "agent-log" });
+  const state = el("span", { class: "tool-state", text: "working" });
+  const card = el(
+    "details",
+    { class: "toolcard agent pending" },
+    el("summary", {}, el("span", { class: "tool-name", text: role }), el("span", { class: "agent-task", text: task.slice(0, 90) }), state),
+    body
+  );
+  card.dataset.run = runId;
+  agentCards.set(runId, { card, body, state, live: null });
+  log().append(card);
+  scrollDown();
+  return agentCards.get(runId);
+}
+
+function agentEvent(message) {
+  let entry = agentCards.get(message.run_id);
+  if (!entry) {
+    if (message.kind !== "started" || message.parent !== chatId) return;
+    entry = agentCard(message.run_id, message.role, message.task || "");
+    return;
+  }
+  const { card, body, state } = entry;
+  switch (message.kind) {
+    case "partial":
+      if (!entry.live) entry.live = body.appendChild(el("div", { class: "agent-text" }));
+      entry.live.textContent = message.text;
+      break;
+    case "text":
+      if (entry.live) entry.live.textContent = message.text;
+      else body.append(el("div", { class: "agent-text", text: message.text }));
+      entry.live = null;
+      break;
+    case "tool_call":
+      entry.live = null;
+      body.append(el("div", { class: "agent-call mono", text: `-> ${message.name}(${JSON.stringify(message.arguments || {}).slice(0, 140)})` }));
+      break;
+    case "tool_result":
+      body.append(el("div", { class: `agent-call mono ${message.ok ? "" : "bad"}`, text: `<- ${message.name}: ${(message.text || "").split("\n")[0].slice(0, 160)}` }));
+      break;
+    case "finished":
+      card.classList.remove("pending");
+      if (message.state !== "done") card.classList.add("failed");
+      state.textContent = message.state;
+      // The report is usually the last thing it said; only add it when not.
+      if (message.text && body.lastElementChild?.textContent !== message.text) body.append(el("div", { class: "agent-text final", text: message.text }));
+      else body.lastElementChild?.classList.add("final");
+      break;
+    default:
+      return;
+  }
+}
+
 /** Live events from app.js's socket. */
 export function onEvent(message) {
   if (message.type === "agent") {
-    if (message.kind === "started" && message.parent === chatId) {
-      addMessage("status", `${message.role} started: ${message.task.slice(0, 120)}`);
-    } else if (message.kind === "finished" && message.parent === chatId) {
-      addMessage("status", `${message.role} ${message.state}`);
-    }
+    agentEvent(message);
     return;
   }
   if (message.type !== "chat" || message.chat_id !== chatId) return;

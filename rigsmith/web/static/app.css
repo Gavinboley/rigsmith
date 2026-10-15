@@ -744,3 +744,10 @@ input:focus, select:focus { outline: 1px solid var(--amber-dim); border-color: v
 .chat-drawer.unguarded label:has(#chat-writes) { color: #e0574b; }
 .msg.assistant.live::after { content: "\258D"; margin-left: 2px; color: var(--amber); animation: blink 1s steps(2) infinite; }
 @keyframes blink { 50% { opacity: 0; } }
+.toolcard.agent .agent-task { color: var(--text-dim); margin: 0 8px; font-size: 12px; }
+.agent-log { display: grid; gap: 4px; padding: 6px 10px 4px; max-height: 320px; overflow: auto; }
+.agent-log .agent-text { white-space: pre-wrap; font-size: 12.5px; }
+.agent-log .agent-text.final { border-top: 1px solid var(--line); padding-top: 4px; }
+.agent-log .agent-call { font-size: 11px; color: var(--text-faint); }
+.agent-log .agent-call.bad { color: #e0574b; }
+.scenes-head h3 { white-space: nowrap; }
