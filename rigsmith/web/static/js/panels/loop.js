@@ -9,6 +9,7 @@
 import { api } from "../api.js";
 import { COLOURS, lineChart } from "../charts.js";
 import { describeJob, track } from "../jobs.js";
+import { goTo } from "../nav.js";
 import { $, attempt, clear, el, prompt, toast, when } from "../ui.js";
 import { dropZone } from "../upload.js";
 
@@ -70,6 +71,7 @@ function routeCard(route, isDefault) {
       el("button", { class: "btn small", text: "meter", onclick: () => toggleMeter(route.route_id, vu) }),
       el("button", { class: "btn small", text: "calibrate", onclick: () => calibrate(route, out) }),
       el("button", { class: "btn small primary", text: "reamp a take", onclick: () => reamp(route, out) }),
+      route.backend === "virtual" ? null : el("button", { class: "btn small", text: "check the Core's rig", title: "Is there an Amp and a Cab for autopilot to switch? Read only.", onclick: () => benchCheck(out) }),
       el("span", { class: "grow" }),
       el("button", { class: "btn small ghost danger", text: "forget", onclick: () => attempt(async () => { await api.del(`/api/loop/routes/${route.route_id}`); refresh(); }) })
     ),
@@ -82,6 +84,26 @@ function routeCard(route, isDefault) {
     requestAnimationFrame(() => lineChart(chart, { x: cal.bands_hz, logX: true, height: 130, yLabel: "dB", series: [{ label: "loop + rig response", values: cal.response_db, color: COLOURS.blue, points: true }] }));
   }
   return card;
+}
+
+async function benchCheck(out) {
+  await attempt(async () => {
+    const check = await api.get("/api/loop/bench");
+    clear(out).append(el("div", { class: check.ok ? "notice" : "notice warn", text: check.describe }));
+    if (!check.ok) {
+      out.append(
+        el("button", {
+          class: "btn small",
+          text: "make a bench rig draft",
+          onclick: () => attempt(async () => {
+            const made = await api.post("/api/loop/bench-rig");
+            toast(made.message, { kind: "ok" });
+            goTo("rig", { draftId: made.draft_id });
+          }),
+        })
+      );
+    }
+  });
 }
 
 function toggleMeter(routeId, vu) {

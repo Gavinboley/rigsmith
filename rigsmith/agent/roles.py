@@ -118,9 +118,15 @@ ROLES: dict[str, Role] = {
         "audio as the target (part_target), a DI of the part on the user's "
         "guitar when there is one, rank captures offline, confirm on the loop, "
         "tune the knobs, and explain what is still different in guitar words. "
+        "When the record was played on a different guitar from the user's "
+        "(show_recipe says), move the DI to it with swap_pickup first - an "
+        "amp tuned to make up for a pickup is tuned wrong. "
         "Finish by offering a blind A/B of the best few.",
         groups=["matching", "loop", "tuning"],
-        tools=["part_target", "render_song_part_di", "show_song", "scan_captures", "rank_captures", "job_status", "start_ab_test", "list_takes"],
+        tools=[
+            "part_target", "render_song_part_di", "show_song", "scan_captures", "rank_captures", "job_status",
+            "start_ab_test", "list_takes", "estimate_pickup", "swap_pickup", "show_recipe",
+        ],
     ),
     "rig-builder": Role(
         "rig-builder",

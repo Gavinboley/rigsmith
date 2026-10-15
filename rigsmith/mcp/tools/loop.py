@@ -26,6 +26,32 @@ def loop_status() -> str:
 
 
 @tool
+def check_bench_rig() -> str:
+    """Whether the Core's loaded rig can serve as autopilot's device bench.
+
+    Reads the loaded chain (read only) and says whether there is an Amp and a
+    Cab block for models to be switched on. Check before running autopilot or
+    tuning on the device bench.
+    """
+    from ...core import tuning
+
+    return tuning.bench_check().describe()
+
+
+@tool
+def make_bench_rig_draft() -> str:
+    """Make a draft with one amp and one cab to use as the device bench rig.
+
+    Writes nothing to the device; the user writes the draft through the usual
+    gated write (write_rig), which backs up what is there first.
+    """
+    from ...core import tuning
+
+    draft_id = tuning.bench_rig_draft()
+    return f"draft '{draft_id}' holds one amp and one cab. Writing it is write_rig('{draft_id}'), which asks first."
+
+
+@tool
 def suggest_loop_routes(virtual: bool = False) -> str:
     """Routes that fit the audio devices connected right now.
 

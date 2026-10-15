@@ -444,6 +444,15 @@ def _stage_candidates(run: Run, progress) -> str:
     field_ = pick(gain, researched=_researched_amps(run), count=run.request.candidates, catalog=get_catalog())
     if not field_:
         raise Invalid("no candidate amps to try")
+    hosts = _device_hosts(run)
+    if hosts is not None:
+        heard = [c for c in field_ if (c.selector or "Amp.Type").split(".", 1)[0] in hosts]
+        if len(heard) < len(field_):
+            missing = sorted({(c.selector or "Amp.Type").split(".", 1)[0] for c in field_} - hosts)
+            run.note(f"{len(field_) - len(heard)} candidate(s) need a {', '.join(missing)} block the loaded rig does not have, so were not heard")
+        field_ = heard
+        if not field_:
+            raise Invalid("none of the candidate amps can be switched on the loaded rig", hint="Load a rig with an Amp block.")
     if run.request.bench == "virtual":
         # The simulated amp has four voicings, so two "Lead 800" variants
         # sound identical on it and would tie - a ranking that means
@@ -519,6 +528,9 @@ def _stage_cabs(run: Run, progress) -> str:
     amp = Candidate.from_dict(best)
     options = cab_options(amp.tier, researched=_researched_cabs(run), catalog=get_catalog(), count=4)
     options = [o for o in options if o[0] != amp.cab]
+    hosts = _device_hosts(run)
+    if hosts is not None:
+        options = [o for o in options if (o[3] or "Cab.CabType").split(".", 1)[0] in hosts]
     if run.request.bench == "virtual":
         # Four simulated cabs, so one option per simulated cab - and none
         # that sounds the same as the cab the amp was already heard through.
@@ -565,6 +577,26 @@ def _stage_cabs(run: Run, progress) -> str:
             "inside what the score can tell apart) - both go forward, the ear decides"
         )
     return f"{winner['cab']} beats {amp.cab} with {amp.model}, {margin:.0%} closer"
+
+
+def _device_hosts(run: Run) -> set[str] | None:
+    """The switchable blocks in the Core's loaded rig, for the device bench.
+
+    None when there is nothing to check (the virtual bench, or the simulated
+    loop). A rig with no Amp or no Cab ends the run here, before an hour of
+    reamps that would all sound the same.
+    """
+    if run.request.bench != "device":
+        return None
+    from . import loop as hardware_loop
+    from .tuning import bench_check
+
+    if hardware_loop.get_route(run.request.route_id).backend == "virtual":
+        return None
+    check = bench_check()
+    if not check.ok:
+        raise Invalid(check.describe(), hint="Make one:  rigsmith loop bench-rig  (a draft), then write it as usual - or load any rig with an Amp and a Cab.")
+    return set(check.hosts)
 
 
 def _bench(run: Run, rate: int):

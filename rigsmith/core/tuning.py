@@ -86,6 +86,91 @@ class DeviceSink:
 
 
 # --------------------------------------------------------------------------
+# the bench rig on the device
+# --------------------------------------------------------------------------
+
+#: Model families autopilot switches, by the module that hosts them.
+SWITCHED = {"amp": ("Amp", "ReValver Amp"), "cab": ("Cab", "ReValver Cab")}
+
+#: What a bench rig is made of when there is none: one amp, one cab. Any amp
+#: and cab will do - autopilot switches the models - these are just sensible.
+BENCH_AMP, BENCH_CAB = "64 Black Lux Norm", "4x12 Green 25W"
+BENCH_NAME = "Autopilot bench"
+
+
+@dataclass
+class BenchCheck:
+    modules: list[str]
+    """What the loaded rig's chain holds, slot by slot."""
+    hosts: list[str]
+    """The first-instance modules autopilot can switch models on."""
+
+    @property
+    def ok(self) -> bool:
+        return any(h in self.hosts for h in SWITCHED["amp"]) and any(h in self.hosts for h in SWITCHED["cab"])
+
+    def describe(self) -> str:
+        chain = " > ".join(self.modules) or "nothing"
+        if self.ok:
+            return f"ready: the loaded rig has {', '.join(self.hosts)} to switch ({chain})"
+        missing = [kind for kind, hosts in SWITCHED.items() if not any(h in self.hosts for h in hosts)]
+        return (
+            f"not ready: the loaded rig has no {' and no '.join(missing)} block to switch models on ({chain}). "
+            "Load a rig with an Amp and a Cab, or make the bench rig draft and write it."
+        )
+
+    def to_dict(self) -> dict:
+        return {"modules": self.modules, "hosts": self.hosts, "ok": self.ok, "describe": self.describe()}
+
+
+def assess_chain(chain: dict, table: list[str]) -> BenchCheck:
+    """Which switchable modules a chain holds. Only the first instance counts:
+    autopilot sets ``Amp``, and an ``Amp 2`` in the chain would not hear it."""
+    modules = []
+    for slot in range(1, 15):
+        index = chain.get(f"ModuleType{slot}")
+        if isinstance(index, int) and 0 < index < len(table):
+            modules.append(table[index])
+    hosts = [m for m in modules if m in SWITCHED["amp"] + SWITCHED["cab"]]
+    return BenchCheck(modules=modules, hosts=hosts)
+
+
+def bench_check() -> BenchCheck:
+    """Read the Core's loaded chain - read only - and say whether autopilot
+    can switch amps and cabs on it."""
+    import asyncio
+
+    from ..device.client import connect
+
+    async def read():
+        async with await connect() as client:
+            chain = await client.call("get_chain")
+            table = (await client.call("module_table"))["ModuleTypes"]
+            return chain, table
+
+    chain, table = asyncio.run(read())
+    return assess_chain(chain, table)
+
+
+def bench_rig_draft() -> str:
+    """A draft with one amp and one cab, to write as the bench rig.
+
+    Nothing is written here; writing it is the usual gated step, so the
+    rig that was loaded is backed up first.
+    """
+    from . import rigs
+
+    require_writable("make the bench rig draft")
+    for draft in rigs.list_drafts():
+        if getattr(draft, "rig", None) is not None and draft.rig.name == BENCH_NAME:
+            return draft.draft_id
+    made = rigs.create(BENCH_NAME, notes="One amp and one cab for autopilot's device bench to switch models on.").draft
+    rigs.add_block(made.draft_id, "amp", BENCH_AMP)
+    rigs.add_block(made.draft_id, "cab", BENCH_CAB)
+    return made.draft_id
+
+
+# --------------------------------------------------------------------------
 # runs
 # --------------------------------------------------------------------------
 

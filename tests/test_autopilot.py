@@ -177,3 +177,27 @@ def test_a_fitted_eq_goes_in_only_when_it_scores_closer(workspace):
     # Nothing to fix: no EQ entry at all.
     flat = {**entry, "eq": match_eq.match(candidate, candidate, RATE).to_dict()}
     assert autopilot._with_eq([flat], candidate, RATE, ComparisonMode.PERFORMANCE) == []
+
+
+def test_the_device_bench_checks_the_loaded_rig_first(workspace, monkeypatch):
+    from rigsmith.core import loop, tuning
+    from rigsmith.loop.routes import LoopRoute
+
+    table = ["(empty)", "Amp", "Amp 2", "Cab", "Cab 2", "ReValver Amp", "Delay"]
+    check = tuning.assess_chain({"ModuleType1": 2, "ModuleType2": 3, "ModuleType3": 6}, table)
+    assert check.modules == ["Amp 2", "Cab", "Delay"] and not check.ok  # Amp 2 does not hear "Amp"
+    assert "no amp" in check.describe()
+    assert tuning.assess_chain({"ModuleType1": 1, "ModuleType4": 3}, table).ok
+
+    loop.store().put(LoopRoute("real", output_device="X", input_device="X", backend="sounddevice"), make_default=True)
+    run = autopilot.Run(run_id="t6", request=autopilot.Request(title="x", bench="device", route_id="real"))
+    monkeypatch.setattr(tuning, "bench_check", lambda: check)
+    with pytest.raises(Invalid) as caught:
+        autopilot._device_hosts(run)
+    assert "bench-rig" in caught.value.hint
+    monkeypatch.setattr(tuning, "bench_check", lambda: tuning.assess_chain({"ModuleType1": 1, "ModuleType2": 3}, table))
+    assert autopilot._device_hosts(run) == {"Amp", "Cab"}
+
+    draft_id = tuning.bench_rig_draft()
+    assert tuning.bench_rig_draft() == draft_id  # made once
+    assert [b.model_id for b in rigs.get(draft_id).rig.blocks] == [tuning.BENCH_AMP, tuning.BENCH_CAB]

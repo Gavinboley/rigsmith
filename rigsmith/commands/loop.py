@@ -146,6 +146,26 @@ def loop_tone(route_id, freq, level) -> None:
     click.echo(result["message"])
 
 
+@group.command("bench")
+@handled
+def loop_bench() -> None:
+    """Check the Core's loaded rig has an Amp and a Cab for autopilot to switch. Read only."""
+    from ..core import tuning
+
+    click.echo(tuning.bench_check().describe())
+
+
+@group.command("bench-rig")
+@handled
+def loop_bench_rig() -> None:
+    """Make a draft with one amp and one cab - the device bench's rig. Writes nothing."""
+    from ..core import tuning
+
+    draft_id = tuning.bench_rig_draft()
+    click.echo(f"draft '{draft_id}': one amp, one cab.")
+    click.echo(f"Write it the usual way (backup first):  rigsmith rig write {draft_id}")
+
+
 @group.command("meter")
 @click.option("--route", "route_id")
 @handled

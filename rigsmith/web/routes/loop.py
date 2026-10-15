@@ -117,6 +117,22 @@ def delete_route(route_id: str) -> dict:
     return {"deleted": route_id}
 
 
+@router.get("/bench")
+def bench() -> dict:
+    """Whether the Core's loaded rig has an Amp and a Cab to switch (read only)."""
+    from ...core import tuning
+
+    return tuning.bench_check().to_dict()
+
+
+@router.post("/bench-rig")
+def bench_rig() -> dict:
+    from ...core import tuning
+
+    draft_id = tuning.bench_rig_draft()
+    return {"draft_id": draft_id, "message": f"Draft '{draft_id}' has one amp and one cab - write it from the Rig panel."}
+
+
 @router.post("/demo")
 def demo() -> dict:
     return {"routes": [r.to_dict() for r in loop.demo_bench()]}
