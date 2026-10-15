@@ -15,7 +15,7 @@ from ..plain import PlainRoute
 router = APIRouter(prefix="/api", route_class=PlainRoute)
 
 #: What may be uploaded, by extension. Audio, MIDI and captures - not code.
-ALLOWED = {".wav", ".flac", ".mp3", ".ogg", ".aif", ".aiff", ".m4a", ".mid", ".midi", ".nam", ".txt"}
+ALLOWED = {".wav", ".flac", ".mp3", ".ogg", ".aif", ".aiff", ".m4a", ".aac", ".opus", ".mid", ".midi", ".nam", ".txt"}
 
 #: 400 MB: a long lossless album track is well under; a video is not welcome.
 MAX_BYTES = 400 * 1024 * 1024

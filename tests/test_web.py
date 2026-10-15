@@ -924,11 +924,15 @@ def test_device_audio_reports_a_missing_drive_rather_than_failing(client):
 def test_the_picker_only_offers_what_this_install_can_read(client, tmp_path):
     (tmp_path / "riff.wav").write_bytes(b"RIFF")
     (tmp_path / "voice.m4a").write_bytes(b"\x00")
+    (tmp_path / "notes.docx").write_bytes(b"\x00")
 
     payload = client.get("/api/browse", params={"path": str(tmp_path)}).json()
     names = [entry["name"] for entry in payload["files"]]
     assert "riff.wav" in names
-    assert "voice.m4a" not in names, "offering a file that cannot be opened is a trap"
+    assert "notes.docx" not in names, "offering a file that cannot be opened is a trap"
+    from rigsmith.match.source import _have_av
+
+    assert ("voice.m4a" in names) == _have_av(), "m4a is readable exactly when FFmpeg (PyAV) is installed"
 
 
 def test_recording_a_take_is_a_job_that_reports_a_missing_interface(client):

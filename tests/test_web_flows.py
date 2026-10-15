@@ -236,3 +236,27 @@ def test_a_default_cleanup_never_touches_what_cannot_be_made_again(tmp_path):
     assert gone == {"autopilot", "tuning"}
     for kept in ("profiles", "songs", "uploads", "sessions", "loop", "agents"):
         assert (tmp_path / kept / "thing" / "f.bin").exists()
+
+
+def test_a_bought_m4a_reads_and_candidates_are_matched_to_it(client, tmp_path):
+    pytest.importorskip("av", reason="needs pip install 'rigsmith[codecs]'")
+    import numpy as np
+    from scipy.signal import correlate
+
+    from rigsmith.match import source
+
+    stem, _ = song(seconds_per_section=4.0)
+    bought = tmp_path / "bought.m4a"
+    source._encode_aac(stem, RATE, bought)
+    audio, rate = source.load(bought, mono=True)
+    assert rate == RATE
+    # On the original's clock: the encoder's priming is compensated.
+    window = audio[RATE - 2000 : RATE * 3 + 2000]
+    assert int(np.argmax(correlate(window, stem.mean(axis=1)[RATE : RATE * 3], mode="valid"))) - 2000 == 0
+    info = source.inspect_audio(bought)
+    assert info.lossy and "AAC" in info.subtype and info.channels == 2
+    candidate = save_audio(tmp_path / "candidate.wav", stem, RATE)
+    matched, note = source.matched_to(candidate, bought)
+    assert matched.suffix == ".m4a" and "AAC" in note
+    # And the page accepts it.
+    assert upload(client, bought).endswith(".m4a")

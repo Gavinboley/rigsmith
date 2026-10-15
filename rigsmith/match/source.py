@@ -94,6 +94,8 @@ def readable_suffixes() -> list[str]:
     for name, suffixes in mapping.items():
         if name in names:
             found.extend(s for s in suffixes if s not in found)
+    if _have_av():
+        found.extend(s for s in CONTAINER_SUFFIXES if s not in found)
     return sorted(found)
 
 
@@ -116,7 +118,10 @@ class AudioSource:
 
     @property
     def lossy(self) -> bool:
-        return any(name in self.format.upper() for name in LOSSY_FORMATS)
+        # The codec, not just the container: an .m4a is AAC (lossy) or ALAC
+        # (lossless), and only the codec says which.
+        described = f"{self.format} {self.subtype}".upper()
+        return any(name in described for name in LOSSY_FORMATS)
 
     @property
     def clipped(self) -> bool:
@@ -252,7 +257,12 @@ def inspect_audio(path: str | Path, *, measure: bool = True) -> AudioSource:
     try:
         info = sf.info(str(target))
     except Exception as exc:
-        raise _unreadable(target, exc) from exc
+        if not _have_av():
+            raise _unreadable(target, exc) from exc
+        source = _inspect_with_av(target, measure=measure)
+        if key is not None:
+            _CACHE[key] = source
+        return source
 
     source = AudioSource(
         path=target,
@@ -286,6 +296,38 @@ def inspect_audio(path: str | Path, *, measure: bool = True) -> AudioSource:
         if len(_CACHE) >= _CACHE_LIMIT:
             _CACHE.clear()
         _CACHE[key] = source
+    return source
+
+
+def _inspect_with_av(target: Path, *, measure: bool) -> AudioSource:
+    """The same report for a file only FFmpeg can read."""
+    import av
+
+    try:
+        with av.open(str(target)) as container:
+            stream = next((s for s in container.streams if s.type == "audio"), None)
+            if stream is None:
+                raise Invalid(f"{target.name} has no audio in it")
+            rate = int(stream.codec_context.sample_rate or stream.rate or 0)
+            channels = int(stream.codec_context.channels or 1)
+            seconds = float(stream.duration * stream.time_base) if stream.duration else float((container.duration or 0) / 1_000_000)
+            source = AudioSource(
+                path=target, sample_rate=rate, channels=channels, frames=int(round(seconds * rate)),
+                format=str(container.format.name or "").upper(), subtype=str(stream.codec_context.name or "").upper(),
+            )
+    except Invalid:
+        raise
+    except Exception as exc:
+        raise _unreadable(target, exc) from exc
+    if measure and source.frames:
+        try:
+            data, _ = _load_with_av(target)
+            magnitude = np.abs(data if data.ndim == 2 else data[:, None])
+            source.peak = float(magnitude.max())
+            source.clipped_fraction = _flat_top_samples(magnitude.mean(axis=1)) / max(len(magnitude), 1)
+            source.frames = len(magnitude)
+        except Exception:
+            pass
     return source
 
 
@@ -325,10 +367,11 @@ def _unreadable(path: Path, exc: Exception) -> Invalid:
     suffixes = readable_suffixes()
     offered = ", ".join(suffixes) if suffixes else "nothing - soundfile is broken"
     extra = ""
-    if path.suffix.lower() in (".m4a", ".aac", ".mp4", ".wma"):
+    if path.suffix.lower() in CONTAINER_SUFFIXES and not _have_av():
         extra = (
-            f"\n{path.suffix.lower()} is not one libsndfile decodes. Convert it "
-            "first - any player will export a .wav or .mp3 - or re-record it."
+            f"\n{path.suffix.lower()} is not one libsndfile decodes. Install "
+            "'rigsmith[codecs]' (FFmpeg through PyAV) to read it as it is, or "
+            "convert it - any player will export a .wav or .flac."
         )
     return Invalid(
         f"could not read {path.name}: {exc}",
@@ -336,8 +379,46 @@ def _unreadable(path: Path, exc: Exception) -> Invalid:
     )
 
 
+#: What PyAV (FFmpeg) adds when it is installed: the formats a bought song
+#: arrives in that libsndfile cannot decode.
+CONTAINER_SUFFIXES = (".m4a", ".aac", ".mp4", ".alac", ".wma", ".opus", ".webm", ".mka")
+
+
+def _have_av() -> bool:
+    import importlib.util
+
+    return importlib.util.find_spec("av") is not None
+
+
+def _load_with_av(target: Path) -> tuple[np.ndarray, int]:
+    """Decode with FFmpeg through PyAV - AAC, ALAC, WMA, Opus - to float samples."""
+    import av
+
+    with av.open(str(target)) as container:
+        stream = next((s for s in container.streams if s.type == "audio"), None)
+        if stream is None:
+            raise Invalid(f"{target.name} has no audio in it")
+        rate = stream.codec_context.sample_rate or stream.rate
+        resampler = av.AudioResampler(format="fltp", layout="stereo" if (stream.codec_context.channels or 1) > 1 else "mono", rate=rate)
+        chunks = []
+        for frame in container.decode(stream):
+            for converted in resampler.resample(frame):
+                chunks.append(converted.to_ndarray())
+        for converted in resampler.resample(None):
+            chunks.append(converted.to_ndarray())
+    if not chunks:
+        raise Invalid(f"{target.name} decoded to nothing")
+    planar = np.concatenate(chunks, axis=1)  # channels x samples
+    data = planar[0] if planar.shape[0] == 1 else planar.T
+    return np.asarray(data, dtype=np.float64), int(rate)
+
+
 def load(path: str | Path, *, mono: bool = True) -> tuple[np.ndarray, int]:
-    """Read a file to samples, refusing unreadable input with a real message."""
+    """Read a file to samples, refusing unreadable input with a real message.
+
+    libsndfile first; when it cannot (a bought .m4a is AAC) and PyAV is
+    installed, FFmpeg decodes it instead.
+    """
     sf = _soundfile()
     target = Path(path)
     if not target.exists():
@@ -346,7 +427,14 @@ def load(path: str | Path, *, mono: bool = True) -> tuple[np.ndarray, int]:
     try:
         data, sample_rate = sf.read(str(target), always_2d=False)
     except Exception as exc:
-        raise _unreadable(target, exc) from exc
+        if not _have_av():
+            raise _unreadable(target, exc) from exc
+        try:
+            data, sample_rate = _load_with_av(target)
+        except Invalid:
+            raise
+        except Exception as av_exc:
+            raise _unreadable(target, av_exc) from exc
 
     from .metrics import to_mono
 
@@ -396,6 +484,8 @@ def matched_to(candidate: str | Path, target: str | Path) -> tuple[Path, str | N
         return candidate_path, None
 
     fmt = target_source.format.upper()
+    if "AAC" in target_source.subtype.upper() and _have_av():
+        return _matched_aac(candidate_path, target_source)
     if fmt not in readable_formats():
         return candidate_path, None
 
@@ -439,6 +529,58 @@ def matched_to(candidate: str | Path, target: str | Path) -> tuple[Path, str | N
             f"could not re-encode {candidate_path.name} as {fmt}, so the "
             "codec's own error is in this comparison"
         )
+    return destination, note
+
+
+#: What a bought AAC file is usually encoded at; the matching copy uses it.
+AAC_BITRATE = 256_000
+
+
+def _encode_aac(samples: np.ndarray, rate: int, destination: Path, *, bitrate: int = AAC_BITRATE) -> None:
+    import av
+
+    data = np.asarray(samples, dtype=np.float32)
+    planar = data[None, :] if data.ndim == 1 else data.T.copy()
+    layout = "mono" if planar.shape[0] == 1 else "stereo"
+    with av.open(str(destination), "w", format="ipod") as container:
+        stream = container.add_stream("aac", rate=rate, layout=layout)
+        stream.bit_rate = bitrate
+        stream.codec_context.open()
+        # The encoder delays everything by its priming (1024 samples for
+        # FFmpeg's AAC), and decoding here does not trim it. Starting the
+        # input that much late puts the decoded copy back on the original's
+        # clock - which performance scoring compares frame by frame.
+        priming = int(getattr(stream.codec_context, "initial_padding", 0) or 1024)
+        planar = np.concatenate([planar[:, priming:], np.zeros((planar.shape[0], priming), dtype=np.float32)], axis=1)
+        step = 1024 * 16
+        for start in range(0, planar.shape[1], step):
+            frame = av.AudioFrame.from_ndarray(np.ascontiguousarray(planar[:, start : start + step]), format="fltp", layout=layout)
+            frame.sample_rate = rate
+            for packet in stream.encode(frame):
+                container.mux(packet)
+        for packet in stream.encode(None):
+            container.mux(packet)
+
+
+def _matched_aac(candidate_path: Path, target_source) -> tuple[Path, str | None]:
+    """A candidate encoded as AAC, to compare fairly against a bought .m4a."""
+    try:
+        stat = candidate_path.stat()
+    except OSError:
+        return candidate_path, None
+    destination = _encoded_dir() / f"{candidate_path.stem}-aac-{stat.st_size}-{stat.st_mtime_ns}.m4a"
+    note = (
+        f"{candidate_path.name} was re-encoded as AAC to match {target_source.path.name}, "
+        "so the codec's error is common to both sides instead of reordering candidates."
+    )
+    if destination.is_file():
+        return destination, note
+    try:
+        samples, rate = load(candidate_path, mono=False)
+        _encode_aac(samples, rate, destination)
+    except Exception:
+        destination.unlink(missing_ok=True)
+        return candidate_path, f"could not re-encode {candidate_path.name} as AAC, so the codec's own error is in this comparison"
     return destination, note
 
 

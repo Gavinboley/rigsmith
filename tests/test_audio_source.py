@@ -63,7 +63,10 @@ def test_the_readable_list_comes_from_the_library_not_a_guess():
     suffixes = readable_suffixes()
     assert ".wav" in suffixes
     assert all(s.startswith(".") for s in suffixes)
-    assert ".m4a" not in suffixes, "libsndfile does not decode m4a"
+    # libsndfile never decodes m4a; FFmpeg through PyAV does, when installed.
+    from rigsmith.match.source import _have_av
+
+    assert (".m4a" in suffixes) == _have_av()
 
 
 @pytest.mark.skipif(not has_mp3(), reason="this libsndfile has no mp3 decoder")
@@ -127,8 +130,11 @@ def test_a_format_libsndfile_cannot_decode_names_what_it_can(tmp_path):
 
     assert "voice memo.m4a" in caught.value.message
     assert ".wav" in caught.value.hint, "it has to say what does work"
-    assert "m4a" in caught.value.hint
-    assert "Convert it first" in caught.value.hint
+    from rigsmith.match.source import _have_av
+
+    if not _have_av():
+        # Without FFmpeg it says how to get it, or how to convert.
+        assert "m4a" in caught.value.hint and "codecs" in caught.value.hint
 
 
 def test_a_missing_file_is_not_found_not_invalid(tmp_path):

@@ -115,6 +115,9 @@ def doctor() -> None:
         ("soundfile (audio I/O)", "soundfile", "pip install 'rigsmith[audio]'"),
         ("scipy (IR convolution)", "scipy", "pip install 'rigsmith[match]' for offline rendering"),
         ("demucs (guitar isolation)", "demucs", "pip install 'rigsmith[separation]' to pull a guitar stem out of a record"),
+        ("av (AAC / .m4a songs)", "av", "pip install 'rigsmith[codecs]' to read a bought .m4a as it is"),
+        ("optuna (bigger tuning budgets)", "optuna", "pip install 'rigsmith[tune]' - the built-in search covers small budgets"),
+        ("anthropic (Claude through the API)", "anthropic", "pip install 'rigsmith[claude]' - not needed with Claude Code or a local model"),
         ("neural-amp-modeler (offline NAM)", "nam", "pip install neural-amp-modeler to render captures without hardware"),
         ("playwright (UI tests)", "playwright", "pip install 'rigsmith[browser]' - only needed to run the browser tests"),
     ]
