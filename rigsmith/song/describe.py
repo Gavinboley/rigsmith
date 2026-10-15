@@ -468,12 +468,16 @@ def _pitch_wobble(audio, sample_rate, *, n_fft: int = 2048, hop: int = 256) -> d
     if count < 40:
         return None
     frames = np.lib.stride_tricks.sliding_window_view(x, n_fft)[::hop][:count]
-    spec = np.fft.rfft(frames * np.hanning(n_fft)[None, :], axis=1)
-    magnitude, phase = np.abs(spec), np.angle(spec)
     freqs = np.fft.rfftfreq(n_fft, 1 / sample_rate)
     low, high = np.searchsorted(freqs, 150), np.searchsorted(freqs, 2500)
+    # Only the bins a note's partial can be chosen from (plus the two either
+    # side it is weighted over) need phase - a tenth of the spectrum.
+    first, last = max(low - 2, 0), high + 3
+    spec = np.fft.rfft(frames * np.hanning(n_fft)[None, :], axis=1)[:, first:last]
+    magnitude, phase = np.abs(spec), np.angle(spec)
+    low, high = low - first, high - first
     frame_s = hop / sample_rate
-    bins = np.arange(magnitude.shape[1])
+    bins = np.arange(first, last)
     advance = 2 * np.pi * bins * hop / n_fft
     deviation = _princarg(np.diff(phase, axis=0) - advance[None, :])
     instantaneous = (bins[None, :] + deviation * n_fft / (2 * np.pi * hop)) * sample_rate / n_fft
@@ -487,7 +491,7 @@ def _pitch_wobble(audio, sample_rate, *, n_fft: int = 2048, hop: int = 256) -> d
         if end - start < int(0.45 / frame_s):
             continue
         k = low + int(np.argmax(magnitude[start:end, low:high].mean(axis=0)))
-        around = slice(max(k - 2, 0), k + 3)
+        around = slice(max(k - 2, 0), min(k + 3, magnitude.shape[1]))
         weight = magnitude[start:end, around] ** 2
         f = (instantaneous[start - 1 : end - 1, around] * weight).sum(axis=1) / np.maximum(weight.sum(axis=1), 1e-20)
         valid = f > 0
