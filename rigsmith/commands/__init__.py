@@ -48,7 +48,7 @@ def progress_bar(label: str):
 
 
 #: Modules under this package that each define a click ``group``.
-MODULES = ("learn", "loop")
+MODULES = ("learn", "loop", "song", "settings")
 
 
 def register(root: click.Group) -> None:

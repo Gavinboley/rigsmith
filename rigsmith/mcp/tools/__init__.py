@@ -14,6 +14,7 @@ from . import (  # noqa: F401
     matching,
     recipes,
     rigs,
+    songs,
     takes,
     workspace,
 )
@@ -26,6 +27,7 @@ __all__ = [
     "matching",
     "recipes",
     "rigs",
+    "songs",
     "takes",
     "workspace",
 ]

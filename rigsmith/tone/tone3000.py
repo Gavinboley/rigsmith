@@ -323,7 +323,15 @@ class Tone3000Client:
             await asyncio.sleep(self._min_interval - elapsed)
         self._last_request = time.monotonic()
 
+    def _online(self, action: str) -> None:
+        # Local mode is a promise that nothing leaves the machine; TONE3000 is
+        # the internet, so every request asks first.
+        from ..core.appsettings import require_online
+
+        require_online(action)
+
     async def _get(self, path: str, params: dict | None = None) -> Any:
+        self._online("query TONE3000")
         await self._throttle()
         params = {k: v for k, v in (params or {}).items() if v is not None}
         url = f"{self.base_url}{path}"
@@ -405,6 +413,7 @@ class Tone3000Client:
         self, code: str, *, verifier: str, redirect_uri: str
     ) -> TokenSet:
         """Exchange an authorization code for tokens."""
+        self._online("sign in to TONE3000")
         if not self.client_id:
             raise Tone3000AuthError("no client_id configured")
 
@@ -425,6 +434,7 @@ class Tone3000Client:
 
     async def refresh(self) -> TokenSet:
         """Refresh the access token."""
+        self._online("refresh a TONE3000 sign-in")
         if not (self.tokens and self.tokens.refresh_token):
             raise Tone3000AuthError("no refresh token available; log in again")
         payload = {
@@ -556,6 +566,7 @@ class Tone3000Client:
         Uses the ``model_url`` from the API, which is only valid for content
         the authenticated user may access.
         """
+        self._online("download a capture from TONE3000")
         if not model.model_url:
             raise Tone3000Error(
                 f"model {model.id} has no model_url - it may not be accessible "

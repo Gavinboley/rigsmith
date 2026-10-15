@@ -11,7 +11,7 @@ pip install -e ".[all]"
 rigsmith ui
 ```
 
-> **Status: works without hardware; one thing needs it.** Rig authoring, validation, NAM analysis, tone matching, catalog extraction, USB backup, MIDI and the web UI are all done and covered by 812 tests. The Remote Editor's wire protocol still has to be captured against a powered-on Core before `write_rig` can write — everything else runs today. See [docs/PROTOCOL.md](docs/PROTOCOL.md).
+> **Status: works without hardware; one thing needs it.** Rig authoring, validation, NAM analysis, tone matching, catalog extraction, USB backup, MIDI and the web UI are all done and covered by 826 tests. The Remote Editor's wire protocol still has to be captured against a powered-on Core before `write_rig` can write — everything else runs today. See [docs/PROTOCOL.md](docs/PROTOCOL.md).
 
 ---
 
@@ -197,6 +197,37 @@ distribution.
 No guitar to hand? `rigsmith learn demo --into demo` walks the whole flow on
 a synthetic string, and says so everywhere it shows up.
 
+### Map the song, then pick the part
+
+A track is not one tone - the clean intro, the double-tracked verse and the
+solo are often three different amps. A **song** is the record you own plus a
+map of it: sections (found by self-similarity, named by how they repeat),
+guitar layers (a double-tracked rhythm is found by the two sides playing the
+same notes *incoherently*; a centred lead by being coherent), and a tone
+sketch for every section x layer - gain, mid scoop, low end, a delay and its
+time against the tempo, room, tremolo.
+
+```bash
+rigsmith song new "Going Under" --artist Evanescence --mix ~/Music/going-under.flac --lookup
+rigsmith song isolate going-under-evanescence      # the guitar stem, via Demucs
+rigsmith song analyse going-under-evanescence      # sections x layers -> parts
+rigsmith song choose going-under-evanescence verse-2-left --only
+rigsmith song di going-under-evanescence verse-2-left lp-bridge --midi tab.mid
+rigsmith song brief going-under-evanescence        # what a researcher starts from
+```
+
+The lookup fills in album, year and recording credits; it never fetches the
+song itself - the record you chase is the copy you own.
+
+### Two modes
+
+**Accuracy** uses whatever gives the best answer: Claude through Claude Code
+for research and agents, the network for lookups and TONE3000. **Local**
+keeps everything on the machine - agents run on a local model (LM Studio,
+Ollama, llama.cpp), and every call that would reach the internet refuses.
+The Core on your LAN is still reachable. `rigsmith settings mode local`, or
+`RIGSMITH_MODE=local` for one run.
+
 ### Put the real Core in the loop
 
 The offline renderer approximates the Core; the loop *is* the Core. A DI
@@ -288,7 +319,7 @@ Ask for a tone. The agent researches the gear, finds an A2 capture, builds the r
     +---------------+---------------+
     |               |               |
   cli.py       mcp/tools/*      web/api.py
-  (click)       (89 tools)       (FastAPI)
+  (click)       (101 tools)       (FastAPI)
 ```
 
 Each surface is a thin adapter: parse input, call core, format output. That rule exists because the first version broke it — orchestration lived inside the MCP tools, so anything not reachable from a tool was reachable from nowhere, and whole subsystems ended up built and unwired.

@@ -202,6 +202,35 @@ def salience_frames(
             h += 1
         plan.append(entries)
 
+    # Every candidate scored at once, exactly. All the (candidate, harmonic)
+    # windows are laid end to end as one index array; one maximum.reduceat
+    # gives every window's largest peak, one add.reduceat sums them into each
+    # candidate's score. The Python loop this replaces - candidate by
+    # harmonic by frame - took a minute on a four-minute stem. (Treating a
+    # window's sum as its maximum was faster still and cost a third of the
+    # chord accuracy: another note's partial in the window is double counted.)
+    bins, starts, window_weight, window_low, cand_starts = [], [], [], [], []
+    for entries in plan:
+        cand_starts.append(len(starts))
+        for h, (a, b, weight) in enumerate(entries):
+            if b <= a:
+                b = a + 1
+            starts.append(len(bins))
+            bins.extend(range(a, b))
+            window_weight.append(weight)
+            window_low.append(h < 6)
+    bins = np.minimum(np.array(bins, dtype=np.int64), limit - 1)
+    starts = np.array(starts, dtype=np.int64)
+    window_weight = np.array(window_weight)
+    window_low = np.array(window_low, dtype=float)
+    cand_starts = np.array(cand_starts, dtype=np.int64)
+
+    def score_all(spectrum: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        window_max = np.maximum.reduceat(spectrum[bins], starts)
+        scores = np.add.reduceat(window_max * window_weight, cand_starts)
+        hits = np.add.reduceat((window_max > 0) * window_low, cand_starts)
+        return scores, hits
+
     compressed_all = np.sqrt(magnitude[:, :limit]) if magnitude.size else magnitude
     loudest = float(compressed_all.max()) if compressed_all.size else 0.0
     results: list[list[tuple[int, float]]] = []
@@ -215,19 +244,8 @@ def salience_frames(
         taken: set[int] = set()
         first = None
         for _ in range(max_polyphony):
-            scores = np.zeros(len(plan))
-            evidence = np.zeros(len(plan), dtype=int)
-            for c, entries in enumerate(plan):
-                total = 0.0
-                hits = 0
-                for h, (a, b, weight) in enumerate(entries):
-                    value = float(spectrum[a:b].max()) if b > a else 0.0
-                    total += weight * value
-                    if h < 6 and value > 0:
-                        hits += 1
-                scores[c] = total
-                evidence[c] = hits
-            scores[evidence < 3] = 0.0
+            scores, hits = score_all(spectrum)
+            scores[hits < 3] = 0.0
             for index in taken:
                 scores[index] = 0.0
             best = int(np.argmax(scores))
