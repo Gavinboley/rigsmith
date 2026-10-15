@@ -11,7 +11,7 @@ pip install -e ".[all]"
 rigsmith ui
 ```
 
-> **Status: everything runs today.** Rig authoring, validation, NAM analysis, tone matching, catalog extraction, USB backup, MIDI, guitar learning, song maps, the hardware loop, the tuner, autopilot, the chat and the web UI are covered by 877 tests. The Remote Editor protocol has been captured against a real Core and a rig written to it and read back exactly - see [docs/PROTOCOL.md](docs/PROTOCOL.md). What still wants hardware is *measuring*: the loop and the blind A/B need the Core and an interface plugged in.
+> **Status: everything runs today.** Rig authoring, validation, NAM analysis, tone matching, catalog extraction, USB backup, MIDI, guitar learning, song maps, the hardware loop, the tuner, autopilot, the chat and the web UI are covered by 878 tests. The Remote Editor protocol has been captured against a real Core and a rig written to it and read back exactly - see [docs/PROTOCOL.md](docs/PROTOCOL.md). What still wants hardware is *measuring*: the loop and the blind A/B need the Core and an interface plugged in.
 
 ---
 
@@ -372,8 +372,10 @@ hear a field of the Core's amps chosen from the part's measured gain - each
 one switched live on the device, through its usual cab, and reamped through
 the loop - hear the best amp through the other cabs worth trying (a
 Greenback and a V30 4x12 on one head are different records), tune the best
-two amps and fit an EQ, then build a draft rig and set up a blind A/B of the
-finalists. A difference smaller than the score can resolve is called a tie,
+two amps, fit a G EQ to what is left (it goes into the draft only if it
+scores closer), then build a draft rig - with the gate, boost, chorus,
+tremolo, delay and reverb the part measures as having - and set up a blind
+A/B of the finalists. A difference smaller than the score can resolve is called a tie,
 not a win. Every stage records what it decided and why, a failed stage
 can be resumed, and nothing is written to the device: that stays yours.
 

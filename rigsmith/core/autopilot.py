@@ -669,12 +669,55 @@ def _stage_tune(run: Run, progress) -> str:
         path = save_audio(_dir() / run.run_id / f"{entry['label'].replace(' ', '-').lower()}-tuned.wav", audio, rate)
         plan = match_eq.match(target, audio, rate)
         tuned.append({**entry, "label": f"{entry['label']} (tuned)", "composite": best.loss, "knobs": best.values, "path": str(path), "eq": plan.to_dict(), "untuned": entry["composite"]})
+    tuned.extend(_with_eq(tuned, target, rate, comparison))
     run.results = sorted(run.results + tuned, key=lambda r: r["composite"])
     best = run.results[0]
     gain = ""
     if best.get("untuned") is not None:
         gain = f", {1 - best['composite'] / best['untuned']:.0%} closer than untuned"
     return f"best {best['label']} at {best['composite']:.3f}{gain}"
+
+
+#: An EQ has to buy at least this much (relative) to go into the draft.
+EQ_WORTH = 0.02
+
+
+def _with_eq(tuned: list[dict], target, rate: int, comparison) -> list[dict]:
+    """The best tuned result through the G EQ fitted to it - if that is closer.
+
+    A G EQ after the cab is linear, so applying the fit offline is what the
+    block would do in the chain; it is scored like everything else and kept
+    only when it is actually closer, since a fit that flattens the spectrum
+    can still move the score the wrong way.
+    """
+    from ..match.render_offline import load_audio, save_audio
+    from ..match.score import score_candidate
+    from ..tune.eq import GEQ_NAMES, apply_graphic
+
+    if not tuned:
+        return []
+    top = min(tuned, key=lambda r: r["composite"])
+    plan = top.get("eq") or {}
+    if not plan or plan.get("before_db", 0) - plan.get("after_db", 0) < 1.0:
+        return []
+    audio, _ = load_audio(top["path"])
+    gains = [plan["graphic_db"].get(name, 0.0) for name in GEQ_NAMES]
+    equalised = apply_graphic(audio, rate, gains)
+    if comparison.value == "performance":
+        equalised = equalised[: len(target)]
+    composite = score_candidate(target, equalised, rate, mode=comparison).composite
+    if composite > top["composite"] * (1 - EQ_WORTH):
+        return []
+    path = save_audio(Path(top["path"]).with_name(Path(top["path"]).stem + "-geq.wav"), equalised, rate)
+    return [{
+        **top,
+        "label": top["label"].replace("(tuned)", "(tuned + G EQ)"),
+        "composite": composite,
+        "path": str(path),
+        "geq": plan["graphic_wire"],
+        "geq_db": plan["graphic_db"],
+        "untuned": top.get("untuned"),
+    }]
 
 
 def _stage_rig(run: Run) -> str:
@@ -713,6 +756,10 @@ def _stage_rig(run: Run) -> str:
     knobs = {k.split(".", 1)[1]: round(float(v), 4) for k, v in (best.get("knobs") or {}).items()}
     add("amp", best["model"], knobs)
     add("cab", best["cab"])
+    if best.get("geq"):
+        add("effect", "G EQ", best["geq"])
+        shown = ", ".join(f"{k[4:]} {v:+.0f}" for k, v in (best.get("geq_db") or {}).items() if abs(v) >= 1)
+        run.note(f"a G EQ after the cab, fitted to the record ({shown}) - it measured closer; trust your ears over it")
     for block in after:
         add(block["category"], block["model"])
     for text in notes:

@@ -155,3 +155,25 @@ def test_the_device_bench_switches_amp_and_cab_through_the_loop(workspace):
     assert run.state == "done", run.describe()
     assert run.stages["cabs"].state in ("done", "skipped")
     assert run.results[0]["composite"] <= run.results[-1]["composite"]
+
+
+def test_a_fitted_eq_goes_in_only_when_it_scores_closer(workspace):
+    from rigsmith.loop.virtual import SimAmp
+    from rigsmith.match.metrics import ComparisonMode
+    from rigsmith.match.score import score_candidate
+    from rigsmith.tune import eq as match_eq
+
+    stem, _ = song(seconds_per_section=6.0)
+    candidate = SimAmp(Type=2, Gain=0.6).process(stem[: RATE * 6, 0])
+    target = match_eq.apply_graphic(candidate, RATE, [0, 3, 0, -5, 0, 6, 0, -4])
+    path = save_audio(workspace / "tuned.wav", candidate, RATE)
+    plan = match_eq.match(target, candidate, RATE).to_dict()
+    composite = score_candidate(target, candidate, RATE, mode=ComparisonMode.PERFORMANCE).composite
+    entry = {"label": "Amp (tuned)", "composite": composite, "path": str(path), "eq": plan, "untuned": composite}
+
+    (equalised,) = autopilot._with_eq([entry], target, RATE, ComparisonMode.PERFORMANCE)
+    assert equalised["label"] == "Amp (tuned + G EQ)" and equalised["composite"] < composite * 0.98
+    assert set(equalised["geq"]) == set(match_eq.GEQ_NAMES) and all(0 <= v <= 1 for v in equalised["geq"].values())
+    # Nothing to fix: no EQ entry at all.
+    flat = {**entry, "eq": match_eq.match(candidate, candidate, RATE).to_dict()}
+    assert autopilot._with_eq([flat], candidate, RATE, ComparisonMode.PERFORMANCE) == []
