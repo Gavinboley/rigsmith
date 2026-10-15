@@ -243,7 +243,7 @@ def learn(
         fit_voice: Refit the voice model afterwards. A few seconds; worth it
             unless you are about to learn another pass straight away.
     """
-    from ..learn import protocols, voice
+    from ..learn import protocols
     from ..learn.profile import SampleNote, classify_dynamics, fingerprint, slice_notes
     from ..learn.segment import segment
     from ..match.render_offline import load_audio, resample, save_audio

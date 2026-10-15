@@ -415,7 +415,6 @@ def analyse(song_id: str, *, progress: Progress | None = None, min_presence: flo
     song.layer_files = {l.layer_id: l.path for l in layer_map.layers if l.path}
 
     step(0.6, "describing every part")
-    import numpy as np
 
     sources = {"stem": stem_audio}
     for layer_id, path in song.layer_files.items():

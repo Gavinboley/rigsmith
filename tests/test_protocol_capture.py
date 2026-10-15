@@ -7,7 +7,7 @@ the device does come online, we already know the miner works.
 
 from __future__ import annotations
 
-from rigsmith.protocol.capture import Endpoint, Inventory, analyse_bundle
+from rigsmith.protocol.capture import Inventory, analyse_bundle
 
 BUNDLE = """
 const BASE = "/api/v1";

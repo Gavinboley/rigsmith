@@ -455,7 +455,6 @@ def detect_hum(audio, sample_rate, notes) -> tuple[float, float] | None:
     gaps = gaps[: sample_rate * 20]
     n_fft = 1 << int(math.log2(min(len(gaps), sample_rate * 2)))
     spectrum = np.abs(np.fft.rfft(gaps[:n_fft] * np.hanning(n_fft))) / (n_fft / 4)
-    freqs = np.fft.rfftfreq(n_fft, 1 / sample_rate)
     best = None
     for mains in (50.0, 60.0):
         level = 0.0

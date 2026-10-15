@@ -13,7 +13,6 @@ import json
 import numpy as np
 import pytest
 
-from rigsmith.core.errors import Invalid, Unavailable
 from rigsmith.match.render_offline import convolve_ir, render_chain, resample
 from rigsmith.rig.codec import (
     FORMAT_VERSION,

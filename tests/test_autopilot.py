@@ -11,14 +11,13 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-import numpy as np
 import pytest
 
 pytest.importorskip("scipy", reason="needs pip install 'rigsmith[match]'")
 pytest.importorskip("soundfile", reason="needs pip install 'rigsmith[match]'")
 
 from rigsmith import config  # noqa: E402
-from rigsmith.core import appsettings, autopilot, profiles, rigs  # noqa: E402
+from rigsmith.core import autopilot, profiles, rigs  # noqa: E402
 from rigsmith.core.errors import Invalid  # noqa: E402
 from rigsmith.match.render_offline import save_audio  # noqa: E402
 from rigsmith.tune import candidates  # noqa: E402

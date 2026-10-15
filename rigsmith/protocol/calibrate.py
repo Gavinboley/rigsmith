@@ -23,7 +23,6 @@ Nothing here writes to the device. Both calls are reads.
 
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass, field
 
 #: How far a prediction may be off, as a fraction of the display span, and

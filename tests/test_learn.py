@@ -382,8 +382,8 @@ def test_the_network_only_learns_when_it_has_enough_notes_and_then_helps(workspa
         audible = truth > -50
         plain = VoiceModel(notes=rest)
         blended = VoiceModel(notes=rest, net=neural.train(rest).to_dict())
-        for voice, errors in ((plain, plain_errors), (blended, blend_errors)):
-            levels, _, inharm, _ = voice.parameters(held.midi, held.string)
+        for model_, errors in ((plain, plain_errors), (blended, blend_errors)):
+            levels, _, inharm, _ = model_.parameters(held.midi, held.string)
             errors.append(np.mean(np.abs(neural.on_grid(levels, f0, inharm)[audible] - truth[audible])))
     assert np.mean(blend_errors) < np.mean(plain_errors), (np.mean(blend_errors), np.mean(plain_errors))
     # And it survives being saved with the profile.

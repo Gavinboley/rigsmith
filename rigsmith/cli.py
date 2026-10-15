@@ -11,7 +11,6 @@ could not build a rig or run a single comparison without an MCP client.
 from __future__ import annotations
 
 import asyncio
-import functools
 import json
 import sys
 from pathlib import Path
@@ -529,7 +528,6 @@ def device_pair(host: str | None, timeout: float, forget: bool) -> None:
     screen and somebody standing at it taps accept. The cookie you are given
     then works, and every other cookie does not.
     """
-    import asyncio
 
     from .core import devices
     from .device.client import DeviceClient
@@ -575,7 +573,6 @@ def device_snapshot(host: str | None) -> None:
     full state of whatever is loaded - enough to know what was there, not
     enough to restore it.
     """
-    import asyncio
 
     from .core import devices
     from .device import snapshot as snap
@@ -1786,7 +1783,6 @@ def catalog_calibrate(host: str | None, blocks: tuple[str, ...]) -> None:
     sitting at an end of its range cannot be told apart; move that control on
     the device and run it again. Nothing is written.
     """
-    import asyncio
     import json
 
     from .core import devices

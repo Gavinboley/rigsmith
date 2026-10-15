@@ -20,8 +20,7 @@ from pathlib import Path
 from typing import Any
 
 from ..config import get_settings, require_writable
-from .errors import Conflict, Invalid, NotFound, Unavailable
-from .jobs import Progress
+from .errors import Conflict, Invalid, NotFound
 
 
 # --------------------------------------------------------------------------

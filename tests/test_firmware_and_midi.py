@@ -250,7 +250,6 @@ def test_tap_tempo_sends_taps_at_the_right_interval(monkeypatch):
     import time
 
     from rigsmith.core import devices
-    from rigsmith.core.errors import Invalid
 
     sent: list[str] = []
     slept: list[float] = []

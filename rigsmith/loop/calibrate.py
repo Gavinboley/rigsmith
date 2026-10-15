@@ -40,7 +40,7 @@ from pathlib import Path
 import numpy as np
 
 from .routes import LoopRoute
-from .run import LoopCapture, reamp
+from .run import reamp
 from .signals import analyse_sweep, exponential_sweep
 
 #: Window for the level statistic: long enough to hold a pick attack.

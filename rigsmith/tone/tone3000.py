@@ -35,7 +35,7 @@ from typing import Any, Iterable
 from urllib.parse import urlencode
 
 import httpx
-from ..core.errors import RigsmithError, Unavailable
+from ..core.errors import RigsmithError
 
 BASE_URL = "https://www.tone3000.com"
 API = "/api/v1"

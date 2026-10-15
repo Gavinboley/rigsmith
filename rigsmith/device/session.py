@@ -18,12 +18,11 @@ Two consequences worth stating, because both have already cost time:
 from __future__ import annotations
 
 import json
-import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from ..core.errors import Invalid, NotFound, Unavailable
+from ..core.errors import Invalid
 
 #: What the device calls its session cookie.
 COOKIE_NAME = "sessionID"
