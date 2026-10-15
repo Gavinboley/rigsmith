@@ -22,6 +22,8 @@ def reset_global_state():
     def clear() -> None:
         from rigsmith import config
         from rigsmith.core import drafts, jobs
+        from rigsmith.loop import backend as audio_backend
+        from rigsmith.loop import virtual
         from rigsmith.match import source as audio_source
         from rigsmith.rig import catalog
 
@@ -33,6 +35,10 @@ def reset_global_state():
         # reuses tmp_path names, so a stale entry there would be a very
         # confusing afternoon.
         audio_source.forget_cached()
+        # The simulated bench keeps knob positions and a random generator; a
+        # test that turns the gain up must not hand that to the next one.
+        virtual.set_world(None)
+        audio_backend.set_backend(None)
 
     clear()
     yield

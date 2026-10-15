@@ -219,13 +219,33 @@ def capture_di(duration_s: float = 15.0, *, name: str = "take"):
 def reamp(di_path: str | Path, *, label: str = "candidate") -> RenderedCandidate:
     """Layer 2: play a DI through the Core's loaded rig and record the result.
 
-    Round-trip latency is measured and compensated. Load the rig you want to
-    test on the device first - or use :func:`rigsmith.core.devices.select_rig`.
+    Goes through the hardware loop's default route when one is set up (see
+    :mod:`rigsmith.core.loop`) - an interface into the Core's guitar input, or
+    the Core's own USB - with every capture aligned from its sync marks. With
+    no route, falls back to the Core's USB reamp channel directly. Load the
+    rig you want to test on the device first - or use
+    :func:`rigsmith.core.devices.select_rig`.
     """
     from ..match.render_device import reamp as _reamp
     from ..match.render_offline import load_audio, save_audio
 
     require_writable("record audio to the workspace")
+    from . import loop as hardware_loop
+
+    if hardware_loop.list_routes():
+        result = hardware_loop.reamp(audio_path(di_path), label=label)
+        capture = result.capture
+        warnings = list(capture.notes) + list(result.notes)
+        if result.simulated:
+            warnings.append("this capture came from the simulated bench, not the Core")
+        return RenderedCandidate(
+            label=label,
+            path=result.path,
+            layer="hardware",
+            stages=[f"device rig via {result.route_id}"],
+            warnings=warnings,
+            safe_for_aligned=capture.aligned,
+        )
     di, sample_rate = load_audio(di_path)
     capture = _reamp(di, sample_rate=sample_rate)
     path = save_audio(

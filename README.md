@@ -11,7 +11,7 @@ pip install -e ".[all]"
 rigsmith ui
 ```
 
-> **Status: works without hardware; one thing needs it.** Rig authoring, validation, NAM analysis, tone matching, catalog extraction, USB backup, MIDI and the web UI are all done and covered by 795 tests. The Remote Editor's wire protocol still has to be captured against a powered-on Core before `write_rig` can write — everything else runs today. See [docs/PROTOCOL.md](docs/PROTOCOL.md).
+> **Status: works without hardware; one thing needs it.** Rig authoring, validation, NAM analysis, tone matching, catalog extraction, USB backup, MIDI and the web UI are all done and covered by 812 tests. The Remote Editor's wire protocol still has to be captured against a powered-on Core before `write_rig` can write — everything else runs today. See [docs/PROTOCOL.md](docs/PROTOCOL.md).
 
 ---
 
@@ -197,6 +197,40 @@ distribution.
 No guitar to hand? `rigsmith learn demo --into demo` walks the whole flow on
 a synthetic string, and says so everywhere it shows up.
 
+### Put the real Core in the loop
+
+The offline renderer approximates the Core; the loop *is* the Core. A DI
+leaves your interface, goes down a cable into the Core's guitar input,
+through whatever rig is loaded, and comes back in.
+
+```bash
+rigsmith loop suggest                 # routes that fit what is plugged in
+rigsmith loop suggest --adopt analog-focusrite-usb-audio
+rigsmith loop tone                    # is anything actually connected?
+rigsmith loop calibrate --profile lp-bridge --direct guitar-straight-in
+rigsmith loop reamp cherub-riff-di --label jcm800-try --take
+rigsmith loop assess offline-render.wav jcm800-try-return   # same DI, two renderers
+```
+
+Three wirings: **analog** (interface out -> Core in -> Core out -> interface
+in, one clock), **usb-reamp** (the Core's own USB - computer channel 3 is the
+one that reaches the rig; 1-2 bypass it), and **hybrid** (interface into the
+Core, recorded over its USB, where channel 5 shows the level the Core
+actually received). Every capture carries sync marks at both ends, found
+again by GCC-PHAT, so latency, polarity and clock drift are measured on
+every pass rather than trusted from an old calibration - and the return comes
+back on the DI's own timeline, ready for a sample-aligned comparison.
+
+Calibration matters more than it looks: an interface's line output is far
+hotter than a pickup, so an uncalibrated reamp drives the amp like a guitar
+on eleven. `loop calibrate` sets the send so the Core receives your DI at
+the level your guitar gives it, and every capture says when that has not
+been done.
+
+No hardware connected? `rigsmith loop demo` sets up a simulated interface and
+Core - with jittery latency, drifting clocks and a hot send, the faults the
+real loop has to undo - and labels everything made on it as simulated.
+
 ### What it can read
 
 Whatever libsndfile on your machine can: **wav, aiff, flac, ogg, and mp3**
@@ -254,7 +288,7 @@ Ask for a tone. The agent researches the gear, finds an A2 capture, builds the r
     +---------------+---------------+
     |               |               |
   cli.py       mcp/tools/*      web/api.py
-  (click)       (82 tools)       (FastAPI)
+  (click)       (89 tools)       (FastAPI)
 ```
 
 Each surface is a thin adapter: parse input, call core, format output. That rule exists because the first version broke it — orchestration lived inside the MCP tools, so anything not reachable from a tool was reachable from nowhere, and whole subsystems ended up built and unwired.

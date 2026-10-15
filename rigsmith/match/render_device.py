@@ -12,6 +12,16 @@ Channel      Content
 6            mono dry from the microphone input
 ===========  =========================================
 
+From the computer the other way, the manual's layout matters as much and is
+easier to get wrong: channels 1-2 go **straight to the Core's outputs**,
+bypassing the rig; channel 3 is the mono **reamp input** that runs through
+whatever rig is loaded (with USB Mode set to Reamp). A reamp sent on channel 1
+comes back unprocessed. This module used to do exactly that.
+
+For anything beyond the Core's own USB - an interface feeding the Core's
+guitar input through a cable - see :mod:`rigsmith.loop`, which also aligns
+every capture from sync marks rather than one latency measurement.
+
 Channel 5 is the important one. Recording it alongside the wet channels means
 one take gives you both a reference tone *and* the dry DI that produced it -
 so a single performance can be reamped through unlimited candidate rigs, each
@@ -37,6 +47,9 @@ WET_XLR_CHANNELS = (1, 2)
 WET_QUARTER_INCH_CHANNELS = (3, 4)
 DRY_GUITAR_CHANNEL = 5
 DRY_MIC_CHANNEL = 6
+
+#: Computer -> Core: 1-2 go straight to the outputs, 3 into the rig.
+REAMP_OUTPUT_CHANNEL = 3
 
 DEFAULT_SAMPLE_RATE = 48000
 
@@ -178,7 +191,7 @@ def measure_latency(
     device: AudioDevice | None = None,
     *,
     sample_rate: int = DEFAULT_SAMPLE_RATE,
-    output_channel: int = 1,
+    output_channel: int = REAMP_OUTPUT_CHANNEL,
     input_channel: int = WET_XLR_CHANNELS[0],
     timeout_s: float = 2.0,
 ) -> int:
@@ -268,7 +281,7 @@ def reamp(
     device: AudioDevice | None = None,
     *,
     sample_rate: int = DEFAULT_SAMPLE_RATE,
-    output_channels: tuple[int, ...] = (1,),
+    output_channels: tuple[int, ...] = (REAMP_OUTPUT_CHANNEL,),
     wet_channels: tuple[int, ...] = WET_XLR_CHANNELS,
     latency_samples: int | None = None,
     tail_s: float = 0.5,
