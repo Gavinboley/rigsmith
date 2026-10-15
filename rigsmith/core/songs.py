@@ -87,6 +87,12 @@ class Part:
         return cls(**{k: v for k, v in data.items() if k in known})
 
 
+#: Bumped when the analysis learns something a stored map does not have, so
+#: a song mapped before can say so. 2: chorus and vibrato from pitch, tremolo
+#: only inside notes, gain read by how monophonic the part is.
+ANALYSIS_VERSION = 2
+
+
 @dataclass
 class Song:
     song_id: str
@@ -105,6 +111,8 @@ class Song:
     credits: dict | None = None
     recipe_id: str | None = None
     notes: list[str] = field(default_factory=list)
+    analysis_version: int = 0
+    """:data:`ANALYSIS_VERSION` when the map was made; 0 if never, or before versions."""
     created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat(timespec="seconds"))
     updated_at: str = ""
 
@@ -147,12 +155,20 @@ class Song:
             lines.append(f"  {len(self.parts)} part(s), {len(self.chosen())} chosen:")
             lines.extend("  " + p.describe() for p in self.parts)
         lines.extend(f"  note: {n}" for n in self.notes)
+        if self.stale:
+            lines.append(f"  note: mapped by an older analyser - run 'rigsmith song analyse {self.song_id}' again for chorus, vibrato and the fairer gain reading")
         return "\n".join(lines)
+
+    @property
+    def stale(self) -> bool:
+        """Mapped by an older analyser - re-mapping would read it better."""
+        return bool(self.structure) and self.analysis_version < ANALYSIS_VERSION
 
     def to_dict(self) -> dict:
         data = asdict(self)
         data["parts"] = [p.to_dict() for p in self.parts]
         data["describe"] = self.describe()
+        data["stale"] = self.stale
         return data
 
     @classmethod
@@ -376,6 +392,7 @@ def analyse(song_id: str, *, progress: Progress | None = None, min_presence: flo
     step(0.15, "finding the sections")
     shape = structure.analyse(mix_audio, rate)
     song.structure = shape.to_dict()
+    song.analysis_version = ANALYSIS_VERSION
 
     stem_audio = mix_audio
     if song.stem and song.stem != source:

@@ -336,3 +336,13 @@ def test_gain_reads_the_same_drive_alike_for_a_lead_a_riff_and_chords():
         assert max(tiers) - min(tiers) <= 1, (voicing, drive, tiers)
     # A lead through a high-gain amp reads as high gain, not crunch.
     assert describe.sketch(SimAmp(Type=2, Gain=0.6).process(lead), RATE, from_stem=False).gain >= 0.58
+
+
+def test_a_song_mapped_by_an_older_analyser_says_so(workspace):
+    made = songs.create("Old Map")
+    made.structure = {"tempo": 120, "sections": []}
+    made.analysis_version = 1
+    made.save()
+    old = songs.get(made.song_id)
+    assert old.stale and old.to_dict()["stale"] and "older analyser" in old.describe()
+    assert not songs.create("Never Mapped").stale

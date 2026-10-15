@@ -144,6 +144,13 @@ function render() {
     )
   );
   for (const note of song.notes || []) host.lastChild.append(el("div", { class: "notice", text: note }));
+  if (song.stale) {
+    host.lastChild.append(
+      el("div", { class: "notice warn" },
+        "This map was made by an older analyser - re-map it to hear chorus and vibrato, and for a fairer gain reading on leads and chords. Your chosen parts are kept. ",
+        el("button", { class: "btn small", text: "Re-map now", onclick: analyse }))
+    );
+  }
 
   if (!song.structure) {
     host.append(el("div", { class: "rig-empty" }, el("p", { text: song.mix || song.stem ? "Not mapped yet." : "Give it the song's audio, then map it." }), song.mix || song.stem ? el("button", { class: "btn primary", text: "Map it", onclick: analyse }) : el("button", { class: "btn primary", text: "Add audio", onclick: addAudio })));
