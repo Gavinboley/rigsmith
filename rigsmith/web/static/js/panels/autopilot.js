@@ -9,7 +9,7 @@
 import { api } from "../api.js";
 import { goTo, onArrive } from "../nav.js";
 import { likeControls } from "../pickups.js";
-import { $, attempt, clear, el, toast } from "../ui.js";
+import { $, attempt, clear, el, toast, when } from "../ui.js";
 import { dropZone } from "../upload.js";
 import { ask } from "../chat.js";
 
@@ -247,7 +247,7 @@ async function refreshRuns() {
         el("span", { class: "title", text: run.request.title + (run.request.artist ? ` - ${run.request.artist}` : "") }),
         el("span", { class: "spacer" }),
         el("span", { class: "meta", text: best ? `${best.label} ${best.composite.toFixed(3)}` : "" }),
-        el("span", { class: "meta", text: run.created_at.replace("T", " ").slice(0, 16) })
+        el("span", { class: "meta", text: when(run.created_at) })
       )
     );
   }
@@ -260,13 +260,57 @@ export function onEvent(message) {
   }
 }
 
+/* What is set up. Autopilot runs with none of it - a synthetic string, the
+ * simulated bench - and every step here swaps a stand-in for the real thing,
+ * so the list says what each one buys rather than just ticking boxes. */
+async function renderSetup() {
+  // Fetch first and swap after, so the card does not blink out while the
+  // checks run.
+  const setup = await api.get("/api/settings/setup").catch(() => null);
+  const host = clear($("#ap-setup"));
+  if (!setup || setup.dismissed) return;
+  const essential = setup.steps.filter((s) => !s.optional);
+  if (setup.steps.every((s) => s.done)) return;
+  const doneCount = setup.steps.filter((s) => s.done).length;
+  const list = el("div", { class: "setup-steps" });
+  for (const step of setup.steps) {
+    list.append(
+      el(
+        "div",
+        { class: `setup-step ${step.done ? "done" : ""}` },
+        el("span", { class: "tick", text: step.done ? "\u2713" : "" }),
+        el("div", { class: "grow" }, el("div", { class: "t", text: step.title + (step.optional && !step.done ? " (optional)" : "") }), el("div", { class: "hint", text: step.detail })),
+        step.done ? null : el("button", { class: "btn small", text: "set up", onclick: () => goTo(step.panel) })
+      )
+    );
+  }
+  host.append(
+    el(
+      "div",
+      { class: "card" },
+      el(
+        "div",
+        { class: "scenes-head" },
+        el("h3", { text: "Getting set up" }),
+        el("span", { class: "hint", text: `${doneCount} of ${setup.steps.length} - autopilot already works; each step replaces a stand-in with the real thing` }),
+        el("span", { class: "grow" }),
+        essential.every((s) => s.done) ? null : el("button", { class: "btn small ghost", text: "ask what's next", onclick: () => ask("What should I set up next, and why?") }),
+        el("button", { class: "btn small ghost", text: "hide", onclick: () => attempt(async () => { await api.patch("/api/settings", { onboarding_done: true }); clear(host); }) })
+      ),
+      list
+    )
+  );
+}
+
 export async function init() {
   renderForm();
+  renderSetup();
   await refreshRuns();
 }
 
 export function onShow() {
   refreshRuns();
+  renderSetup();
 }
 
 export function onHide() {

@@ -48,6 +48,16 @@ def models(base_url: str | None = None) -> dict:
     settings = appsettings.load()
     provider = OpenAICompatible(base_url or settings.local_llm.base_url)
     try:
-        return {"models": provider.models(), "reachable": True}
+        return {"models": provider.models(quick=True), "reachable": True}
     except Exception as exc:
         return {"models": [], "reachable": False, "error": str(exc).splitlines()[0]}
+
+
+@router.get("/setup")
+def setup() -> dict:
+    """The first-run checklist: what is set up, and what each missing piece buys."""
+    from ...core import setup as checklist
+
+    steps = checklist.checklist()
+    return {"steps": [s.to_dict() for s in steps], "render": checklist.render(steps), "dismissed": appsettings.load().onboarding_done}
+

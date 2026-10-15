@@ -156,6 +156,16 @@ export async function confirmAction(message) {
 export const pct = (value) =>
   value === null || value === undefined ? "--" : `${Math.round(value * 100)}%`;
 
+/** An ISO timestamp as local "YYYY-MM-DD HH:MM". The server writes UTC;
+ * a run started at half past midnight should not read 05:31. */
+export function when(iso) {
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return String(iso).replace("T", " ").slice(0, 16);
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
 export function bytes(count) {
   if (!count) return "0 B";
   const units = ["B", "KB", "MB", "GB"];

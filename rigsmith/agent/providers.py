@@ -152,7 +152,34 @@ class OpenAICompatible:
         headers = {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
         return httpx.Client(timeout=self.timeout, headers=headers, transport=self.transport)
 
-    def models(self) -> list[str]:
+    def _listening(self) -> bool:
+        """Whether anything is listening, found out quickly.
+
+        Windows retries a refused connection to localhost for about two
+        seconds, which made every status check stall when no server was
+        running. A bare socket with a short timeout answers in milliseconds
+        either way - a running local server accepts at once.
+        """
+        import socket
+        from urllib.parse import urlparse
+
+        parsed = urlparse(self.base_url)
+        host = parsed.hostname or "127.0.0.1"
+        port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        local = host in ("127.0.0.1", "localhost", "::1")
+        try:
+            with socket.create_connection((host, port), timeout=0.35 if local else 1.5):
+                return True
+        except OSError:
+            return False
+
+    def models(self, *, quick: bool = False) -> list[str]:
+        if quick and self.transport is None and not self._listening():
+            raise Unavailable(
+                f"no model server answering at {self.base_url}",
+                hint="Start LM Studio's server (port 1234), Ollama (11434) or llama-server "
+                "(8080), or set the URL in Settings.",
+            )
         try:
             with self._client() as client:
                 response = client.get(f"{self.base_url}/models", timeout=5.0)
@@ -568,7 +595,7 @@ def status() -> dict:
     settings = appsettings.load()
     local = OpenAICompatible(settings.local_llm.base_url, model=settings.local_llm.model)
     try:
-        models = local.models()
+        models = local.models(quick=True)
         local_state = {"reachable": True, "models": models}
     except Unavailable as exc:
         local_state = {"reachable": False, "error": str(exc).splitlines()[0]}

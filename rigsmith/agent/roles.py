@@ -70,6 +70,7 @@ ROLES: dict[str, Role] = {
             "loop_status", "tuning_runs", "list_jobs", "job_status", "workspace_status",
             "choose_parts", "song_brief", "search_models",
             "run_autopilot", "autopilot_status",
+            "setup_status", "device_sessions", "estimate_pickup",
         ],
     ),
     "researcher": Role(
@@ -77,8 +78,10 @@ ROLES: dict[str, Role] = {
         "the tone researcher",
         "Finds out what gear made a tone and writes it into a recipe, with sources.",
         "Work out the gear behind a song's guitar parts - amp, cab, pedals, "
-        "guitar, pickups, tuning - and record it in a recipe with add_gear, "
-        "one claim at a time, each with its confidence and source. Start from "
+        "guitar, pickups, tuning - and record the chain in a recipe with "
+        "add_gear, one claim at a time, each with its confidence and source; "
+        "record the guitar, pickup and tuning with set_recipe_guitar (it "
+        "decides what the user's DI is made to sound like). Start from "
         "song_brief: its measured sketches say what the part sounds like, so "
         "flag where sources and measurements disagree. Then resolve each piece "
         "of gear to a model on the Core (search_models) or a NAM capture.",

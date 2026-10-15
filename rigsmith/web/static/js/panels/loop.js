@@ -9,7 +9,7 @@
 import { api } from "../api.js";
 import { COLOURS, lineChart } from "../charts.js";
 import { describeJob, track } from "../jobs.js";
-import { $, attempt, clear, el, prompt, toast } from "../ui.js";
+import { $, attempt, clear, el, prompt, toast, when } from "../ui.js";
 import { dropZone } from "../upload.js";
 
 let metering = null;
@@ -57,7 +57,7 @@ function routeCard(route, isDefault) {
     el("div", { class: "hint mono", text: `${route.output_device} out ${route.output_channels.join(",")}  ->  ${route.input_device} in ${route.input_channels.join(",")}${route.reference_channel ? `  (ref ${route.reference_channel})` : ""}  @ ${route.sample_rate} Hz  send ${route.send_gain_db >= 0 ? "+" : ""}${route.send_gain_db.toFixed(1)} dB` }),
     route.note ? el("div", { class: "hint", text: route.note }) : null,
     ...(route.problems || []).map((p) => el("div", { class: "problems", text: p })),
-    cal ? el("div", { class: "hint", text: `calibrated ${cal.measured_at.slice(0, 16).replace("T", " ")}: latency ${cal.latency_samples?.toFixed(1)} samples, ${cal.level_method} level, noise ${cal.noise_floor_db} dBFS${cal.drift_ppm ? `, drift ${cal.drift_ppm} ppm` : ""}` }) : el("div", { class: "problems", text: "never calibrated - the send level is a guess" })
+    cal ? el("div", { class: "hint", text: `calibrated ${when(cal.measured_at)}: latency ${cal.latency_samples?.toFixed(1)} samples, ${cal.level_method} level, noise ${cal.noise_floor_db} dBFS${cal.drift_ppm ? `, drift ${cal.drift_ppm} ppm` : ""}` }) : el("div", { class: "problems", text: "never calibrated - the send level is a guess" })
   );
   const vu = el("div", { class: "vu", hidden: true }, el("span", { class: "hint mono vu-label", text: "--" }), el("div", { class: "vu-track" }, el("div", { class: "vu-fill" })));
   const out = el("div", {});

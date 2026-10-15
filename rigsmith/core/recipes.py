@@ -243,6 +243,26 @@ def add_question(recipe_id: str, question: str) -> ToneRecipe:
     return recipe
 
 
+def set_instrument(
+    recipe_id: str, *, guitar: str | None = None, pickup: str | None = None, tuning: str | None = None
+) -> ToneRecipe:
+    """Record the guitar, pickup and tuning the part was played with.
+
+    Not gear in the chain, but it decides what a DI should sound like: a
+    Strat record chased with a humbucker DI starts every amp off wrong.
+    Autopilot reads ``pickup`` (then ``guitar``) to move the part DI there.
+    """
+    recipe = get(recipe_id)
+    if guitar is not None:
+        recipe.guitar = guitar.strip() or None
+    if pickup is not None:
+        recipe.pickup = pickup.strip() or None
+    if tuning is not None:
+        recipe.tuning = tuning.strip() or None
+    save(recipe, recipe_id)
+    return recipe
+
+
 KINDS = ("score", "listen")
 
 

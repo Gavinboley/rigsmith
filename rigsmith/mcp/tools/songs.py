@@ -123,6 +123,20 @@ def rename_song_section(song_id: str, index: int, name: str) -> str:
 
 
 @tool
+def setup_status() -> str:
+    """What the user has set up and what is still missing, with the next step.
+
+    Their guitar learned, a song added, the Core paired, the hardware loop
+    wired and calibrated, and a model to answer. Ask this before suggesting
+    something that needs a missing piece - and to answer "what should I do
+    next?".
+    """
+    from ...core import setup
+
+    return setup.render(setup.checklist())
+
+
+@tool
 def app_mode() -> str:
     """Whether rigsmith is in accuracy mode (network and Claude allowed) or
     local mode (nothing leaves the machine). In local mode, online lookups

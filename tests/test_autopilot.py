@@ -107,3 +107,14 @@ def test_a_song_with_no_audio_stops_at_the_first_stage(workspace):
 def test_an_unknown_bench_is_refused(workspace):
     with pytest.raises(Invalid):
         autopilot.start(autopilot.Request(title="x", bench="cloud"))
+
+
+def test_the_researched_guitar_is_what_the_di_is_moved_to(workspace):
+    from rigsmith.core import recipes
+
+    recipe_id, _ = recipes.create("Fixture")
+    recipes.set_instrument(recipe_id, guitar="Fender Stratocaster", tuning="E standard")
+    run = autopilot.Run(run_id="t3", request=autopilot.Request(title="Fixture"), recipe_id=recipe_id)
+    assert autopilot._researched_guitar(run) == "Fender Stratocaster"
+    recipes.set_instrument(recipe_id, pickup="bridge P-90")
+    assert autopilot._researched_guitar(run) == "bridge P-90"

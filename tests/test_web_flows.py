@@ -208,3 +208,15 @@ def test_pairing_is_listed_without_its_cookie(client):
     assert client.post("/api/device/forget", json={}).status_code == 400
     assert client.post("/api/device/forget", json={"host": "192.0.2.7"}).json()["forgotten"] is True
     assert client.get("/api/device/sessions").json()["sessions"] == []
+
+
+def test_the_setup_checklist_says_what_is_missing(client):
+    steps = {s["step_id"]: s for s in client.get("/api/settings/setup").json()["steps"]}
+    assert not steps["guitar"]["done"] and steps["guitar"]["panel"] == "guitar"
+    # The demo guitar is a synthetic string - it does not count as yours.
+    client.post("/api/learn/demo", params={"protocol_id": "quick", "into": "demo"})
+    steps = {s["step_id"]: s for s in client.get("/api/settings/setup").json()["steps"]}
+    assert not steps["guitar"]["done"]
+    assert steps["loop"]["optional"] and steps["brains"]["optional"]
+    client.patch("/api/settings", json={"onboarding_done": True})
+    assert client.get("/api/settings/setup").json()["dismissed"] is True

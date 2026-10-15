@@ -2,7 +2,7 @@
 
 import { api } from "../api.js";
 import { describeJob, track } from "../jobs.js";
-import { $, attempt, clear, el, setPill, toast } from "../ui.js";
+import { $, attempt, clear, el, setPill, toast, when } from "../ui.js";
 
 /* ------------------------------------------------------------- pairing */
 
@@ -23,7 +23,7 @@ async function renderPairing() {
         { class: "item" },
         el("span", { class: "tag a2", text: "paired" }),
         el("span", { class: "title", text: session.host }),
-        el("span", { class: "meta", text: [session.server, session.paired_at ? `since ${session.paired_at.replace("T", " ")}` : ""].filter(Boolean).join("  ") }),
+        el("span", { class: "meta", text: [session.server, session.paired_at ? `since ${when(session.paired_at)}` : ""].filter(Boolean).join("  ") }),
         el("span", { class: "spacer" }),
         el("button", { class: "btn small", text: "snapshot", title: "Read every rig's name and the loaded rig in full - writes nothing", onclick: () => snapshot(session.host, out) }),
         el("button", { class: "btn small ghost danger", text: "forget", onclick: () => attempt(async () => { await api.post("/api/device/forget", { host: session.host }); renderPairing(); }) })

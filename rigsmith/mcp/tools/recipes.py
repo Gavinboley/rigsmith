@@ -147,6 +147,29 @@ def add_gear(
 
 
 @tool
+def set_recipe_guitar(
+    recipe_id: str,
+    guitar: str | None = None,
+    pickup: str | None = None,
+    tuning: str | None = None,
+) -> str:
+    """Record the guitar, pickup and tuning a recording was played with.
+
+    Write what the sources say, as specifically as they say it -
+    "Fender Stratocaster, bridge single coil", "Gibson Les Paul Custom with
+    EMG 81s", "drop C". Autopilot reads the pickup (or the guitar) to make the
+    user's DI sound like the record's guitar before any amp is heard, so it
+    matters more than it looks. Leave a field out to keep what is there.
+    """
+    from ...learn.pickup import named
+
+    recipe = recipes.set_instrument(recipe_id, guitar=guitar, pickup=pickup, tuning=tuning)
+    target = named(recipe.pickup or "") or named(recipe.guitar or "")
+    heard = f" - a DI will be moved to {target.label} ({target.f0_hz / 1000:.1f} kHz)" if target else ""
+    return f"{recipe.title}: guitar {recipe.guitar or '?'}, pickup {recipe.pickup or '?'}, tuning {recipe.tuning or '?'}{heard}"
+
+
+@tool
 def resolve_gear(recipe_id: str, role: str, model_id: str) -> str:
     """Bind a researched gear choice to a real device model or NAM capture.
 
