@@ -197,7 +197,8 @@ def test_a_fitted_eq_goes_in_only_when_it_scores_closer(workspace):
     assert equalised["label"] == "Amp (tuned + G EQ)" and equalised["composite"] < composite * 0.98
     assert set(equalised["geq"]) == set(match_eq.GEQ_NAMES) and all(0 <= v <= 1 for v in equalised["geq"].values())
     # Nothing to fix: no EQ entry at all.
-    flat = {**entry, "eq": match_eq.match(candidate, candidate, RATE).to_dict()}
+    own = score_candidate(candidate, candidate, RATE, mode=ComparisonMode.PERFORMANCE).composite
+    flat = {**entry, "composite": own, "eq": match_eq.match(candidate, candidate, RATE).to_dict()}
     assert autopilot._with_eq([flat], candidate, RATE, ComparisonMode.PERFORMANCE) == []
 
 
