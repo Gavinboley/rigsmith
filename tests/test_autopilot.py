@@ -444,3 +444,33 @@ def test_a_researcher_that_cannot_sign_in_says_how_to_fix_it(workspace, monkeypa
         autopilot._stage_research(run, None)
     assert "could not sign in" in str(skipped.value)
     assert any("/login" in note and "resume this run" in note for note in run.all_notes())
+
+
+def test_a_part_with_your_take_uses_it_without_being_told(workspace):
+    """Lined up once with 'song take', it is the DI for every later run."""
+    import numpy as np
+
+    from rigsmith.core import songs, takes
+    from rigsmith.core.songs import Part
+
+    tone = (0.2 * np.sin(2 * np.pi * 110 * np.arange(12 * RATE) / RATE)).astype("float32")
+    made = songs.create("Own Take", stem=str(save_audio(workspace / "stem.wav", tone, RATE)))
+    made = songs.get(made.song_id)
+    made.structure = {"tempo": 120.0, "sections": [{"start": 0.0, "end": 10.0, "label": "A", "name": "verse"}]}
+    made.parts = [Part("verse-1-stem", 0, "verse", "stem", 0.0, 10.0, sketch={"gain": 0.3})]
+    made.save()
+    mine = takes.add(save_audio(workspace / "mine.wav", tone[: 10 * RATE], RATE), take_id="own-take-verse-take", kind="di", origin="di-box", tags=["part", "take"], copy=False)
+    made = songs.get(made.song_id)
+    made.part("verse-1-stem").di_take = mine.take_id
+    made.save()
+
+    run = autopilot.Run(run_id="own-take", request=autopilot.Request(title="Own Take"), song_id=made.song_id, part_ids=["verse-1-stem"])
+    summary = autopilot._stage_di(run, None)
+    assert run.di_path == mine.path and run.mode == "performance", summary
+    assert any("your own take of this part" in n for n in run.all_notes())
+
+    rendered = takes.add(save_audio(workspace / "rendered.wav", 0.5 * tone[: 10 * RATE], RATE), take_id="rendered", kind="di", origin="synth", copy=False)
+    made = songs.get(made.song_id)
+    made.part("verse-1-stem").di_take = rendered.take_id
+    made.save()
+    assert autopilot._own_take(songs.get(made.song_id).part("verse-1-stem")) is None, "a rendering is not your playing"

@@ -31,9 +31,10 @@ def group() -> None:
 @click.option("--no-research", is_flag=True)
 @click.option("--like", help="The record's guitar (strat, p90, paf, a learned guitar...); default: what the research says.")
 @click.option("--keep-my-pickup", is_flag=True, help="Do not move the DI toward the researched guitar.")
+@click.option("--render-di", is_flag=True, help="Render the DI even when the part has your own take lined up.")
 @click.option("--detach", is_flag=True, help="Start it and return; check with 'autopilot show'.")
 @handled
-def autopilot_run(title, artist, mix, stem, song_id, parts, profile_id, di, midi, bench, route_id, candidates, tune_budget, no_research, like, keep_my_pickup, detach) -> None:
+def autopilot_run(title, artist, mix, stem, song_id, parts, profile_id, di, midi, bench, route_id, candidates, tune_budget, no_research, like, keep_my_pickup, render_di, detach) -> None:
     """Chase TITLE's guitar tone, start to finish."""
     from ..core import autopilot
 
@@ -41,7 +42,7 @@ def autopilot_run(title, artist, mix, stem, song_id, parts, profile_id, di, midi
         title=title, artist=artist, mix=mix, stem=stem, song_id=song_id, parts=list(parts),
         profile_id=profile_id, di=di, midi=midi, bench=bench, route_id=route_id,
         candidates=candidates, tune_budget=tune_budget, research=not no_research,
-        like=like, match_guitar=not keep_my_pickup,
+        like=like, match_guitar=not keep_my_pickup, use_part_take=not render_di,
     )
     run = autopilot.start(request)
     click.echo(f"autopilot {run.run_id} started.")

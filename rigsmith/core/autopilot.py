@@ -85,6 +85,9 @@ class Request:
     like_amount: float = 1.0
     match_guitar: bool = True
     """Follow the research's guitar when ``like`` is unset."""
+    use_part_take: bool = True
+    """Use your own take of the part, when one was lined up with it before
+    ('song take'), instead of rendering a DI from your guitar's voice."""
 
 
 @dataclass
@@ -481,6 +484,26 @@ def _take_as_di(run: Run) -> str:
     return f"your take, {alignment.describe()}"
 
 
+def _own_take(part):
+    """The part's DI when it is the user's playing rather than a rendering.
+
+    Both kinds are filed as the part's ``di_take``; a rendered one has the
+    origin ``synth``. A take that has gone from the library or the disk is
+    not one.
+    """
+    from . import takes
+
+    if not part.di_take:
+        return None
+    try:
+        take = takes.get(part.di_take)
+    except NotFound:
+        return None
+    if take.origin == "synth" or not Path(take.path).is_file():
+        return None
+    return take
+
+
 def _stage_di(run: Run, progress) -> str:
     from . import appsettings, songs
 
@@ -489,6 +512,12 @@ def _stage_di(run: Run, progress) -> str:
     run.target_path = str(songs.part_audio(run.song_id, part.part_id))
     if run.request.di:
         return _take_as_di(run)
+    own = _own_take(part) if run.request.use_part_take else None
+    if own is not None:
+        run.di_path = own.path
+        run.mode = "performance"
+        run.note("your own take of this part, lined up with the record before, is the DI - truer than one rendered from your guitar's voice")
+        return f"{part.label}: your take ({own.take_id}), already on the record's clock"
     profile = run.request.profile_id or appsettings.load().default_profile
     if not profile:
         run.note("no guitar profile, so the part is played on the synthetic string - learn your guitar for a truer test")

@@ -31,6 +31,7 @@ class RunBody(BaseModel):
     like: str | None = None
     like_amount: float = 1.0
     match_guitar: bool = True
+    use_part_take: bool = True
 
 
 def _payload(run) -> dict:
