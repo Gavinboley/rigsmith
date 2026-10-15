@@ -26,6 +26,9 @@ from typing import Any
 #: A rig has exactly this many block slots.
 MAX_SLOTS = 14
 
+#: The rig tempo the Core can store, in BPM.
+TEMPO_RANGE = (30.0, 240.0)
+
 #: The Core has five footswitches.
 FOOTSWITCH_COUNT = 5
 
@@ -203,6 +206,9 @@ class Rig:
     signal_path: SignalPath = SignalPath.STRAIGHT
     rig_width: int = 100
     """100 = full stereo, 0 = collapsed to mono."""
+    tempo: float | None = None
+    """BPM the rig loads with, for its synced delays and modulation; None
+    follows whatever tempo the device is at (tapped, or the last rig's)."""
     setlist: str | None = None
     slot_number: int | None = None
     """Position in the setlist, used for MIDI Program Change recall."""
@@ -349,6 +355,7 @@ class Rig:
         lines.append(
             f"  path: {self.signal_path.value}  width: {self.rig_width}%  "
             f"{'stereo' if self.is_stereo else 'mono'}"
+            + (f"  tempo: {self.tempo:g} BPM" if self.tempo else "")
         )
         lines.append(f"  blocks: {len(self.blocks)}/{MAX_SLOTS}")
         for block in sorted(self.blocks, key=lambda b: b.slot):

@@ -29,7 +29,7 @@ from typing import Any
 
 from ..core.errors import Invalid, NotFound
 from ..rig.catalog import Catalog, ModelSpec
-from ..rig.model import Block, Doubling, Rig
+from ..rig.model import TEMPO_RANGE, Block, Doubling, Rig
 
 #: The device's node name for a block, and its module-table entry, both derive
 #: from the display name. The second instance of any block appends this.
@@ -218,6 +218,28 @@ def plan_rig(rig: Rig, catalog: Catalog) -> list[Placement]:
         placements.append(resolve_block(block, catalog, instance=instance))
         used[module_name] = instance + 1
     return placements
+
+
+#: The rig's own settings live beside its blocks, on ``/Evil/Engine/Patch/Rig``.
+RIG_NODE = "Rig"
+
+
+def rig_properties(rig: Rig) -> dict[str, Any]:
+    """The rig node's values for what the rig sets itself, or {} for nothing.
+
+    Read from a Core (firmware 2.x): ``Tempo`` is 0-1 on the wire across
+    30-240 BPM (120 is 0.4286), and ``TempoFromMaster`` picks between
+    ``Fixed`` (false - the rig loads with its own tempo) and ``Current``
+    (true, the default - it keeps whatever tempo the device is at). A rig
+    with synced delays wants Fixed, or its dotted eighth lands on whichever
+    song was tapped in last.
+    """
+    if not rig.tempo:
+        return {}
+    low, high = TEMPO_RANGE
+    if not low <= rig.tempo <= high:
+        raise Invalid(f"rig tempo {rig.tempo:g} BPM is outside the Core's {low:g}-{high:g}")
+    return {"Tempo": round((rig.tempo - low) / (high - low), 6), "TempoFromMaster": False}
 
 
 def chain_properties(placements: list[Placement], *, slots: int = 14) -> dict[str, int]:

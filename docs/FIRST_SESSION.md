@@ -80,7 +80,9 @@ recipe, and the draft follows your ears if they disagreed with the score.
 ## 8. Write it
 
 **Rig -> Write to device**: validate, back up, diff, confirm, write, verify.
-Nothing reaches the Core without this step.
+Nothing reaches the Core without this step. A draft with a synced delay or
+tremolo carries the song's tempo (the BPM beside the signal path), saved as
+the rig's *Fixed* tempo so it loads on the beat; tap tempo still moves it.
 
 A song rig's **scenes are not written over the network yet** - the write
 report lists what each footswitch should do, to set by hand. While you are

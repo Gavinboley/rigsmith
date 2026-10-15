@@ -72,6 +72,8 @@ class SceneBody(BaseModel):
 class RigSettings(BaseModel):
     signal_path: str | None = None
     rig_width: int | None = None
+    tempo: float | None = None
+    """BPM; 0 clears it, so the rig follows the device's tempo."""
     name: str | None = None
 
 
@@ -557,6 +559,8 @@ def update_rig(draft_id: str, body: RigSettings) -> dict:
         rigs.set_signal_path(draft_id, body.signal_path)
     if body.rig_width is not None:
         rigs.set_rig_width(draft_id, body.rig_width)
+    if body.tempo is not None:
+        rigs.set_tempo(draft_id, body.tempo or None)
     if body.name is not None:
         rigs.rename(draft_id, body.name)
     return _draft_payload(rigs.get(draft_id))

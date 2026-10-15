@@ -202,6 +202,14 @@ def set_signal_path(draft_id: str, signal_path: SignalPathName) -> str:
 
 
 @tool
+def set_rig_tempo(draft_id: str, bpm: float | None = None) -> str:
+    """Give the rig its own tempo (30-240 BPM), saved as Fixed so its synced
+    delays and tremolos load on the song's beat. Omit bpm to follow the
+    device's tempo instead."""
+    return rigs.set_tempo(draft_id, bpm).summary
+
+
+@tool
 def configure_scene(
     draft_id: str,
     name: str,

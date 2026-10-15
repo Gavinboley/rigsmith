@@ -158,6 +158,8 @@ input[type=text], input[type=number], select, textarea {
 }
 input:focus, select:focus { outline: 1px solid var(--amber-dim); border-color: var(--amber-dim); }
 .inline-select { padding: 6px 8px; }
+.tempo-field { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text-faint); }
+.tempo-field input { width: 74px; padding: 6px 8px; }
 
 /* ------------------------------------------------------------------- rig */
 

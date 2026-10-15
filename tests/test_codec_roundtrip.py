@@ -30,6 +30,7 @@ def fully_populated() -> Rig:
         name="Cherub Rock",
         signal_path=SignalPath.MIDDLE_SPLIT_3_4_3,
         rig_width=60,
+        tempo=128.5,
         setlist="Siamese Dream",
         slot_number=7,
         notes="the fuzz is doing the work",

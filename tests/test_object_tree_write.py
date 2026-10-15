@@ -314,3 +314,50 @@ def test_scenes_are_read_raw_and_written_as_instructions():
     rig.scenes = [Scene(name="verse", states={1: SceneBlockState.ON, 2: SceneBlockState.OFF}, footswitch=1)]
     note = scene_instructions(rig)
     assert "not written over the network" in note and "FS1 'verse': on 82 Lead 800 100W (1); off 64 Black Lux Norm (2)" in note
+
+
+@pytest.mark.asyncio
+async def test_the_rig_tempo_goes_on_the_rig_node_as_fixed(patched_catalog):
+    """A synced delay is only right at the song's tempo, so the rig carries it."""
+    rig = rig_with_a_doubled_amp()
+    rig.tempo = 140.0
+    core = FakeCore()
+    async with DeviceClient(
+        "http://fake", MAP, transport=httpx.MockTransport(core.handle)
+    ) as client:
+        report = await client.write_rig(rig)
+
+    assert report.ok, report.render()
+    node = core.saved["blocks"]["Rig"]
+    assert node["TempoFromMaster"] is False, "Fixed - the rig loads with its own tempo"
+    assert node["Tempo"] == pytest.approx((140 - 30) / 210, abs=1e-6)
+    assert any(step.operation == "set_rig" for step in report.steps)
+
+
+def test_rig_tempo_on_the_wire_matches_what_the_core_stores():
+    from rigsmith.device.writer import rig_properties
+
+    # The Core's own default, read from a device: 120 BPM is 0.4285714.
+    assert rig_properties(Rig(name="x", tempo=120.0))["Tempo"] == pytest.approx(0.4285714, abs=1e-6)
+    assert rig_properties(Rig(name="x")) == {}, "no tempo leaves the device's alone"
+
+
+@pytest.mark.asyncio
+async def test_a_refused_rig_tempo_is_reported_and_the_rig_still_saved(patched_catalog):
+    rig = rig_with_a_doubled_amp()
+    rig.tempo = 95.0
+    core = FakeCore()
+    original = core.handle
+
+    def refuses_tempo(request: httpx.Request) -> httpx.Response:
+        if request.method == "PUT" and request.url.path.endswith("/Rig"):
+            return httpx.Response(400, text="no such property")
+        return original(request)
+
+    async with DeviceClient(
+        "http://fake", MAP, transport=httpx.MockTransport(refuses_tempo)
+    ) as client:
+        report = await client.write_rig(rig)
+
+    assert core.saved is not None, "the blocks matter more than the tempo"
+    assert any("95 BPM (Fixed)" in note for note in report.notes), report.notes

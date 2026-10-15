@@ -352,6 +352,22 @@ def rig_doubling(draft_id: str, slot: int, mode: str, second: str | None) -> Non
     click.echo(rigs.set_doubling(draft_id, slot, mode, second).render(chain=False))
 
 
+@rig.command("tempo")
+@click.argument("draft_id")
+@click.argument("bpm", type=float, required=False)
+@click.option("--follow", is_flag=True, help="Clear it: the rig follows the device's tempo.")
+@handled
+def rig_tempo(draft_id: str, bpm: float | None, follow: bool) -> None:
+    """Give the rig its own tempo, for synced delays and modulation."""
+    from .core import rigs
+
+    if bpm is None and not follow:
+        tempo = rigs.get(draft_id).rig.tempo
+        click.echo(f"{tempo:g} BPM (Fixed)" if tempo else "follows the device's tempo")
+        return
+    click.echo(rigs.set_tempo(draft_id, None if follow else bpm).summary)
+
+
 @rig.command("scene")
 @click.argument("draft_id")
 @click.argument("name")

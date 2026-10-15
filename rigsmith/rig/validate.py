@@ -38,6 +38,7 @@ from .model import (
     Doubling,
     Rig,
     SceneBlockState,
+    TEMPO_RANGE,
 )
 
 #: Above this estimated CPU share we warn. The device tolerates a full meter
@@ -357,6 +358,9 @@ def validate_rig(
 
     if not 0 <= rig.rig_width <= 100:
         result.add("error", f"rig width {rig.rig_width} is outside 0..100")
+
+    if rig.tempo is not None and not TEMPO_RANGE[0] <= rig.tempo <= TEMPO_RANGE[1]:
+        result.add("error", f"rig tempo {rig.tempo:g} BPM is outside the Core's {TEMPO_RANGE[0]:g}-{TEMPO_RANGE[1]:g}")
 
     for block in rig.blocks:
         _validate_block(block, rig, catalog, result)

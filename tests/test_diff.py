@@ -249,6 +249,7 @@ def _rig_with_one_block() -> Rig:
         ("Scene", "footswitch", 4),
         ("Scene", "led_color", "blue"),
         ("Rig", "rig_width", 60),
+        ("Rig", "tempo", 140.0),
         ("Rig", "setlist", "Set A"),
         ("Rig", "slot_number", 7),
     ],

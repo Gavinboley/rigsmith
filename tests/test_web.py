@@ -950,3 +950,12 @@ def test_recording_a_take_is_a_job_that_reports_a_missing_interface(client):
     assert job["finished"]
     if job["state"] == "failed":
         assert job["error"], "a failure has to say what went wrong"
+
+
+def test_the_rig_tempo_is_set_and_cleared_through_the_api(client):
+    draft = client.post("/api/drafts", json={"name": "Tempo"}).json()
+    set_ = client.patch(f"/api/drafts/{draft['draft_id']}", json={"tempo": 132.5}).json()
+    assert set_["rig"]["tempo"] == 132.5
+    assert client.patch(f"/api/drafts/{draft['draft_id']}", json={"tempo": 500}).status_code == 400
+    cleared = client.patch(f"/api/drafts/{draft['draft_id']}", json={"tempo": 0}).json()
+    assert "tempo" not in cleared["rig"], "0 means follow the device's tempo"

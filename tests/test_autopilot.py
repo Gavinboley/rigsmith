@@ -320,3 +320,32 @@ def test_your_own_take_of_the_part_is_scored_frame_by_frame(workspace):
     run = autopilot.execute("t10")
     assert run.state == "done", run.describe()
     assert run.mode == "performance" and "on the record's clock" in run.stages["di"].summary
+
+
+def test_a_tremolo_on_the_beat_is_synced():
+    # 6 Hz at 90 BPM is a cycle every quarter of a beat: the Core's 1/16.
+    tremolo = candidates.surrounding_blocks({"modulation": "tremolo", "modulation_hz": 6.0}, tempo=90.0)[0]
+    assert tremolo["division"] == "1/16" and tremolo["params"]["Sync"] is True
+    assert candidates.RATE_DIVISIONS[tremolo["params"]["Rate_Synced"]] == "1/16"
+    assert candidates.RATE_DIVISIONS[0] == "Bar", "the modulation list runs the other way from the delay's"
+    # 5.3 Hz at 90 BPM falls between divisions, so it keeps its own rate.
+    loose = candidates.surrounding_blocks({"modulation": "tremolo", "modulation_hz": 5.3}, tempo=90.0)[0]
+    assert "Sync" not in loose["params"] and loose["division"] is None
+    assert candidates.synced_rate(6.0, None) is None
+
+
+def test_synced_blocks_give_the_draft_the_songs_tempo(workspace):
+    from rigsmith.core import rigs
+
+    draft_id = rigs.create("tempo").draft.draft_id
+    notes: list[str] = []
+    autopilot._carry_tempo(None, draft_id, [{"role": "delay", "division": None}], 99.0, notes)
+    assert rigs.get(draft_id).rig.tempo is None and not notes, "nothing synced, nothing to carry"
+    autopilot._carry_tempo(None, draft_id, [{"role": "delay", "division": "3/16"}], 128.437, notes)
+    assert rigs.get(draft_id).rig.tempo == 128.44 and "Fixed" in notes[0] and "delay on 3/16" in notes[0]
+    notes.clear()
+    other = rigs.create("fast").draft.draft_id
+    autopilot._carry_tempo(None, other, [{"role": "tremolo", "division": "1/8"}], 300.0, notes)
+    assert rigs.get(other).rig.tempo is None and "tap it in" in notes[0]
+    with pytest.raises(Exception):
+        rigs.set_tempo(other, 20.0)

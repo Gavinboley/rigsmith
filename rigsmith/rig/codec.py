@@ -122,6 +122,8 @@ def rig_to_dict(rig: Rig) -> dict:
         "blocks": [block_to_dict(b) for b in sorted(rig.blocks, key=lambda b: b.slot)],
         "scenes": [scene_to_dict(s) for s in rig.scenes],
     }
+    if rig.tempo:
+        data["tempo"] = rig.tempo
     if rig.setlist:
         data["setlist"] = rig.setlist
     if rig.slot_number is not None:
@@ -144,6 +146,7 @@ def rig_from_dict(data: dict) -> Rig:
         name=data["name"],
         signal_path=SignalPath(data.get("signal_path", "straight")),
         rig_width=int(data.get("rig_width", 100)),
+        tempo=float(data["tempo"]) if data.get("tempo") else None,
         setlist=data.get("setlist"),
         slot_number=data.get("slot_number"),
         notes=data.get("notes"),

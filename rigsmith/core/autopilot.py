@@ -873,7 +873,8 @@ def _stage_rig(run: Run, *, from_ears: bool = False) -> str:
     run.draft_id = draft.draft_id
 
     order = {"gate": 0, "boost": 1, "chorus": 4, "vibrato": 4, "tremolo": 5, "delay": 6, "reverb": 7}
-    extras = surrounding_blocks(part.sketch or {})
+    tempo = (song.structure or {}).get("tempo")
+    extras = surrounding_blocks(part.sketch or {}, tempo=tempo)
     before = [b for b in extras if order.get(b["role"], 9) < 2]
     after = [b for b in extras if order.get(b["role"], 9) >= 2]
     notes = []
@@ -895,10 +896,7 @@ def _stage_rig(run: Run, *, from_ears: bool = False) -> str:
         run.note(f"a G EQ after the cab, fitted to the record ({shown}) - it measured closer; trust your ears over it")
     for block in after:
         add(block["category"], block["model"], block.get("params"))
-    delay = next((b for b in after if b["role"] == "delay" and b.get("division")), None)
-    tempo = (song.structure or {}).get("tempo")
-    if delay and tempo:
-        run.note(f"the delay is synced to {delay['division']} - set the rig's tempo to {tempo:.0f} BPM, or tap it in")
+    _carry_tempo(run, run.draft_id, after, tempo)
     for text in notes:
         run.note(text)
     if run.request.bench == "virtual":
@@ -1021,8 +1019,9 @@ def song_rig(run_ids: list[str], *, name: str | None = None) -> dict:
         return max(block.slot for block in result.draft.rig.blocks)
 
     wanted = {}
+    tempo = (song.structure or {}).get("tempo")
     for item in parts:
-        item["roles"] = {b["role"]: b for b in surrounding_blocks(item["part"].sketch or {})}
+        item["roles"] = {b["role"]: b for b in surrounding_blocks(item["part"].sketch or {}, tempo=tempo)}
         for role, block in item["roles"].items():
             wanted.setdefault(role, block)
 
@@ -1059,6 +1058,8 @@ def song_rig(run_ids: list[str], *, name: str | None = None) -> dict:
                     slots.remove(slot)
         notes.append("the fitted EQs were left out to keep the rig inside the Core's DSP budget")
 
+    _carry_tempo(None, draft_id, [wanted[role] for role in slots_by_role], tempo, notes)
+
     scenes = []
     for index, item in enumerate(parts, start=1):
         on = list(sound_slots.get(item["config"], []))
@@ -1069,6 +1070,31 @@ def song_rig(run_ids: list[str], *, name: str | None = None) -> dict:
         rigs.configure_scene(draft_id, scene_name, on_slots=on, off_slots=off, footswitch=index, reset=True)
         scenes.append({"footswitch": index, "scene": scene_name, "part": item["part"].part_id, "sound": item["config"][0], "run": item["run"].run_id})
     return {"draft_id": draft_id, "name": title[:40], "scenes": scenes, "sounds": [list(c) for c in kept], "notes": notes}
+
+
+def _carry_tempo(run: Run | None, draft_id: str, blocks: list[dict], tempo: float | None, notes: list | None = None) -> None:
+    """Give the rig the song's tempo when anything in it is synced to the beat.
+
+    A synced delay is a dotted eighth of *whatever tempo the device is at* -
+    the last song tapped in, or the last rig's. Saved as the rig's own
+    (Fixed) tempo, it loads on the beat; tap tempo still moves it live.
+    """
+    from ..rig.model import TEMPO_RANGE
+    from . import rigs
+
+    synced = [b for b in blocks if b.get("division")]
+    if not synced or not tempo:
+        return
+    what = ", ".join(f"{b['role']} on {b['division']}" for b in synced)
+    if not TEMPO_RANGE[0] <= tempo <= TEMPO_RANGE[1]:
+        text = f"the song's {tempo:.0f} BPM is outside the rig tempos the Core stores - tap it in for the {what}"
+    else:
+        rigs.set_tempo(draft_id, round(float(tempo), 2))
+        text = f"the rig carries the song's tempo ({tempo:.1f} BPM, Fixed), so the {what} land on the beat - tap tempo still moves it live"
+    if run is not None:
+        run.note(text)
+    if notes is not None:
+        notes.append(text)
 
 
 def render_song_rig(result: dict) -> str:

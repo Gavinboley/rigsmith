@@ -278,6 +278,36 @@ NOTE_TO_DIVISION = {
     "sixteenth": "1/16", "eighth": "1/8", "dotted eighth": "3/16", "triplet quarter": "1/4T",
     "quarter": "1/4", "dotted quarter": "3/8", "half": "1/2",
 }
+#: The modulation blocks' synced rates - one cycle per division - in the
+#: Core's order, which is the delay's reversed.
+RATE_DIVISIONS = tuple(reversed(DELAY_DIVISIONS))
+#: Each division's length in beats, in 4/4.
+DIVISION_BEATS = {
+    "Bar": 4.0, "3/4": 3.0, "5/8": 2.5, "1/2": 2.0, "3/8": 1.5, "1/2T": 4 / 3, "1/4": 1.0, "3/16": 0.75,
+    "1/4T": 2 / 3, "1/8": 0.5, "1/8T": 1 / 3, "1/16": 0.25, "1/16T": 1 / 6, "1/32": 0.125, "1/32T": 1 / 12,
+    "1/64": 1 / 16, "1/128": 1 / 32,
+}
+#: How close a measured rate has to be to a division to be synced to it.
+SYNC_TOLERANCE = 0.04
+
+
+def synced_rate(hz: float | None, tempo: float | None) -> str | None:
+    """The division a modulation rate is at the song's tempo, or None.
+
+    A tremolo on a record is usually set to the beat, by the player's ear if
+    not by a sync switch, and one that drifts against the drums is the
+    first thing that sounds wrong. Within :data:`SYNC_TOLERANCE` of a
+    division, the synced rate is as close to what was measured as the
+    measurement is, and stays on the beat.
+    """
+    if not hz or not tempo or hz <= 0 or tempo <= 0:
+        return None
+    beats = tempo / (60.0 * hz)
+    nearest = min(DIVISION_BEATS, key=lambda name: abs(beats - DIVISION_BEATS[name]) / DIVISION_BEATS[name])
+    error = abs(beats - DIVISION_BEATS[nearest]) / DIVISION_BEATS[nearest]
+    return nearest if error <= SYNC_TOLERANCE else None
+
+
 #: AIR Reverb's modes, by what the sketch heard.
 REVERB_MODES = {"a room": 0, "a plate or hall": 1, "a long wash": 7}
 
@@ -291,7 +321,7 @@ def _linear(value: float, low: float, high: float) -> float:
     return round(min(max((value - low) / (high - low), 0.0), 1.0), 4)
 
 
-def surrounding_blocks(sketch: dict) -> list[dict]:
+def surrounding_blocks(sketch: dict, *, tempo: float | None = None) -> list[dict]:
     """Blocks the sketch suggests around the amp: ``{category, model, params, role, why}``.
 
     Where the measurement gives a number it is set: a delay synced to the
@@ -299,7 +329,9 @@ def surrounding_blocks(sketch: dict) -> list[dict]:
     fallback), a tremolo's or chorus's rate, a reverb's type, and mixes kept
     modest - a record's effects sit under the guitar, not on top of it. The
     millisecond and hertz settings assume a linear control until the catalog
-    is calibrated; the sync division does not depend on that.
+    is calibrated; the sync division does not depend on that. Given the
+    song's ``tempo``, a tremolo on the beat is synced too (see
+    :func:`synced_rate`).
     """
     blocks: list[dict] = []
     if sketch.get("gated"):
@@ -322,7 +354,14 @@ def surrounding_blocks(sketch: dict) -> list[dict]:
     rate = f" at {hz:.1f} Hz" if hz else ""
     if modulation == "tremolo":
         params = {"Rate": _linear(float(hz), 0.1, 12.0)} if hz else {}
-        blocks.append({"category": "effect", "model": "Tremolo", "role": "tremolo", "params": params, "why": f"a {hz or 0:.1f} Hz wobble"})
+        division = synced_rate(hz, tempo)
+        if division:
+            params.update({"Sync": True, "Rate_Synced": RATE_DIVISIONS.index(division)})
+        blocks.append({
+            "category": "effect", "model": "Tremolo", "role": "tremolo", "params": params,
+            "why": f"a {hz or 0:.1f} Hz wobble" + (f" (a {division} cycle, synced)" if division else ""),
+            "division": division,
+        })
     elif modulation == "chorus":
         params = {"Rate": _linear(float(hz), 0.1, 10.0), "Mix": 0.5} if hz else {"Mix": 0.5}
         blocks.append({"category": "effect", "model": "Chorus", "role": "chorus", "params": params, "why": f"sustained notes wander about {sketch.get('wobble_cents') or 0:.0f} cents{rate}"})

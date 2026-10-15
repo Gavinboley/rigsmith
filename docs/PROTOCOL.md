@@ -11,6 +11,18 @@
 - **Every block type exists twice** (`Amp` and `Amp 2`), so a rig can hold two of anything; the second is addressed by its own node.
 - `Blocks/serializeBlock` returns a block's whole state as JSON in display units - the cheapest read-only snapshot of a block before a write.
 
+## The rig's own tempo
+
+`/Evil/Engine/Patch/Rig` holds the rig-level settings, beside its blocks.
+`Tempo` is 0-1 on the wire across 30-240 BPM (the default, 0.4286, is
+120), and `TempoFromMaster` chooses between `Fixed` (false: the rig loads
+with its own tempo) and `Current` (true, the default: it keeps the tempo the
+device is already at). A rig with a synced delay or tremolo is written
+Fixed at the song's tempo - `rigsmith rig tempo`, or set by autopilot -
+so its dotted eighth lands on the beat without tapping. The global tempo is
+`/Evil/Engine/Tempo` (`Tempo`, plus `TempoMaj`/`TempoSub` for the screen's
+whole and fractional parts).
+
 ## Scenes: found, not yet written
 
 The loaded rig's scenes live on `/Evil/Engine/FootSwitch` (from the

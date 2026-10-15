@@ -287,6 +287,10 @@ def diff_rigs(before: Rig | None, after: Rig) -> RigDiff:
         changes.append(
             Change("rig", f"rig width: {before.rig_width}% -> {after.rig_width}%")
         )
+    if before.tempo != after.tempo:
+        def bpm(value):
+            return f"{value:g} BPM" if value else "the device's"
+        changes.append(Change("rig", f"tempo: {bpm(before.tempo)} -> {bpm(after.tempo)}"))
     if before.setlist != after.setlist:
         changes.append(
             Change("rig", f"setlist: {before.setlist or 'none'} -> {after.setlist or 'none'}")

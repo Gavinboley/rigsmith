@@ -423,6 +423,22 @@ def set_rig_width(draft_id: str, width: int) -> EditResult:
     return _finish(draft, f"Rig width set to {width}%.")
 
 
+def set_tempo(draft_id: str, bpm: float | None) -> EditResult:
+    """Give the rig its own tempo, or None (or 0) to follow the device's."""
+    from ..rig.model import TEMPO_RANGE
+
+    if bpm and not TEMPO_RANGE[0] <= bpm <= TEMPO_RANGE[1]:
+        raise Invalid(
+            f"{bpm:g} BPM is outside the Core's rig tempo range",
+            hint=f"It stores {TEMPO_RANGE[0]:g}-{TEMPO_RANGE[1]:g}; halve or double a tempo outside it.",
+        )
+    draft = _get(draft_id)
+    draft.rig.tempo = round(float(bpm), 2) if bpm else None
+    if draft.rig.tempo:
+        return _finish(draft, f"Rig tempo set to {draft.rig.tempo:g} BPM - it loads with this tempo.")
+    return _finish(draft, "Rig tempo cleared - it follows the device's tempo.")
+
+
 # --------------------------------------------------------------------------
 # scenes
 # --------------------------------------------------------------------------

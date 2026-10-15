@@ -502,7 +502,7 @@ class DeviceClient:
         happily as the right one.
         """
         from ..rig.catalog import get_catalog
-        from .writer import chain_properties, plan_rig
+        from .writer import RIG_NODE, Placement, chain_properties, plan_rig, rig_properties
 
         report = WriteReport(
             rig_name=rig.name,
@@ -526,6 +526,7 @@ class DeviceClient:
             # loaded over whatever the player had open.
             placements = plan_rig(rig, catalog)
             chain = chain_properties(placements)
+            settings = rig_properties(rig)
             record("plan", f"{len(placements)} block(s) resolved")
 
             colour = getattr(rig, "led_color_index", None)
@@ -586,6 +587,21 @@ class DeviceClient:
                     )
                     detail += f" ({len(stubborn)} refused)"
                 record("set_block", detail)
+
+            if settings:
+                # The rig's own settings are secondary to its blocks: a
+                # refusal here is reported, and the rig is still saved.
+                try:
+                    await self.call("set_block", block=RIG_NODE, properties=settings)
+                    stubborn = await self._reconcile(Placement(slot=0, module=RIG_NODE, module_index=0, node=RIG_NODE, properties=settings))
+                except (Invalid, NotFound) as exc:
+                    stubborn = [("Tempo", settings["Tempo"], str(exc).splitlines()[0])]
+                if stubborn:
+                    report.notes.append(
+                        f"the rig's tempo did not take ({stubborn[0][2]!r}) - set it to "
+                        f"{rig.tempo:g} BPM (Fixed) in the rig settings on the device"
+                    )
+                record("set_rig", f"tempo {rig.tempo:g} BPM, fixed" + (" (refused)" if stubborn else ""))
 
             await self.call("save_rig_as", name=rig.name, colour=colour)
             report.rig_id = rig.name
@@ -671,6 +687,10 @@ class DeviceClient:
                     footswitch=scene.footswitch,
                 )
                 record("set_scene", f"'{scene.name}'")
+            if rig.tempo:
+                report.notes.append(
+                    f"this device shape has no rig tempo - set {rig.tempo:g} BPM on the device"
+                )
 
         except (Invalid, NotFound, Unavailable) as exc:
             report.steps.append(

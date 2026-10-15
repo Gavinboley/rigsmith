@@ -240,6 +240,7 @@ function apply(payload) {
     payload.stereo ? "stereo" : "mono"
   }`;
   $("#signal-path").value = payload.rig.signal_path;
+  $("#rig-tempo").value = payload.rig.tempo ?? "";
   renderMeter(payload.validation);
   renderBoard();
   renderScenes();
@@ -519,6 +520,13 @@ export function init() {
     attempt(() =>
       api
         .updateRig(current.draft_id, { signal_path: event.target.value })
+        .then(apply)
+    );
+
+  $("#rig-tempo").onchange = (event) =>
+    attempt(() =>
+      api
+        .updateRig(current.draft_id, { tempo: Number(event.target.value) || 0 })
         .then(apply)
     );
 
