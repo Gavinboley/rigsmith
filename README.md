@@ -11,7 +11,7 @@ pip install -e ".[all]"
 rigsmith ui
 ```
 
-> **Status: everything runs today.** Rig authoring, validation, NAM analysis, tone matching, catalog extraction, USB backup, MIDI, guitar learning, song maps, the hardware loop, the tuner, autopilot, the chat and the web UI are covered by 899 tests. The Remote Editor protocol has been captured against a real Core and a rig written to it and read back exactly - see [docs/PROTOCOL.md](docs/PROTOCOL.md). What still wants hardware is *measuring*: the loop and the blind A/B need the Core and an interface plugged in - [docs/FIRST_SESSION.md](docs/FIRST_SESSION.md) walks through that first session.
+> **Status: everything runs today.** Rig authoring, validation, NAM analysis, tone matching, catalog extraction, USB backup, MIDI, guitar learning, song maps, the hardware loop, the tuner, autopilot, the chat and the web UI are covered by 902 tests. The Remote Editor protocol has been captured against a real Core and a rig written to it and read back exactly - see [docs/PROTOCOL.md](docs/PROTOCOL.md). What still wants hardware is *measuring*: the loop and the blind A/B need the Core and an interface plugged in - [docs/FIRST_SESSION.md](docs/FIRST_SESSION.md) walks through that first session.
 
 ---
 
@@ -250,6 +250,15 @@ rigsmith song brief going-under-evanescence        # what a researcher starts fr
 
 The lookup fills in album, year and recording credits; it never fetches the
 song itself - the record you chase is the copy you own.
+
+Already recorded yourself playing the part, along with the record or to a
+click at its tempo? `rigsmith song take <song> <part> <take>` (or *my take*
+on the part) lines it up - one offset and one tempo ratio, found by matching
+its notes against the record's - stretches it onto the part's clock with the
+pitch kept, and makes it the part's DI, so it is scored frame by frame like
+a rendered one. A take that does not follow the record (a different part,
+a long rubato, noise) is refused with the reason, and autopilot's `--di`
+falls back to comparing it as a distribution.
 
 ### Two modes
 

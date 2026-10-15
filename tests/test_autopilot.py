@@ -11,6 +11,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 pytest.importorskip("scipy", reason="needs pip install 'rigsmith[match]'")
@@ -286,3 +287,28 @@ def test_a_title_is_enough_when_the_song_is_in_your_library(workspace):
     assert run.stages["song"].state == "done", run.describe()
     assert any("your library's 01 Fixture Song.wav" in n for n in run.all_notes())
     assert run.state == "done"
+
+
+def test_your_own_take_of_the_part_is_scored_frame_by_frame(workspace):
+    import librosa
+
+    from rigsmith.core import songs
+    from rigsmith.match.render_offline import load_audio
+
+    stem, _ = song(seconds_per_section=6.0)
+    mix_path = save_audio(workspace / "mix.wav", with_drums(stem), RATE)
+    stem_path = save_audio(workspace / "stem.wav", stem, RATE)
+    made = songs.create("Fixture", mix=str(mix_path), stem=str(stem_path))
+    mapped = songs.analyse(made.song_id)
+    part = max((p for p in mapped.parts if p.layer == "left"), key=lambda p: p.end - p.start)
+    target, _ = load_audio(songs.part_audio(made.song_id, part.part_id))
+    # Played along, a little slow and late - as a take is.
+    take = np.concatenate([np.zeros(int(0.3 * RATE)), librosa.effects.time_stretch(target, rate=1 / 1.02)])
+    take_path = save_audio(workspace / "my-take.wav", take, RATE)
+
+    request = autopilot.Request(title="Fixture", song_id=made.song_id, parts=[part.part_id], di=str(take_path), research=False, candidates=3, tune_budget=6)
+    run = autopilot.Run(run_id="t10", request=request)
+    run.save()
+    run = autopilot.execute("t10")
+    assert run.state == "done", run.describe()
+    assert run.mode == "performance" and "on the record's clock" in run.stages["di"].summary

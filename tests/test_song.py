@@ -365,3 +365,21 @@ def test_your_own_copy_is_found_in_the_library_by_name(workspace, tmp_path):
 
     appsettings.update(music_dirs=[str(library)])
     assert songs.music_dirs() == [library]
+
+
+def test_a_take_of_a_part_becomes_its_di_when_it_follows_the_record(workspace, tmp_path):
+    import librosa
+
+    from rigsmith.match.render_offline import load_audio, save_audio
+
+    stem, _ = song(seconds_per_section=6.0)
+    made = songs.create("Fixture", stem=str(save_audio(tmp_path / "stem.wav", stem, RATE)))
+    mapped = songs.analyse(made.song_id)
+    part = max((p for p in mapped.parts if p.layer == "left"), key=lambda p: p.end - p.start)
+    target, _ = load_audio(songs.part_audio(made.song_id, part.part_id))
+    take = save_audio(tmp_path / "take.wav", np.concatenate([np.zeros(RATE // 4), librosa.effects.time_stretch(target, rate=1 / 1.02)]), RATE)
+
+    result = songs.take_for_part(made.song_id, part.part_id, str(take))
+    assert result["aligned"] and songs.get(made.song_id).part(part.part_id).di_take == result["take_id"]
+    noise = save_audio(tmp_path / "noise.wav", np.random.default_rng(0).normal(0, 0.05, RATE * 8), RATE)
+    assert not songs.take_for_part(made.song_id, part.part_id, str(noise))["aligned"]

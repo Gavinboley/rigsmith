@@ -341,3 +341,161 @@ def align_events(
     ratio = span_rec / span_tab if span_tab > 0 else 1.0
     after = _agreement(target, events_chroma(warped, len(target), hop_s=hop_s))
     return AlignmentResult(warped, ratio, before, after)
+
+
+# --------------------------------------------------------------------------
+# a recording of the part, onto the record's clock
+# --------------------------------------------------------------------------
+
+#: A take whose notes sit further than this from one straight line through
+#: the alignment is not one steady performance of the part (a different
+#: arrangement, a long rubato) and is not stretched.
+MAX_TAKE_RESIDUAL_S = 0.06
+
+#: Below this mean chroma agreement along the path, the take is probably not
+#: the same part at all.
+MIN_TAKE_AGREEMENT = 0.55
+
+#: How much better the path agrees than any two frames do on average. Noise
+#: (flat chroma) agrees with everything about equally - 0.13 - where a take
+#: of the part reaches 0.25.
+MIN_TAKE_CONTRAST = 0.18
+
+#: Median peak-to-mean of the take's chroma: played notes, even driven
+#: chords, sit at 1.7-2.2; noise at 1.3.
+MIN_TAKE_TONALITY = 1.5
+
+#: Correlation of the take's loudness contour (25 ms frames, dB) with the
+#: record's, once placed: a take of the part follows its notes and rests
+#: (0.74-0.98 measured), noise does not (about 0). A repeating riff agrees
+#: with itself everywhere, which defeats the chroma contrast; this does not.
+MIN_TAKE_LEVEL_AGREEMENT = 0.3
+
+
+@dataclass
+class TakeAlignment:
+    """How a recording of a part maps onto the record: ``record = rate * take + offset``."""
+
+    rate: float
+    offset_s: float
+    residual_s: float
+    agreement: float
+    contrast: float = 0.0
+    tonality: float = 0.0
+    level: float = 0.0
+
+    @property
+    def usable(self) -> bool:
+        return (
+            self.residual_s <= MAX_TAKE_RESIDUAL_S
+            and self.agreement >= MIN_TAKE_AGREEMENT
+            and self.tonality >= MIN_TAKE_TONALITY
+            and (self.contrast >= MIN_TAKE_CONTRAST or self.level >= MIN_TAKE_LEVEL_AGREEMENT)
+            and 0.8 <= self.rate <= 1.25
+        )
+
+    def describe(self) -> str:
+        verdict = "on the record's clock" if self.usable else "too loose to put on the record's clock"
+        return (
+            f"{verdict}: {abs(self.rate - 1) * 100:.1f}% {'slower' if self.rate > 1 else 'faster'}, "
+            f"starting {self.offset_s:+.2f} s, notes within {self.residual_s * 1000:.0f} ms of the line, "
+            f"pitch agreement {self.agreement:.2f} ({self.contrast:+.2f} over chance), loudness follows {self.level:.2f}"
+        )
+
+
+def _envelope(audio: np.ndarray, sample_rate: int, hop_s: float = 0.005) -> np.ndarray:
+    hop = max(1, int(hop_s * sample_rate))
+    usable = (len(audio) // hop) * hop
+    frames = np.abs(np.asarray(audio[:usable], dtype=np.float64)).reshape(-1, hop).mean(axis=1)
+    onset = np.maximum(np.diff(np.log(frames + 1e-6), prepend=np.log(frames[0] + 1e-6)), 0.0)
+    return onset - onset.mean()
+
+
+def align_take(take: np.ndarray, record: np.ndarray, sample_rate: int, *, hop_s: float = 0.05) -> TakeAlignment:
+    """Find where (and how fast) a recording of a part sits in the record.
+
+    Chroma DTW (the take may sit anywhere inside the record's audio) gives a
+    path; one straight line through it is the tempo ratio and the offset. A
+    performance played along to the record, or to a click at its tempo, is
+    close to that line; how close is the residual, and whether the notes
+    agree is the chroma along the path.
+    """
+    take = np.asarray(take, dtype=np.float64)
+    record = np.asarray(record, dtype=np.float64)
+    raw = audio_chroma(take, sample_rate, hop_s=hop_s)
+    sounding = raw[raw.sum(axis=1) > raw.sum(axis=1).max() * 0.05] if len(raw) else raw
+    tonality = float(np.median(sounding.max(axis=1) / (sounding.mean(axis=1) + 1e-12))) if len(sounding) else 0.0
+    take_chroma = _normalise(raw)
+    record_chroma = _normalise(audio_chroma(record, sample_rate, hop_s=hop_s))
+    if not len(take_chroma) or not len(record_chroma):
+        return TakeAlignment(1.0, 0.0, float("inf"), 0.0)
+    similarity = take_chroma @ record_chroma.T
+    path = np.array(dtw_path(1.0 - similarity, subsequence=True))
+    take_t, record_t = path[:, 0] * hop_s, path[:, 1] * hop_s
+    rate, offset = np.polyfit(take_t, record_t, 1)
+    residual = float(np.median(np.abs(record_t - (rate * take_t + offset))))
+    agreement = float(np.mean(similarity[path[:, 0], path[:, 1]]))
+    contrast = agreement - float(similarity.mean())
+    level = _level_agreement(take, record, sample_rate, float(rate), float(offset))
+    return TakeAlignment(float(rate), float(offset), residual, agreement, contrast, tonality, level)
+
+
+def _contour(audio: np.ndarray, sample_rate: int, hop_s: float = 0.025) -> np.ndarray:
+    hop = max(1, int(hop_s * sample_rate))
+    count = len(audio) // hop
+    if not count:
+        return np.zeros(0)
+    frames = np.asarray(audio[: count * hop], dtype=np.float64).reshape(count, hop)
+    return 20 * np.log10(np.sqrt((frames**2).mean(axis=1)) + 1e-6)
+
+
+def _level_agreement(take, record, sample_rate: int, rate: float, offset: float, hop_s: float = 0.025) -> float:
+    """How well the take's loudness contour follows the record's once placed."""
+    take_c, record_c = _contour(take, sample_rate, hop_s), _contour(record, sample_rate, hop_s)
+    if not len(take_c) or not len(record_c):
+        return 0.0
+    index = np.round(((np.arange(len(record_c)) * hop_s - offset) / rate) / hop_s).astype(int)
+    valid = (index >= 0) & (index < len(take_c))
+    if valid.sum() < 40 or np.std(take_c[index[valid]]) < 1e-6:
+        return 0.0
+    return float(np.corrcoef(record_c[valid], take_c[index[valid]])[0, 1])
+
+
+def apply_take(take: np.ndarray, sample_rate: int, alignment: TakeAlignment, length: int, *, record: np.ndarray | None = None) -> np.ndarray:
+    """The take stretched (pitch kept) and placed on the record's timeline.
+
+    With ``record`` given, the offset is refined to the sample's neighbourhood
+    by matching note onsets within 100 ms - the chroma path is good to a frame
+    or so, and frame-by-frame scoring wants better.
+    """
+    import warnings
+
+    import librosa
+
+    take = np.asarray(take, dtype=np.float64)
+    with warnings.catch_warnings():  # librosa warns about its own internal call
+        warnings.simplefilter("ignore", FutureWarning)
+        stretched = librosa.effects.time_stretch(take, rate=1.0 / alignment.rate) if abs(alignment.rate - 1.0) > 0.002 else take
+    offset = alignment.offset_s
+    if record is not None:
+        hop_s = 0.005
+        a, b = _envelope(np.asarray(record, dtype=np.float64), sample_rate, hop_s), _envelope(stretched, sample_rate, hop_s)
+        shift = int(round(offset / hop_s))
+        best, best_score = shift, -np.inf
+        for candidate in range(shift - 20, shift + 21):
+            lo = max(0, candidate)
+            hi = min(len(a), candidate + len(b))
+            if hi - lo < 50:
+                continue
+            score = float(np.dot(a[lo:hi], b[lo - candidate : hi - candidate]))
+            if score > best_score:
+                best, best_score = candidate, score
+        offset = best * hop_s
+    placed = np.zeros(length)
+    start = int(round(offset * sample_rate))
+    src_lo = max(0, -start)
+    dst_lo = max(0, start)
+    count = min(length - dst_lo, len(stretched) - src_lo)
+    if count > 0:
+        placed[dst_lo : dst_lo + count] = stretched[src_lo : src_lo + count]
+    return placed

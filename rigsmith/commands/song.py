@@ -208,6 +208,21 @@ def song_di(song_id, part_id, profile_id, midi_path, track, text, power_chords, 
     click.echo(result.render())
 
 
+@group.command("take")
+@click.argument("song_id")
+@click.argument("part_id")
+@click.argument("take")
+@handled
+def song_take(song_id, part_id, take) -> None:
+    """Put your recording of PART_ID on the record's clock and make it the part's DI."""
+    from ..core import songs
+
+    result = songs.take_for_part(song_id, part_id, take)
+    click.echo(("Aligned: " if result["aligned"] else "Not aligned: ") + result["describe"])
+    if result["take_id"]:
+        click.echo(f"  filed as take {result['take_id']} - tune against the part with --mode performance")
+
+
 @group.command("find")
 @click.argument("title")
 @click.option("--artist")

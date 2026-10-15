@@ -633,6 +633,42 @@ def render_part_di(
     return result
 
 
+def take_for_part(song_id: str, part_id: str, take: str) -> dict:
+    """Your recording of a part, put on the part's clock and filed as its DI.
+
+    The take is aligned to the part (an offset and a tempo ratio - see
+    :func:`rigsmith.learn.align.align_take`); when it fits, it is stretched
+    onto the part's timeline, filed in the takes library, and becomes the
+    part's DI, so tuning can compare it frame by frame. When it does not fit,
+    nothing is changed and the reason comes back.
+    """
+    from ..learn.align import align_take, apply_take
+    from ..match.render_offline import load_audio, resample, save_audio
+    from . import takes as take_library
+
+    require_writable("align a take")
+    song = get(song_id)
+    part = song.part(part_id)
+    source = take_library.resolve(take)
+    audio, take_rate = load_audio(source)
+    target, rate = load_audio(part_audio(song_id, part_id))
+    if take_rate != rate:
+        audio = resample(audio, take_rate, rate)
+    alignment = align_take(audio, target, rate)
+    if not alignment.usable:
+        return {"aligned": False, "describe": alignment.describe(), "take_id": None, "path": None}
+    placed = apply_take(audio, rate, alignment, len(target), record=target)
+    path = save_audio(song.directory / "takes" / f"{part_id}-take.wav", placed, rate)
+    take_id = slugify(f"{song_id}-{part_id}-take")
+    if take_id in {t.take_id for t in take_library.list_takes()}:
+        take_library.delete(take_id)
+    filed = take_library.add(path, take_id=take_id, kind="di", origin="di-box", note=f"{part.label}: your take on the record's clock ({alignment.describe()})", tags=["part", "take"], copy=False)
+    song = get(song_id)
+    song.part(part_id).di_take = filed.take_id
+    song.save()
+    return {"aligned": True, "describe": alignment.describe(), "take_id": filed.take_id, "path": str(path)}
+
+
 def brief(song_id: str, part_id: str | None = None) -> str:
     """Everything known about a song (or one part), for a researcher.
 

@@ -438,6 +438,36 @@ def _researched_guitar(run: Run) -> str | None:
     return None
 
 
+def _take_as_di(run: Run) -> str:
+    """Your own recording of the part, put on the record's clock when it fits.
+
+    A take played along to the record (or to a click at its tempo) is one
+    straight line from the record's timeline: an offset and a tempo ratio.
+    When it is that close, it is stretched (pitch kept) onto the part's
+    timeline and scored frame by frame like a rendered DI; when it is not,
+    it is compared as a distribution and the run says why.
+    """
+    from ..learn.align import align_take, apply_take
+    from ..match.render_offline import load_audio, resample, save_audio
+    from .takes import resolve
+
+    path = resolve(run.request.di)
+    take, take_rate = load_audio(path)
+    target, rate = load_audio(run.target_path)
+    if take_rate != rate:
+        take = resample(take, take_rate, rate)
+    alignment = align_take(take, target, rate)
+    if not alignment.usable:
+        run.di_path = str(path)
+        run.mode = "distribution"
+        run.note(f"your take is {alignment.describe()}; it is compared as a distribution instead")
+        return "using your take (scored as a distribution - it does not follow the record's timing)"
+    placed = apply_take(take, rate, alignment, len(target), record=target)
+    run.di_path = str(save_audio(_dir() / run.run_id / "take-on-the-record.wav", placed, rate))
+    run.mode = "performance"
+    return f"your take, {alignment.describe()}"
+
+
 def _stage_di(run: Run, progress) -> str:
     from . import appsettings, songs
 
@@ -445,11 +475,7 @@ def _stage_di(run: Run, progress) -> str:
     part = song.part(run.part_ids[0])
     run.target_path = str(songs.part_audio(run.song_id, part.part_id))
     if run.request.di:
-        from .takes import resolve
-
-        run.di_path = str(resolve(run.request.di))
-        run.mode = "distribution"
-        return "using the DI given (scored as a distribution - it is not the record's timing)"
+        return _take_as_di(run)
     profile = run.request.profile_id or appsettings.load().default_profile
     if not profile:
         run.note("no guitar profile, so the part is played on the synthetic string - learn your guitar for a truer test")

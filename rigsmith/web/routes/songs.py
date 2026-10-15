@@ -168,6 +168,22 @@ def part_di(song_id: str, part_id: str, body: PartDiBody) -> dict:
     return {"job_id": job.id, "name": job.name}
 
 
+class TakeBody(BaseModel):
+    take: str
+
+
+@router.post("/{song_id}/parts/{part_id}/take")
+def part_take(song_id: str, part_id: str, body: TakeBody) -> dict:
+    """Your recording of the part, aligned to it and made its DI when it fits."""
+    if "/" in body.take or "\\" in body.take:
+        _allow_audio(body.take)
+    result = songs.take_for_part(song_id, part_id, body.take)
+    if result.get("path"):
+        _allow_audio(result["path"])
+        result["url"] = _audio_url(result["path"])
+    return result
+
+
 @router.get("/{song_id}/brief")
 def brief(song_id: str, part_id: str | None = None) -> dict:
     return {"brief": songs.brief(song_id, part_id)}

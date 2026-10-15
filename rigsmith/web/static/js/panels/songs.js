@@ -264,6 +264,7 @@ function partsGrid() {
         el("button", { class: `btn small ${part.chosen ? "primary" : ""}`, text: part.chosen ? "chosen" : "choose", onclick: () => toggle(part) }),
         el("button", { class: "btn small", text: "play", onclick: (e) => playPart(part, e.target) }),
         el("button", { class: "btn small", text: "on my guitar", title: "Render this part as a DI on a learned guitar", onclick: () => renderDi(part) }),
+        el("button", { class: "btn small", text: "my take", title: "Your own recording of this part, put on the record's clock", onclick: () => useTake(part) }),
         el("button", { class: "btn small", text: "tune", title: "Tune a rig against this part", onclick: () => goTo("tune", { songId: songId, partId: part.part_id, diTake: part.di_take }) }),
         el("button", { class: "btn small ghost", text: "ask", onclick: () => ask(`For ${song.title}, part ${part.part_id} (${part.label}, ${sketch.summary}): what gear made this, and how should I start building it?`) })
       )
@@ -344,6 +345,23 @@ async function isolate() {
     const { job_id } = await api.post(`/api/songs/${songId}/isolate`);
     song = await track(job_id, { onUpdate: progressInto });
     render();
+  });
+}
+
+async function useTake(part) {
+  const { takes } = await api.get("/api/takes", { kind: "di" }).catch(() => ({ takes: [] }));
+  const answer = await prompt(`Your take of "${part.label}"`, [
+    { type: "note", text: "A recording of you playing this part - along with the record, or to a click at its tempo. If it follows the record closely it is stretched onto the part's clock and becomes the part's DI, so tuning can compare it frame by frame." },
+    { name: "take", label: "Take", type: "select", value: takes[0]?.take_id || "", options: takes.map((t) => ({ value: t.take_id, label: t.describe })) },
+  ], { okLabel: "Align it" });
+  if (!answer?.take) return;
+  await attempt(async () => {
+    const result = await api.post(`/api/songs/${songId}/parts/${part.part_id}/take`, { take: answer.take });
+    toast(result.describe, { kind: result.aligned ? "ok" : "warn", timeout: 9000 });
+    if (result.aligned) {
+      play(result.url);
+      await load(songId);
+    }
   });
 }
 

@@ -388,3 +388,26 @@ def test_the_network_only_learns_when_it_has_enough_notes_and_then_helps(workspa
     assert np.mean(blend_errors) < np.mean(plain_errors), (np.mean(blend_errors), np.mean(plain_errors))
     # And it survives being saved with the profile.
     assert VoiceModel.from_dict(model.to_dict()).net == model.net
+
+
+def test_a_take_played_along_is_put_on_the_records_clock():
+    from rigsmith.learn.align import align_take, apply_take
+    from rigsmith.learn.pluck import render_notes as pluck
+    from rigsmith.loop.virtual import SimAmp
+    from rigsmith.match.metrics import performance_distance
+
+    rng = np.random.default_rng(1)
+    notes = [(0.5 + i * 0.3, 0.27, int(rng.integers(40, 60)), 0.8) for i in range(48)]
+    jitter = lambda ns: [(t + rng.normal(0, 0.01), d, m, v) for t, d, m, v in ns]  # noqa: E731
+    take = pluck(jitter(notes), seed=3)
+    amp = lambda x: SimAmp(Type=2, Gain=0.6).process(x)  # noqa: E731
+    record = amp(pluck([(t * 1.04 + 0.37, d * 1.04, m, v) for t, d, m, v in jitter(notes)], seed=9))
+
+    alignment = align_take(take, record, 48000)
+    assert alignment.usable and abs(alignment.rate - 1.04) < 0.01 and abs(alignment.offset_s - 0.37) < 0.06
+    placed = apply_take(take, 48000, alignment, len(record), record=record)
+    unplaced = np.pad(take, (0, max(0, len(record) - len(take))))[: len(record)]
+    assert performance_distance(record, amp(placed), 48000) < 0.75 * performance_distance(record, amp(unplaced), 48000)
+
+    other = pluck([(0.5 + i * 0.3, 0.27, int(rng.integers(62, 76)), 0.8) for i in range(48)], seed=4)
+    assert not align_take(other, record, 48000).usable  # a different part is not stretched onto it
