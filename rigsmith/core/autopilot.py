@@ -706,7 +706,8 @@ def _stage_tune(run: Run, progress) -> str:
     best = run.results[0]
     gain = ""
     if best.get("untuned") is not None:
-        gain = f", {1 - best['composite'] / best['untuned']:.0%} closer than untuned"
+        share = 1 - best["composite"] / best["untuned"] if best["untuned"] else 0.0
+        gain = f", {share:.0%} closer than untuned" if share >= 0.01 else ", the knobs it started with were already about right"
     return f"best {best['label']} at {best['composite']:.3f}{gain}"
 
 

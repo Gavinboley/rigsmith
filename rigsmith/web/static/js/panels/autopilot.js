@@ -171,7 +171,11 @@ function audioLink(label, url) {
 }
 
 function show(run) {
+  // A run that just finished - by the poll or by a pushed event, whichever
+  // got here first - changes the past-runs list too.
+  const finished = current?.run_id === run.run_id && current.state === "running" && run.state !== "running";
   current = run;
+  if (finished) refreshRuns();
   const host = clear($("#ap-current"));
   const card = el("div", { class: "card" });
   card.append(
@@ -223,7 +227,6 @@ function show(run) {
       const fresh = await api.get(`/api/autopilot/${run.run_id}`).catch(() => null);
       if (fresh && current?.run_id === fresh.run_id) {
         show(fresh);
-        if (fresh.state !== "running") refreshRuns();
       }
     }, 2000);
   }
