@@ -433,6 +433,8 @@ def test_a_researcher_that_cannot_sign_in_says_how_to_fix_it(workspace, monkeypa
     for said in (real, "Not logged in \u00b7 Please run /login", "OAuth token has expired", "API Error: 401 authentication_error"):
         assert needs_login(said), said
     assert not needs_login("the amp was a Mesa Dual Rectifier")
+    # A page the researcher fetched answering 401 is not Claude being signed out.
+    assert not needs_login("WebFetch failed: HTTP 401 from equipboard.com (OAuth required)")
 
     made = songs.create("Signed Out")
     made.structure = {"tempo": 120.0, "sections": [{"start": 0.0, "end": 10.0, "label": "A", "name": "verse"}]}
@@ -444,7 +446,16 @@ def test_a_researcher_that_cannot_sign_in_says_how_to_fix_it(workspace, monkeypa
     with pytest.raises(autopilot._Skip) as skipped:
         autopilot._stage_research(run, None)
     assert "could not sign in" in str(skipped.value)
-    assert any("/login" in note and "resume this run" in note for note in run.all_notes())
+    assert any("/login" in note and "resume this run" in note and "Not logged in" in note for note in run.all_notes())
+
+    # Signed in after all: whatever the text says, the real error is reported.
+    from rigsmith.agent import providers
+
+    providers._signed_in_cache.update(value=(True,), at=float("inf"))
+    signed_in = autopilot.Run(run_id="signed-in", request=autopilot.Request(title="Signed Out", research=True), song_id=made.song_id, part_ids=["verse-1-stem"])
+    with pytest.raises(autopilot._Skip) as skipped:
+        autopilot._stage_research(signed_in, None)
+    assert "failed" in str(skipped.value) and "sign in" not in str(skipped.value)
 
 
 def test_a_part_with_your_take_uses_it_without_being_told(workspace):
@@ -518,3 +529,19 @@ def test_two_choruses_get_two_scenes():
     assert taken[:3] == ["chorus - left", "chorus - left 2", "chorus - left 3"]
     assert len(taken[3]) <= autopilot.SCENE_NAME_LENGTH
     assert autopilot._unique_scene_name("pre-chorus build - all guitars", taken) == "pre-chorus build - 2"
+
+
+def test_the_divisions_are_the_cores_own_lists():
+    """Pinned to what a Core published, not derived from each other."""
+    from rigsmith.rig.catalog import Catalog, ModelSpec, ParamSpec
+    from rigsmith.rig.model import BlockCategory
+
+    # Tremolo.Rate_Synced and M104 Analog Delay.DelayTime_Synced, September 2026 capture.
+    assert candidates.RATE_DIVISIONS == ("Bar", "3/4", "5/8", "1/2", "3/8", "1/2T", "1/4", "3/16", "1/4T", "1/8", "1/8T", "1/16", "1/16T", "1/32", "1/32T", "1/64", "1/128")
+    assert candidates.DELAY_DIVISIONS == ("1/128", "1/64", "1/32T", "1/32", "1/16T", "1/16", "1/8T", "1/8", "1/4T", "3/16", "1/4", "1/2T", "3/8", "1/2", "5/8", "3/4", "Bar")
+    # A catalog's own choice list wins.
+    tremolo = candidates.surrounding_blocks({"modulation": "tremolo", "modulation_hz": 6.0}, tempo=90.0)[0]
+    cat = Catalog(source="test")
+    cat.models["Tremolo"] = ModelSpec(id="Tremolo", name="Tremolo", category=BlockCategory.EFFECT, verified=True,
+                                     params=[ParamSpec(name="Rate_Synced", kind="int", minimum=0, maximum=2, choices=["1/4", "1/8", "1/16"])])
+    assert candidates.wire_params(tremolo, cat)["Rate_Synced"] == 2

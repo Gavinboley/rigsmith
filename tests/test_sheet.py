@@ -84,3 +84,8 @@ def test_the_page_is_self_contained():
     assert page.startswith("<!doctype html>") and "3/16" in page
     assert "<script" not in page and "http" not in page.split("</style>")[0], "no external resources"
     assert "prefers-color-scheme: dark" in page and "@media print" in page
+
+
+def test_a_range_with_one_end_missing_is_still_a_knob_position():
+    odd = ParamSpec(name="Odd", kind="float", minimum=0.0, maximum=1.0, display_min=None, display_max=50.0, unit="%")
+    assert sheet.reading(odd, 0.4) == ("~40% of travel", True)

@@ -279,8 +279,14 @@ NOTE_TO_DIVISION = {
     "quarter": "1/4", "dotted quarter": "3/8", "half": "1/2",
 }
 #: The modulation blocks' synced rates - one cycle per division - in the
-#: Core's order, which is the delay's reversed.
-RATE_DIVISIONS = tuple(reversed(DELAY_DIVISIONS))
+#: Core's order: Tremolo's Rate_Synced strings as a Core published them
+#: (September 2026 capture; Chorus and Vibrato list the same), which is the
+#: delay's order reversed. Where the catalog carries a control's own choice
+#: list, :func:`wire_params` uses that instead.
+RATE_DIVISIONS = (
+    "Bar", "3/4", "5/8", "1/2", "3/8", "1/2T", "1/4", "3/16", "1/4T", "1/8", "1/8T", "1/16", "1/16T",
+    "1/32", "1/32T", "1/64", "1/128",
+)
 #: Each division's length in beats, in 4/4.
 DIVISION_BEATS = {
     "Bar": 4.0, "3/4": 3.0, "5/8": 2.5, "1/2": 2.0, "3/8": 1.5, "1/2T": 4 / 3, "1/4": 1.0, "3/16": 0.75,
@@ -328,7 +334,8 @@ def wire_params(block: dict, catalog=None) -> dict:
     ``readings`` holds what was measured, in the units the knob shows. Where
     the catalog has measured a control's curve, the reading is converted
     through it instead - a delay time on a logarithmic control is a very
-    different 0-1 from the linear guess.
+    different 0-1 from the linear guess. A synced division is a reading too,
+    by name, and becomes its index in the catalog's own choice list.
     """
     params = dict(block.get("params") or {})
     readings = block.get("readings") or {}
@@ -341,7 +348,15 @@ def wire_params(block: dict, catalog=None) -> dict:
     spec = catalog.get(block["model"])
     for name, value in readings.items():
         param = spec.param(name) if spec else None
-        if param is None or param.taper not in ("linear", "log") or param.display_min is None:
+        if param is None:
+            continue
+        if isinstance(value, str):
+            # A choice by name: the index in the device's own list, where
+            # the catalog has it, rather than in a list kept here.
+            if value in (param.choices or []):
+                params[name] = param.choices.index(value)
+            continue
+        if param.taper not in ("linear", "log") or param.display_min is None:
             continue
         clamped = min(max(float(value), param.display_min), param.display_max)
         params[name] = round(param.to_wire(clamped), 4)
@@ -374,6 +389,7 @@ def surrounding_blocks(sketch: dict, *, tempo: float | None = None) -> list[dict
         division = NOTE_TO_DIVISION.get(sketch.get("delay_note") or "")
         if division:
             params.update({"Sync": True, "DelayTime_Synced": DELAY_DIVISIONS.index(division)})
+            readings["DelayTime_Synced"] = division
         blocks.append({
             "category": "effect", "model": "M104 Analog Delay", "role": "delay", "params": params, "readings": readings,
             "why": f"a {sketch['delay_ms']:.0f} ms echo" + (f" ({sketch['delay_note']}, synced to {division})" if division else ""),
@@ -391,6 +407,7 @@ def surrounding_blocks(sketch: dict, *, tempo: float | None = None) -> list[dict
         division = synced_rate(hz, tempo)
         if division:
             params.update({"Sync": True, "Rate_Synced": RATE_DIVISIONS.index(division)})
+            readings["Rate_Synced"] = division
         blocks.append({
             "category": "effect", "model": "Tremolo", "role": "tremolo", "params": params, "readings": readings,
             "why": f"a {hz or 0:.1f} Hz wobble" + (f", {depth:.0%} deep" if depth else "") + (f" (a {division} cycle, synced)" if division else ""),

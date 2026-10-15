@@ -542,7 +542,14 @@ LOGIN_HINT = "Claude Code needs signing in again on this machine: run `claude` i
 #: version and by whether the token expired or was never there. 2.1.289,
 #: signed out, ends its stream with "Failed to authenticate: OAuth session
 #: expired and could not be refreshed" (is_error, though subtype "success").
-_LOGIN_SIGNS = ("authenticat", "/login", "not logged in", "oauth", "invalid api key", "401")
+#:
+#: Phrases, not fragments: a researcher's failure text can quote a web page
+#: that answered 401 or mentions OAuth, and that is not Claude Code being
+#: signed out - telling the user to /login would hide the real error.
+_LOGIN_SIGNS = (
+    "failed to authenticate", "not logged in", "please run /login", "oauth session expired",
+    "oauth token has expired", "invalid api key", "authentication_error",
+)
 
 
 def needs_login(text: str | None) -> bool:

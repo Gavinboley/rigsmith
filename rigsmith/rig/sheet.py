@@ -85,6 +85,8 @@ def reading(param: ParamSpec | None, value) -> tuple[str, bool]:
         return f"{value:g}", False
     if param.taper in ("linear", "log"):
         return _format(param.to_display(float(value)), param.unit), False
+    if param.display_min is None or param.display_max is None:
+        return f"~{float(value) * 100:.0f}% of travel", True
     shown = param.display_min + float(value) * (param.display_max - param.display_min)
     return "~" + _format(shown, param.unit), True
 

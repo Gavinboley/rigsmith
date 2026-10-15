@@ -373,12 +373,14 @@ def _stage_research(run: Run, progress) -> str:
         run.note(f"the researcher was still at work after {int(waited)}s - the run carried on from the measurements; its findings reach the recipe when it finishes")
         raise _Skip(f"researcher run {research_id} still working - carried on without it")
     if data["state"] == "failed":
-        from ..agent.providers import LOGIN_HINT, needs_login
+        from ..agent.providers import LOGIN_HINT, claude_code_signed_in, needs_login
 
-        if needs_login(text):
-            run.note(LOGIN_HINT + " Then resume this run from research.")
-            raise _Skip("the researcher could not sign in to Claude - the recipe holds only the measurements")
         first = text.splitlines()[0] if text else "no reason given"
+        # The text can only suggest a sign-in problem; `claude auth status`
+        # can rule one out, and the error itself is always shown.
+        if needs_login(text) and claude_code_signed_in() is not True:
+            run.note(f"the researcher could not sign in ({first[:200]}). " + LOGIN_HINT + " Then resume this run from research.")
+            raise _Skip("the researcher could not sign in to Claude - the recipe holds only the measurements")
         run.note(f"the researcher failed ({first[:200]}); the recipe holds only the measurements")
         raise _Skip(f"researcher run {research_id} failed")
     if settings.local:
