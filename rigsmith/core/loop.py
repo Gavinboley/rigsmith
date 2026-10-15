@@ -481,6 +481,56 @@ def meter(route_id: str | None = None, *, seconds: float = 0.3) -> dict:
     return {"route_id": route.route_id, "levels": levels}
 
 
+#: A DI's healthy peak range: loud enough that the noise floor is far below
+#: the playing, with headroom for the hardest pick attack.
+DI_PEAK_LOW_DB, DI_PEAK_HIGH_DB = -30.0, -3.0
+
+
+def judge_level(audio, sample_rate: int) -> dict:
+    """Is this guitar input recordable? Peak, noise floor, and what to change."""
+    x = np.asarray(audio, dtype=np.float64)
+    x = x[:, 0] if x.ndim > 1 else x
+    peak = float(np.max(np.abs(x))) if len(x) else 0.0
+    peak_db = 20 * np.log10(max(peak, 1e-9))
+    hop = max(1, int(0.02 * sample_rate))
+    blocks = x[: (len(x) // hop) * hop].reshape(-1, hop) if len(x) >= hop else np.zeros((1, 1))
+    rms_db = 20 * np.log10(np.maximum(np.sqrt((blocks**2).mean(axis=1)), 1e-9))
+    floor_db = float(np.percentile(rms_db, 10))
+    clipping = peak >= 0.99
+    if peak_db < -55:
+        verdict, advice = "silent", "nothing is coming in - check the cable, the input and the channel"
+    elif clipping or peak_db > DI_PEAK_HIGH_DB:
+        verdict, advice = "too hot", "turn the input gain down until the hardest notes peak around -6 dBFS"
+    elif peak_db < DI_PEAK_LOW_DB:
+        verdict, advice = "too quiet", "turn the input gain up (a Hi-Z / instrument input if the interface has one)"
+    elif peak_db - floor_db < 30:
+        verdict, advice = "noisy", "the hum and hiss are close to the playing - check the cable, the guitar's volume, and move away from screens"
+    else:
+        verdict, advice = "good", "ready to record"
+    return {
+        "peak_db": round(float(peak_db), 1),
+        "noise_floor_db": round(floor_db, 1),
+        "clipping": bool(clipping),
+        "verdict": verdict,
+        "advice": advice,
+    }
+
+
+def input_level(device: str, *, channel: int = 1, seconds: float = 3.0, hostapi: str | None = None, backend: str | None = None) -> dict:
+    """Listen to a guitar input for a few seconds - play hard - and judge it.
+
+    Nothing is saved; this is the check before a recording that matters.
+    """
+    if not 0.5 <= seconds <= 15:
+        raise Invalid("listen for between half a second and fifteen seconds")
+    chosen = backend_for(name=backend)
+    found = chosen.find(device, hostapi=hostapi, need_inputs=channel)
+    native = int(round(found.sample_rate))
+    rate = native if native in (44100, 48000, 88200, 96000) else 48000
+    data = chosen.record(seconds, input_device=device, input_channels=[channel], sample_rate=rate, hostapi=hostapi)
+    return {"device": found.name, "channel": channel, **judge_level(data, rate)}
+
+
 def test_tone(route_id: str | None = None, *, frequency: float = 440.0, level_db: float = -18.0, seconds: float = 2.0) -> dict:
     """Play a tone out of the route and report what came back - a wiring check."""
     route = get_route(route_id)

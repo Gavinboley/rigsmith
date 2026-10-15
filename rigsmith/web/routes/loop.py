@@ -143,6 +143,12 @@ def tone(route_id: str | None = None, frequency: float = 440.0, level_db: float 
     return loop.test_tone(route_id, frequency=frequency, level_db=level_db)
 
 
+@router.get("/level")
+def level(device: str, channel: int = 1, seconds: float = 3.0, backend: str | None = None) -> dict:
+    """Listen to a guitar input for a few seconds and judge the level. Saves nothing."""
+    return loop.input_level(device, channel=channel, seconds=seconds, backend=backend)
+
+
 @router.get("/meter")
 def meter(route_id: str | None = None) -> dict:
     return loop.meter(route_id)

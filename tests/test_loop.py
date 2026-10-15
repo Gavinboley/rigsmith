@@ -203,3 +203,19 @@ def test_a_box_windows_splits_in_two_is_still_one_suggestion():
     kinds = {r.kind: r for r in suggest(listed)}
     assert kinds["usb-reamp"].output_device == "Output 1-4 (HeadRush Core)"
     assert "same rate" in kinds["hybrid"].note
+
+
+def test_a_guitar_input_level_is_judged_before_it_matters():
+    from rigsmith.core.loop import judge_level
+
+    rng = np.random.default_rng(0)
+    noise = rng.normal(0, 10 ** (-80 / 20), RATE * 3)
+    playing = di(count=10)
+    playing = np.pad(playing, (0, max(0, RATE * 3 - len(playing))))[: RATE * 3]
+    scale = lambda x, db: x / np.max(np.abs(x)) * 10 ** (db / 20)  # noqa: E731
+    assert judge_level(noise, RATE)["verdict"] == "silent"
+    assert judge_level(scale(playing, -12) + noise, RATE)["verdict"] == "good"
+    assert judge_level(scale(playing, -40) + noise, RATE)["verdict"] == "too quiet"
+    assert judge_level(np.clip(scale(playing, 3), -1, 1), RATE)["verdict"] == "too hot"
+    hum = 10 ** (-30 / 20) * np.sin(2 * np.pi * 60 * np.arange(RATE * 3) / RATE)
+    assert judge_level(scale(playing, -12) + hum, RATE)["verdict"] == "noisy"

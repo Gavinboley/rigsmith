@@ -166,6 +166,21 @@ def loop_bench_rig() -> None:
     click.echo(f"Write it the usual way (backup first):  rigsmith rig write {draft_id}")
 
 
+@group.command("level")
+@click.argument("device")
+@click.option("--channel", default=1, show_default=True)
+@click.option("--seconds", default=3.0, show_default=True)
+@handled
+def loop_level(device, channel, seconds) -> None:
+    """Play hard for a few seconds: is DEVICE's input level right for a DI? Saves nothing."""
+    from ..core import loop
+
+    click.echo(f"Listening to {device} channel {channel} for {seconds:.0f}s - play hard now.")
+    result = loop.input_level(device, channel=channel, seconds=seconds)
+    click.echo(f"{result['verdict']}: peak {result['peak_db']} dBFS, noise floor {result['noise_floor_db']} dBFS")
+    click.echo(f"  {result['advice']}")
+
+
 @group.command("meter")
 @click.option("--route", "route_id")
 @handled

@@ -165,7 +165,31 @@ function sessionCard() {
 
   box.append(
     el("div", { class: "row" }, protocol, frets, el("span", { class: "hint", text: "plugged into" }), device, el("span", { class: "hint", text: "ch" }), channel),
-    el("div", { class: "row" }, el("button", { class: "btn primary", text: "Start the guided session", onclick: () => guide(protocol.value, Number(frets.value), device.value, Number(channel.value), stage, learnFrom) }), el("span", { class: "hint", text: "counts you in, clicks, and records while you play" })),
+    el(
+      "div",
+      { class: "row" },
+      el("button", { class: "btn primary", text: "Start the guided session", onclick: () => guide(protocol.value, Number(frets.value), device.value, Number(channel.value), stage, learnFrom) }),
+      el("span", { class: "hint", text: "counts you in, clicks, and records while you play" }),
+      el("span", { class: "grow" }),
+      el("button", {
+        class: "btn small",
+        text: "check my level",
+        title: "Play hard for three seconds - nothing is saved",
+        onclick: (event) => attempt(async () => {
+          if (!device.value) throw new Error("Choose the input your guitar is plugged into");
+          const button = event.target;
+          button.disabled = true;
+          button.textContent = "play hard now...";
+          try {
+            const result = await api.get("/api/loop/level", { device: device.value, channel: Number(channel.value) || 1, seconds: 3 });
+            toast(`${result.verdict}: peak ${result.peak_db} dBFS, noise ${result.noise_floor_db} dBFS - ${result.advice}`, { kind: result.verdict === "good" ? "ok" : "warn", timeout: 9000 });
+          } finally {
+            button.disabled = false;
+            button.textContent = "check my level";
+          }
+        }),
+      })
+    ),
     zone,
     el("div", { class: "row" }, el("button", { class: "btn", text: "Learn the dropped recording", onclick: () => zone.path() ? learnFrom(zone.path(), protocol.value) : toast("Drop a recording first", { kind: "error" }) })),
     stage
