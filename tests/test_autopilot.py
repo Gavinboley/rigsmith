@@ -382,3 +382,41 @@ def test_a_drafts_tone_sheet_says_where_it_came_from(workspace):
     assert "presence -3.2 dB - duller than the record; try Presence up" in text
     assert "the rig carries the song's tempo" in text
     assert sheets.origin(rigs.create("Hand made").draft.draft_id) == {}, "a draft nobody's run built has no history"
+
+
+def test_parts_that_want_different_delays_get_one_each(workspace):
+    """The chorus's dotted eighth is not the verse's eighth note."""
+    from rigsmith.core import songs
+    from rigsmith.core.songs import Part
+    from rigsmith.song.describe import ToneSketch
+
+    made = songs.create("Delays")
+    made.structure = {"tempo": 120.0, "tempo_confidence": 0.9, "sections": [
+        {"start": 0.0, "end": 10.0, "label": "A", "name": "verse"},
+        {"start": 10.0, "end": 20.0, "label": "B", "name": "chorus"},
+        {"start": 20.0, "end": 30.0, "label": "A", "name": "bridge"},
+    ]}
+
+    def part(part_id, section, name, delay_ms, note):
+        sketch = ToneSketch(gain=0.3, delay_ms=delay_ms, delay_note=note, delay_strength=0.5).to_dict()
+        return Part(part_id, section, name, "stem", section * 10.0, section * 10.0 + 10.0, sketch=sketch)
+
+    made.parts = [part("verse-1-stem", 0, "verse", 250.0, "eighth"), part("chorus-2-stem", 1, "chorus", 375.0, "dotted eighth"), part("bridge-3-stem", 2, "bridge", 252.0, "eighth")]
+    made.save()
+    best = {"label": "64 Fox AC30", "model": "64 Fox AC30", "cab": "2x12 Fox Blue", "composite": 0.2, "knobs": {}, "tier": "edge"}
+    run_ids = []
+    for index, chosen in enumerate(made.parts):
+        run = autopilot.Run(run_id=f"delay-{index}", request=autopilot.Request(title="Delays"), song_id=made.song_id, part_ids=[chosen.part_id], results=[dict(best)], state="done")
+        run.save()
+        run_ids.append(run.run_id)
+
+    result = autopilot.song_rig(run_ids)
+    draft = rigs.get(result["draft_id"]).rig
+    delays = {candidates.DELAY_DIVISIONS[b.params["DelayTime_Synced"]]: b for b in draft.blocks if b.model_id == "M104 Analog Delay"}
+    assert set(delays) == {"1/8", "3/16"}, "two delays, not the first part's for everyone"
+    verse, chorus, bridge = (draft.scene_named(s["scene"]) for s in result["scenes"])
+    assert verse.state_for(delays["1/8"].slot).value == "on" and verse.state_for(delays["3/16"].slot).value == "off"
+    assert chorus.state_for(delays["3/16"].slot).value == "on" and chorus.state_for(delays["1/8"].slot).value == "off"
+    assert bridge.state_for(delays["1/8"].slot).value == "on", "252 ms is the verse's eighth, shared"
+    assert any("different delays (1/8 and 3/16)" in note for note in result["notes"])
+    assert draft.tempo == 120.0

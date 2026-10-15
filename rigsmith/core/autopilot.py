@@ -954,6 +954,8 @@ def song_rig(run_ids: list[str], *, name: str | None = None) -> dict:
     to two amp-and-cab sounds side by side in the chain, each scene turning
     on its part's sound and turning off the other, and every effect any part
     measures as having, on only in the scenes of the parts that have it.
+    Parts that want one effect set differently - an eighth-note delay in the
+    verse, a dotted eighth in the chorus - get one block each, up to two.
 
     When the parts' best sounds come to more than two, the two most used are
     kept and every other part is given the kept sound nearest its measured
@@ -1018,19 +1020,38 @@ def song_rig(run_ids: list[str], *, name: str | None = None) -> dict:
             return None
         return max(block.slot for block in result.draft.rig.blocks)
 
-    wanted = {}
+    # Each effect the parts want, in at most two versions: a verse's eighth
+    # note delay and a chorus's dotted eighth are two delays, one per scene,
+    # not the chorus quietly given the verse's.
+    wanted: dict[str, list[dict]] = {}
     tempo = (song.structure or {}).get("tempo")
     for item in parts:
         item["roles"] = {b["role"]: b for b in surrounding_blocks(item["part"].sketch or {}, tempo=tempo)}
+        item["variant"] = {}
         for role, block in item["roles"].items():
-            wanted.setdefault(role, block)
+            variants = wanted.setdefault(role, [])
+            index = next((i for i, v in enumerate(variants) if _same_effect(v, block)), None)
+            if index is None and len(variants) < MAX_EFFECT_VARIANTS:
+                variants.append(block)
+                index = len(variants) - 1
+            elif index is None:
+                index = 0
+                notes.append(f"{item['part'].label} wanted a third {role}; it shares the first one")
+            item["variant"][role] = index
+    for role, variants in wanted.items():
+        if len(variants) > 1:
+            notes.append(f"the parts want different {role}s ({' and '.join(_effect_label(v) for v in variants)}), so the rig has one for each")
 
-    slots_by_role: dict[str, int] = {}
-    for role in ("gate", "boost"):
-        if role in wanted:
-            slot = place(wanted[role]["category"], wanted[role]["model"], wanted[role].get("params"))
+    slots_by_role: dict[tuple[str, int], int] = {}
+
+    def place_role(role: str) -> None:
+        for index, block in enumerate(wanted.get(role, [])):
+            slot = place(block["category"], block["model"], block.get("params"))
             if slot:
-                slots_by_role[role] = slot
+                slots_by_role[(role, index)] = slot
+
+    for role in ("gate", "boost"):
+        place_role(role)
     sound_slots: dict[tuple, list[int]] = {}
     for config in kept:
         owner = next(i for i in parts if i["config"] == config and (i["best"]["model"], i["best"]["cab"]) == config)
@@ -1040,10 +1061,7 @@ def song_rig(run_ids: list[str], *, name: str | None = None) -> dict:
             slots.append(place("effect", "G EQ", owner["best"]["geq"]))
         sound_slots[config] = [s for s in slots if s]
     for role in ("chorus", "vibrato", "tremolo", "delay", "reverb"):
-        if role in wanted:
-            slot = place(wanted[role]["category"], wanted[role]["model"], wanted[role].get("params"))
-            if slot:
-                slots_by_role[role] = slot
+        place_role(role)
 
     # Two amps, two cabs and their EQs is a lot of DSP. Past the warning
     # line, the fitted EQs go first - the least essential blocks here.
@@ -1058,14 +1076,14 @@ def song_rig(run_ids: list[str], *, name: str | None = None) -> dict:
                     slots.remove(slot)
         notes.append("the fitted EQs were left out to keep the rig inside the Core's DSP budget")
 
-    _carry_tempo(None, draft_id, [wanted[role] for role in slots_by_role], tempo, notes, structure=song.structure)
+    _carry_tempo(None, draft_id, [wanted[role][index] for role, index in slots_by_role], tempo, notes, structure=song.structure)
 
     scenes = []
     for index, item in enumerate(parts, start=1):
         on = list(sound_slots.get(item["config"], []))
         off = [slot for config, slots in sound_slots.items() if config != item["config"] for slot in slots]
-        for role, slot in slots_by_role.items():
-            (on if role in item["roles"] else off).append(slot)
+        for (role, version), slot in slots_by_role.items():
+            (on if item["variant"].get(role) == version else off).append(slot)
         scene_name = item["part"].label[:20]
         rigs.configure_scene(draft_id, scene_name, on_slots=on, off_slots=off, footswitch=index, reset=True)
         scenes.append({"footswitch": index, "scene": scene_name, "part": item["part"].part_id, "sound": item["config"][0], "run": item["run"].run_id})
@@ -1102,6 +1120,35 @@ def _carry_tempo(run: Run | None, draft_id: str, blocks: list[dict], tempo: floa
         run.note(text)
     if notes is not None:
         notes.append(text)
+
+
+#: How many versions of one effect a song rig carries - the Core has two of each block.
+MAX_EFFECT_VARIANTS = 2
+
+
+def _same_effect(a: dict, b: dict) -> bool:
+    """Two parts' versions of an effect close enough to share one block."""
+    if a["model"] != b["model"]:
+        return False
+    if a.get("division") or b.get("division"):
+        return a.get("division") == b.get("division")
+    pa, pb = a.get("params") or {}, b.get("params") or {}
+    for name in set(pa) & set(pb):
+        x, y = pa[name], pb[name]
+        if isinstance(x, bool) or isinstance(y, bool) or not isinstance(x, (int, float)) or not isinstance(y, (int, float)):
+            if x != y:
+                return False
+        elif abs(float(x) - float(y)) > 0.08:
+            return False
+    return True
+
+
+def _effect_label(block: dict) -> str:
+    if block.get("division"):
+        return block["division"]
+    if block.get("delay_ms"):
+        return f"{block['delay_ms']:.0f} ms"
+    return block["model"]
 
 
 def render_song_rig(result: dict) -> str:
