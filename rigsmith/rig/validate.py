@@ -45,6 +45,11 @@ from .model import (
 CPU_WARN_THRESHOLD = 0.85
 CPU_ERROR_THRESHOLD = 1.0
 
+#: Categories whose ``model_id`` names a file on the device rather than a
+#: model in the device's catalog. A capture is something somebody made; the
+#: catalog only ever holds what the firmware ships.
+_FILE_BACKED = frozenset({BlockCategory.NAM, BlockCategory.CLONE, BlockCategory.IR})
+
 
 @dataclass
 class Finding:
@@ -204,6 +209,14 @@ def _validate_block(
 
     spec = catalog.get(block.model_id)
     if spec is None:
+        if block.category in _FILE_BACKED:
+            # A capture or an IR names a *file*, not a device model. The
+            # catalog holds the player - "Neural Amp Modeler", "IR" - and
+            # never the thing loaded into it, so checking membership here
+            # would reject every capture anyone has ever made. What the file
+            # is, and whether it exists, is checked against the capture
+            # lookup instead.
+            return
         if catalog.is_verified:
             result.add(
                 "error",

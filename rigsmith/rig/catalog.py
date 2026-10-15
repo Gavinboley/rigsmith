@@ -17,7 +17,7 @@ callers are expected to say so rather than present it as fact.
 from __future__ import annotations
 
 import json
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 
 from .model import BlockCategory
@@ -25,7 +25,14 @@ from .model import BlockCategory
 
 @dataclass
 class ParamSpec:
-    """One parameter of one model."""
+    """One parameter of one model.
+
+    :attr:`minimum` and :attr:`maximum` are the range **on the wire**, which
+    for the Core's continuous controls is 0-1 regardless of what the knob
+    says. A Bass control reading 65% is ``0.65`` in the protocol, and the
+    ``0..100`` the device publishes alongside it is what to print, not what to
+    send. Sending 65 would peg it.
+    """
 
     name: str
     kind: str = "float"
@@ -35,6 +42,60 @@ class ParamSpec:
     default: float | str | bool | None = None
     unit: str | None = None
     choices: list[str] = field(default_factory=list)
+    display_min: float | None = None
+    display_max: float | None = None
+    """What the device shows at each end of the wire range."""
+    taper: str = "unknown"
+    """How wire maps to display: ``linear``, ``log``, or ``unknown``.
+
+    Not inferable from the metadata, and not guessable from the unit either -
+    ``MidFreq`` is linear across 220-3000 Hz while ``SltEQF`` is logarithmic
+    across 20-16000 Hz, and both are published identically. It is measured by
+    :func:`rigsmith.protocol.calibrate.taper_of` against a live device, and
+    stays ``unknown`` until it has been. Conversions refuse rather than guess.
+    """
+
+    @property
+    def normalised(self) -> bool:
+        """True when the wire range is 0-1 but the control is not."""
+        return (
+            self.kind == "float"
+            and (self.minimum, self.maximum) == (0.0, 1.0)
+            and self.display_max is not None
+            and self.display_max != 1.0
+        )
+
+    def to_display(self, wire: float) -> float:
+        """Turn a wire value into what the device would print."""
+        if self.display_min is None or self.display_max is None:
+            return wire
+        if self.taper == "linear":
+            return self.display_min + wire * (self.display_max - self.display_min)
+        if self.taper == "log" and self.display_min > 0:
+            return self.display_min * (self.display_max / self.display_min) ** wire
+        raise ValueError(
+            f"{self.name}: the taper has not been measured, so a wire value "
+            "cannot be turned into a reading. Run 'rigsmith catalog calibrate' "
+            "against a paired device."
+        )
+
+    def to_wire(self, display: float) -> float:
+        """Turn a reading into the value to send. The inverse of the above."""
+        if self.display_min is None or self.display_max is None:
+            return display
+        if self.taper == "linear":
+            span = self.display_max - self.display_min
+            return 0.0 if span == 0 else (display - self.display_min) / span
+        if self.taper == "log" and self.display_min > 0 and display > 0:
+            import math
+
+            ratio = self.display_max / self.display_min
+            return math.log(display / self.display_min) / math.log(ratio)
+        raise ValueError(
+            f"{self.name}: the taper has not been measured, so a reading "
+            "cannot be turned into a value to send. Run "
+            "'rigsmith catalog calibrate' against a paired device."
+        )
 
     def validate(self, value) -> str | None:
         """Return an error message, or ``None`` if the value is acceptable."""
@@ -76,6 +137,23 @@ class ModelSpec:
     """Estimated share of the device CPU meter, 0-1. ``None`` if unknown."""
     verified: bool = False
     """True only when this entry came from the device or firmware, not the seed."""
+    device_index: int | None = None
+    """The number the device itself uses for this model.
+
+    A rig's chain is fourteen integers, not fourteen names: slot six holding
+    an amp is ``Chain.ModuleType6 = 1``, because ``1`` is where ``Amp`` sits
+    in the device's module table. Knowing the name is not enough to write a
+    rig - this is the number that actually goes on the wire.
+    """
+    selector: str | None = None
+    """How to select this model, when it is not a module in its own right.
+
+    The 53 amp models are not modules; they are values of the ``Type``
+    parameter on the one ``Amp`` module. Such an entry carries
+    ``selector="Amp.Type"``, meaning: put ``Amp`` in the slot, then set its
+    ``Type`` to :attr:`device_index`. ``None`` for anything that is itself a
+    module.
+    """
 
     def param(self, name: str) -> ParamSpec | None:
         lowered = name.lower()
@@ -249,7 +327,12 @@ class Catalog:
             warnings=data.get("warnings", []),
         )
         for raw in data.get("models", []):
-            params = [ParamSpec(**p) for p in raw.get("params", [])]
+            # Tolerate catalogs written before a field existed.
+            allowed = {f.name for f in fields(ParamSpec)}
+            params = [
+                ParamSpec(**{k: v for k, v in p.items() if k in allowed})
+                for p in raw.get("params", [])
+            ]
             model = ModelSpec(
                 id=raw["id"],
                 name=raw["name"],
@@ -259,6 +342,8 @@ class Catalog:
                 params=params,
                 cpu_cost=raw.get("cpu_cost"),
                 verified=raw.get("verified", False),
+                device_index=raw.get("device_index"),
+                selector=raw.get("selector"),
             )
             catalog.models[model.id] = model
         return catalog

@@ -7,13 +7,18 @@ validation ran permanently in "unverified" mode and the parameter-range
 checks, the part of the safety net meant to stop a confidently wrong write,
 were unreachable in practice.
 
-Two sources, deliberately cross-checked rather than merged blindly:
+Three sources, deliberately cross-checked rather than merged blindly:
 
+* a **subtree dump** from a paired device, which is the device describing
+  itself - every block type, parameter, range, default and picker list, in a
+  shape that needs no guessing at all;
 * the **Remote Editor bundle**, which has to enumerate every model to draw
   its own UI, and
 * the **firmware image**, which contains the same data plus whatever the
   bundle leaves out.
 
+The first is right by construction and the other two are inference from
+minified code, so the subtree is merged first and the others only fill gaps.
 Where they disagree, the disagreement is reported. A catalog that quietly
 picked a winner would be worse than one that admits it does not know.
 """
@@ -319,10 +324,315 @@ def from_firmware(unpacked_dir: str | Path) -> Catalog:
     return from_files(sorted(root.rglob("*")), source="firmware")
 
 
+# --------------------------------------------------------------------------
+# the live object tree
+# --------------------------------------------------------------------------
+
+# The bundle and the firmware are both second-hand: they describe what the
+# device would do. A subtree dump is the device answering for itself, and it
+# turns out to carry the whole catalog in a shape nothing else does - every
+# block type, every parameter, every range, every default, and the model
+# pickers' full lists.
+
+#: Where the device keeps one node per block type.
+PATCH_PREFIX = "/Evil/Engine/Patch/"
+
+#: Where it keeps the module table the chain indexes into.
+BLOCKS_PATH = "/Evil/API/Blocks"
+
+#: Properties that are the editor's own bookkeeping. ``order`` is the one that
+#: looks most like a slot index and is not: it lists parameter *names*, in the
+#: order the UI draws them.
+_UI_ONLY = {"order", "labels", "disabled"}
+
+#: Which parameter on a block enumerates models rather than describing a
+#: control. These are the only pickers on the device: 53 amps behind
+#: ``Amp.Type``, 15 cabs behind ``Cab.CabType``, and the ReValver equivalents.
+_MODEL_PICKERS = {
+    BlockCategory.AMP: "Type",
+    BlockCategory.CAB: "CabType",
+}
+
+#: The device's own category names, mapped onto ours. Its vocabulary is finer
+#: than ours - it separates Overdrive from Distortion from Delay - so the
+#: extra detail is kept as a subcategory rather than thrown away.
+_DEVICE_CATEGORIES = {
+    "amp": BlockCategory.AMP,
+    "cab": BlockCategory.CAB,
+    "clone": BlockCategory.CLONE,
+}
+
+#: Nodes under Patch that describe the rig rather than sit in it. `Chain` is
+#: the important one: its ModuleType1..14 *are* the slots, which makes it the
+#: structure a rig is written into, not a block you can put in a slot.
+_NOT_BLOCKS = {"Chain", "Rig", "CurrentBlock"}
+
+#: Blocks whose own category is finer than the device's listing.
+#:
+#: The device files IR under "Cab" and the NAM player under "Clone", because
+#: that is where a player looks for them. We keep them apart: an IR is not a
+#: cab model, and a NAM capture is not HeadRush's own clone format - they load
+#: different files and cost different CPU.
+_BY_NAME = {
+    "IR": BlockCategory.IR,
+    "IR (1024)": BlockCategory.IR,
+    "Neural Amp Modeler": BlockCategory.NAM,
+    # Fixed ends of the signal path, not blocks anyone chooses.
+    "Input": BlockCategory.INPUT,
+    "Input Vocal": BlockCategory.INPUT,
+    "Output": BlockCategory.OUTPUT,
+    "Output Vocal": BlockCategory.OUTPUT,
+    "Mix": BlockCategory.MIX,
+}
+
+
+def _number(value):
+    return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+
+
+def _unit_from_format(fmt) -> str | None:
+    """Pull ``dB`` out of ``"%.1f dB"``, ``%`` out of ``"%.0f %%"``."""
+    if not isinstance(fmt, str) or "f" not in fmt:
+        return None
+    trailing = fmt.rsplit("f", 1)[-1].strip().replace("%%", "%")
+    return trailing or None
+
+
+def param_from_meta(name: str, meta: dict) -> ParamSpec | None:
+    """Turn one entry of a node's ``meta.properties`` into a ParamSpec."""
+    if not isinstance(meta, dict):
+        return None
+
+    options = meta.get("x-options")
+    options = options if isinstance(options, dict) else {}
+    raw_choices = options.get("strings")
+    choices = [str(c) for c in raw_choices] if isinstance(raw_choices, list) else []
+    declared = str(meta.get("type", "number")).lower()
+
+    # Order matters. `Doubling` is a boolean that happens to carry the labels
+    # Single/Double, and `Type` is an integer that happens to carry 53 amp
+    # names - neither is an enum, and treating them as one would reject every
+    # legal value. The declared type wins; the strings are labels.
+    if declared == "boolean":
+        kind = "bool"
+    elif declared == "integer":
+        kind = "int"
+    elif declared == "string":
+        # No choices means a free string - a filename, usually. "enum" with an
+        # empty choice list accepts anything, which is the honest answer.
+        kind = "enum"
+    elif choices:
+        kind = "enum"
+    else:
+        kind = "float"
+
+    default = options.get("default")
+    if not isinstance(default, (int, float, str, bool)):
+        default = None
+
+    low, high = _number(meta.get("minimum")), _number(meta.get("maximum"))
+
+    if kind == "float":
+        # The published range is what the knob *reads*, not what goes on the
+        # wire. Every continuous control on the Core is 0-1 in the protocol:
+        # a Bass at 65% is 0.65, and the 0..100 sitting next to it in the
+        # metadata is a display hint. Recording it as the valid range would
+        # let `Bass = 65` validate and then peg the control on the device.
+        return ParamSpec(
+            name=name,
+            kind=kind,
+            minimum=0.0,
+            maximum=1.0,
+            default=default,
+            unit=_unit_from_format(options.get("format")),
+            choices=choices,
+            display_min=low,
+            display_max=high,
+        )
+
+    return ParamSpec(
+        name=name,
+        kind=kind,
+        minimum=low,
+        maximum=high,
+        default=default,
+        unit=_unit_from_format(options.get("format")),
+        choices=choices,
+    )
+
+
+def _module_table(subtree: dict) -> dict[str, int]:
+    """Name -> index, from the device's own module table."""
+    node = subtree.get(BLOCKS_PATH) or {}
+    value = node.get("value") if isinstance(node, dict) else None
+    names = value.get("ModuleTypes") if isinstance(value, dict) else None
+    if not isinstance(names, list):
+        return {}
+    return {str(name): index for index, name in enumerate(names)}
+
+
+def _key(name: str) -> str:
+    """Loose comparison key - the two listings punctuate differently."""
+    return re.sub(r"[^a-z0-9]", "", name.lower())
+
+
+def _category_lookup(categories: dict | None) -> dict[str, str]:
+    """Block display name -> the device's category name.
+
+    The two listings name the same block differently. A node is ``Amp``; the
+    category listing calls it ``Amp (HeadRush)`` and its ReValver sibling
+    ``Amp (ReValver)``, while the node for that is ``ReValver_Amp``. So each
+    entry is registered under every spelling it might be looked up by.
+    """
+    if not isinstance(categories, dict):
+        return {}
+
+    lookup: dict[str, str] = {}
+    for category, blocks in categories.items():
+        if not isinstance(blocks, list):
+            continue
+        for block in blocks:
+            block = str(block)
+            lookup.setdefault(_key(block), str(category))
+            qualified = re.match(r"^(.*?)\s*\(([^)]+)\)\s*$", block)
+            if qualified:
+                base, family = qualified.group(1), qualified.group(2)
+                lookup.setdefault(_key(base), str(category))
+                lookup.setdefault(_key(f"{family} {base}"), str(category))
+    return lookup
+
+
+def from_subtree(
+    subtree: str | Path | dict,
+    *,
+    categories: str | Path | dict | None = None,
+    source: str = "device",
+) -> Catalog:
+    """Extract the catalog from a live object-tree dump.
+
+    ``GET /subtree/`` returns one node per block type under
+    ``/Evil/Engine/Patch/``, each carrying its own ``meta.properties``: every
+    parameter with its range, its default, and - for the two model pickers -
+    the full list of names the device will accept. Cross-referenced with the
+    module table at ``/Evil/API/Blocks``, that is the whole catalog, correct
+    by construction rather than by inference from a minified bundle.
+
+    Args:
+        subtree: A decoded subtree dump, or a path to one.
+        categories: The device's own category listing (block names grouped by
+            category), or a path to one. Optional, but without it every block
+            lands in the generic effect category.
+        source: Recorded on the catalog for provenance.
+    """
+    subtree = _load_json(subtree, "subtree dump")
+    categories = _load_json(categories, "category listing") if categories else None
+
+    modules = _module_table(subtree)
+    by_block = _category_lookup(categories)
+    catalog = Catalog(source=source)
+
+    for path, node in subtree.items():
+        if not path.startswith(PATCH_PREFIX) or not isinstance(node, dict):
+            continue
+        block = path[len(PATCH_PREFIX) :]
+        if block in _NOT_BLOCKS:
+            continue
+        if block.endswith("_2"):
+            # The device carries two instances of every block type so a rig
+            # can hold two of them. They are identical in every respect that
+            # a catalog records, so cataloguing both would double every entry
+            # and tell nobody anything.
+            continue
+
+        properties = (node.get("meta") or {}).get("properties")
+        if not isinstance(properties, dict):
+            continue
+
+        # Node names are the display name with spaces replaced: `Green_JRC-OD`.
+        display = block.replace("_", " ")
+        device_category = by_block.get(_key(display))
+        category = _BY_NAME.get(display) or _DEVICE_CATEGORIES.get(
+            (device_category or "").lower(), BlockCategory.EFFECT
+        )
+
+        params = [
+            spec
+            for name, meta in sorted(properties.items())
+            if name not in _UI_ONLY
+            for spec in [param_from_meta(name, meta)]
+            if spec is not None
+        ]
+
+        catalog.models[display] = ModelSpec(
+            id=display,
+            name=display,
+            category=category,
+            family=_family_of(display) or ("headrush" if display in modules else None),
+            subcategory=device_category.lower() if device_category else None,
+            params=params,
+            verified=True,
+            device_index=modules.get(display),
+        )
+
+        # And every model behind this block's picker, if it has one. These are
+        # not modules - you cannot put `82 Lead 800 100W` in a slot - so each
+        # records the module and parameter that select it.
+        picker = _MODEL_PICKERS.get(category)
+        if not picker:
+            continue
+        offered = properties.get(picker)
+        names = ((offered or {}).get("x-options") or {}).get("strings") if isinstance(offered, dict) else None
+        if not isinstance(names, list):
+            continue
+
+        # The picker itself is not a control, and neither is its second half.
+        controls = [p for p in params if p.name not in (picker, f"{picker}2")]
+        for index, model_name in enumerate(names):
+            model_name = str(model_name)
+            catalog.models[model_name] = ModelSpec(
+                id=model_name,
+                name=model_name,
+                category=category,
+                family="revalver" if "revalver" in display.lower() else "headrush",
+                params=controls,
+                verified=True,
+                device_index=index,
+                selector=f"{display}.{picker}",
+            )
+
+    return catalog
+
+
+def _load_json(value, what: str) -> dict:
+    if isinstance(value, dict):
+        return value
+    # The device serves UTF-8 and the Core's model names include characters
+    # that are not in the Windows default codec - reading without saying so
+    # fails partway through a 1.1MB dump.
+    decoded = json.loads(Path(value).read_text(encoding="utf-8"))
+    if not isinstance(decoded, dict):
+        raise ValueError(f"a {what} should decode to an object, got {type(decoded).__name__}")
+    return decoded
+
+
+def from_device_capture(capture_dir: str | Path) -> Catalog:
+    """Extract from a live capture directory (``subtree.json`` and friends)."""
+    root = Path(capture_dir)
+    subtree = root / "subtree.json"
+    if not subtree.is_file():
+        raise ValueError(
+            f"{root} has no subtree.json - that is what a live capture is. "
+            "Use --capture for an archived Remote Editor bundle instead."
+        )
+    categories = root / "device-catalog.json"
+    return from_subtree(subtree, categories=categories if categories.is_file() else None)
+
+
 def extract(
     *,
     capture_dir: str | Path | None = None,
     firmware_dir: str | Path | None = None,
+    subtree_dir: str | Path | None = None,
     save_to: str | Path | None = None,
 ) -> ExtractionReport:
     """Build a catalog from whichever sources are available.
@@ -330,6 +640,8 @@ def extract(
     Args:
         capture_dir: An archived Remote Editor bundle.
         firmware_dir: An unpacked firmware tree.
+        subtree_dir: A live capture directory holding ``subtree.json`` - the
+            device answering for itself, and the best of the three.
         save_to: Where to write the merged catalog. Defaults to the
             workspace, which is where :func:`rigsmith.rig.catalog.get_catalog`
             looks.
@@ -340,6 +652,14 @@ def extract(
 
     merged = Catalog(source="merged")
     report = ExtractionReport(catalog=merged)
+
+    # Merged first, deliberately. `merge` keeps what it already holds when
+    # both sides are verified, so the source that was right by construction
+    # gets to set the terms and the inferred ones only fill gaps.
+    if subtree_dir:
+        live = from_device_capture(subtree_dir)
+        report.conflicts.extend(merged.merge(live))
+        report.sources.append(f"live subtree ({len(live.models)} models)")
 
     if capture_dir:
         device_catalog = from_capture(capture_dir)
@@ -353,8 +673,8 @@ def extract(
 
     if not report.sources:
         raise ValueError(
-            "nothing to extract from - give a capture directory, a firmware "
-            "directory, or both"
+            "nothing to extract from - give a live capture directory, an "
+            "archived bundle, an unpacked firmware tree, or any combination"
         )
 
     merged.captured_at = datetime.now(timezone.utc).isoformat(timespec="seconds")

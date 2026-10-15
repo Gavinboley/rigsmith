@@ -544,6 +544,85 @@ def device() -> None:
     """Device storage, backup, and MIDI control."""
 
 
+@device.command("pair")
+@click.option("--host", help="Device host or IP. Discovered if not given.")
+@click.option("--timeout", default=180.0, show_default=True,
+              help="Seconds to wait for somebody to accept the PIN.")
+@click.option("--forget", is_flag=True, help="Discard the saved session instead.")
+@handled
+def device_pair(host: str | None, timeout: float, forget: bool) -> None:
+    """Pair with a device, so it will answer anything but 401.
+
+    The Core authorises a session, not a user: it shows a PIN on its own
+    screen and somebody standing at it taps accept. The cookie you are given
+    then works, and every other cookie does not.
+    """
+    import asyncio
+
+    from .core import devices
+    from .device.client import DeviceClient
+    from .device.session import forget_session, load_session
+    from .protocol.map import get as get_map
+
+    if not host:
+        host = asyncio.run(devices.find()).host
+
+    if forget:
+        click.echo("Forgotten." if forget_session(host) else "No saved session.")
+        return
+
+    existing = load_session(host)
+    if existing:
+        click.echo(f"Already paired with {host}. Re-pairing replaces it.")
+
+    async def run() -> None:
+        protocol = get_map("headrush-core")
+        async with DeviceClient(f"http://{host}", protocol, session=None) as client:
+            def show(pin: str) -> None:
+                click.echo("")
+                click.echo(click.style(f"  PIN  {pin}", fg="green", bold=True))
+                click.echo("")
+                click.echo("  Accept it on the device. Waiting...")
+
+            session = await client.pair(timeout_s=timeout, on_pin=show)
+            click.echo(click.style(f"Paired with {host}.", fg="green"))
+            if session.server:
+                click.echo(f"  {session.server}")
+
+    asyncio.run(run())
+
+
+@device.command("snapshot")
+@click.option("--host", help="Device host or IP. Discovered if not given.")
+@handled
+def device_snapshot(host: str | None) -> None:
+    """Record what is on the device, read-only, over the network.
+
+    Not a substitute for 'device backup', which needs USB Transfer and copies
+    the rig files themselves. This records every rig's name and id plus the
+    full state of whatever is loaded - enough to know what was there, not
+    enough to restore it.
+    """
+    import asyncio
+
+    from .core import devices
+    from .device import snapshot as snap
+    from .device.client import DeviceClient
+    from .protocol.map import get as get_map
+
+    if not host:
+        host = asyncio.run(devices.find()).host
+
+    async def run() -> None:
+        async with DeviceClient(f"http://{host}", get_map("headrush-core")) as client:
+            taken = await snap.take(client)
+            path = snap.save(taken)
+            click.echo(taken.render())
+            click.echo(f"  saved to {path}")
+
+    asyncio.run(run())
+
+
 @device.command("status")
 @click.option("--path", type=click.Path(path_type=Path))
 @handled
@@ -1681,23 +1760,128 @@ def catalog() -> None:
               help="An archived Remote Editor bundle from 'rigsmith probe --dump-app'.")
 @click.option("--firmware", "firmware_dir", type=click.Path(exists=True, file_okay=False, path_type=Path),
               help="An unpacked firmware tree from 'rigsmith firmware analyse --unpack-to'.")
+@click.option("--subtree", "subtree_dir", type=click.Path(exists=True, file_okay=False, path_type=Path),
+              help="A live capture directory holding subtree.json - the best source.")
 @click.option("--out", type=click.Path(path_type=Path), help="Where to save the catalog.")
 @handled
-def catalog_extract(capture_dir: Path | None, firmware_dir: Path | None, out: Path | None) -> None:
-    """Harvest the real model catalog from a bundle and/or firmware.
+def catalog_extract(
+    capture_dir: Path | None,
+    firmware_dir: Path | None,
+    subtree_dir: Path | None,
+    out: Path | None,
+) -> None:
+    """Harvest the real model catalog from the device and/or firmware.
 
     Until a catalog is extracted, validation runs in lenient unverified mode
     and cannot check model ids or parameter ranges.
+
+    Prefer --subtree. A live dump is the device describing itself; the other
+    two are inference from minified code.
     """
     from .protocol.catalog_extract import extract
 
-    if not capture_dir and not firmware_dir:
+    if not capture_dir and not firmware_dir and not subtree_dir:
         raise click.UsageError(
-            "give --capture, --firmware, or both.\n"
+            "give --subtree, --capture, --firmware, or any combination.\n"
+            "A subtree dump comes from a paired device and needs no guessing.\n"
             "Get a capture with:   rigsmith probe --dump-app\n"
             "Get firmware with:    rigsmith firmware analyse IMAGE --unpack-to DIR"
         )
-    click.echo(extract(capture_dir=capture_dir, firmware_dir=firmware_dir, save_to=out).render())
+    click.echo(
+        extract(
+            capture_dir=capture_dir,
+            firmware_dir=firmware_dir,
+            subtree_dir=subtree_dir,
+            save_to=out,
+        ).render()
+    )
+
+
+@catalog.command("calibrate")
+@click.option("--host", help="Device host or IP. Discovered if not given.")
+@click.option("--block", "blocks", multiple=True,
+              help="Only these blocks. Defaults to every block in the loaded rig.")
+@handled
+def catalog_calibrate(host: str | None, blocks: tuple[str, ...]) -> None:
+    """Measure how each control's wire value maps to what the device shows.
+
+    Every continuous control is 0-1 on the wire, and the range printed beside
+    it is what the knob reads. The curve between them is not published and is
+    not guessable - MidFreq is linear across 220-3000 Hz while SltEQF is
+    logarithmic across 20-16000 Hz, and they look identical in the metadata.
+
+    This reads both numbers at once and works out which curve fits. Anything
+    sitting at an end of its range cannot be told apart; move that control on
+    the device and run it again. Nothing is written.
+    """
+    import asyncio
+    import json
+
+    from .core import devices
+    from .device.client import DeviceClient
+    from .protocol.calibrate import calibrate_model, samples_from
+    from .protocol.map import get as get_map
+    from .rig.catalog import get_catalog
+
+    if not host:
+        host = asyncio.run(devices.find()).host
+
+    async def run() -> None:
+        cat = get_catalog(reload=True)
+        if not cat.is_verified:
+            raise click.ClickException(
+                "the catalog is not extracted yet - run "
+                "'rigsmith catalog extract --subtree DIR' first"
+            )
+
+        async with DeviceClient(f"http://{host}", get_map("headrush-core")) as client:
+            wanted = list(blocks)
+            if not wanted:
+                chain = await client.call("get_chain")
+                table = (await client.call("module_table"))["ModuleTypes"]
+                for slot in range(1, 15):
+                    index = chain.get(f"ModuleType{slot}")
+                    if isinstance(index, int) and 0 < index < len(table):
+                        name = table[index]
+                        if name not in wanted:
+                            wanted.append(name)
+
+            if not wanted:
+                click.echo("Nothing in the loaded rig to calibrate against.")
+                return
+
+            measured = 0
+            for name in wanted:
+                spec = cat.models.get(name)
+                if spec is None:
+                    click.echo(f"  {name}: not in the catalog, skipped")
+                    continue
+                node = name.replace(" ", "_")
+                try:
+                    wire = await client.call("get_block", block=node)
+                    raw = await client.call(
+                        "serialize_block", block=name, instance=0
+                    )
+                except Exception as exc:
+                    click.echo(f"  {name}: {exc}")
+                    continue
+                try:
+                    serialised = json.loads(raw) if isinstance(raw, str) else raw
+                except json.JSONDecodeError:
+                    click.echo(f"  {name}: the device sent something unreadable")
+                    continue
+
+                result = calibrate_model(spec, samples_from(wire, serialised))
+                measured += result.measured
+                click.echo(f"{name}: {result.render()}")
+
+            if measured:
+                from .config import get_settings
+
+                path = cat.save(get_settings().workspace / "catalog.json")
+                click.echo(f"\nsaved to {path}")
+
+    asyncio.run(run())
 
 
 @catalog.command("status")

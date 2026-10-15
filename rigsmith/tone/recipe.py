@@ -123,6 +123,19 @@ class GearChoice:
     #: Filled in once a capture or catalog model has been chosen for it.
     resolved_model_id: str | None = None
 
+    part_of: str | None = None
+    """Another role whose block this belongs to, rather than its own.
+
+    Not everything in a signal chain is a slot. The second amp of a stereo
+    pair is one block with 2X on it, not two amps in series - compiled side by
+    side they would be an amp plugged into an amp, which is not what anybody
+    played. A microphone is not a block at all; it is a setting on the cab.
+
+    A choice that names a host keeps its own sources and its own confidence -
+    the Mesa is a *stated* fact about the record either way - but it compiles
+    into that block instead of beside it.
+    """
+
     @property
     def block_category(self) -> BlockCategory:
         try:
@@ -168,6 +181,7 @@ class GearChoice:
             "alternatives": self.alternatives,
             "note": self.note,
             "resolved_model_id": self.resolved_model_id,
+            "part_of": self.part_of,
         }
         return {k: v for k, v in data.items() if v not in (None, [], {})}
 
@@ -185,6 +199,7 @@ class GearChoice:
             alternatives=list(data.get("alternatives") or []),
             note=data.get("note"),
             resolved_model_id=data.get("resolved_model_id"),
+            part_of=data.get("part_of"),
         )
 
 
@@ -520,6 +535,11 @@ class ToneRecipe:
 #: The order gear roles conventionally appear in a chain. Anything unlisted
 #: keeps its declared order after the last role it is recognised behind.
 ROLE_ORDER = [
+    # A gate goes first, before anything has added gain to what it is trying
+    # to hear. Left off this list it sorted to the end, which put it after the
+    # reverb - where it chops the tail off every note instead of silencing the
+    # noise floor.
+    "gate", "noise",
     "wah", "filter",
     "compressor", "comp",
     "boost", "drive", "overdrive", "distortion", "fuzz",
@@ -615,7 +635,13 @@ def compile_recipe(recipe: ToneRecipe, *, name: str | None = None) -> CompileRes
     result = CompileResult(draft_id=draft_id, recipe=recipe)
     slot_of_role: dict[str, int] = {}
 
-    for _, choice in ordered:
+    # Components are held back and folded into their host once it exists.
+    # Ordering cannot be relied on to put a host before its parts - a mic is
+    # part of the cab but sorts nowhere near it - so this is two passes.
+    components = [c for _, c in ordered if c.part_of]
+    standalone = [(i, c) for i, c in ordered if not c.part_of]
+
+    for _, choice in standalone:
         if len(result.placed) >= MAX_SLOTS:
             result.unplaced.append(f"{choice.role} ({choice.name}) - rig is full")
             continue
@@ -629,6 +655,41 @@ def compile_recipe(recipe: ToneRecipe, *, name: str | None = None) -> CompileRes
         block = max(edit.rig.blocks, key=lambda b: b.slot)
         result.placed.append((block.slot, choice))
         slot_of_role[choice.role.lower()] = block.slot
+
+    for choice in components:
+        slot = slot_of_role.get(choice.part_of.lower())
+        if slot is None:
+            result.unplaced.append(
+                f"{choice.role} ({choice.name}) - it is part of "
+                f"'{choice.part_of}', and nothing in this recipe fills that role"
+            )
+            continue
+
+        if choice.settings:
+            for key, value in choice.settings.items():
+                rigs.set_param(draft_id, slot, key, value)
+
+        # A resolved model of the same kind as its host is the other half of a
+        # doubled block: two amps in stereo, two cabs, two mics.
+        if choice.resolved_model_id:
+            host = next(
+                (c for _, c in result.placed if c.role.lower() == choice.part_of.lower()),
+                None,
+            )
+            if host is not None and host.category == choice.category:
+                rigs.set_doubling(
+                    draft_id, slot, "stereo", second_model_id=choice.resolved_model_id
+                )
+                result.warnings.append(
+                    f"{choice.role} ({choice.name}) is the second half of the "
+                    f"'{choice.part_of}' block in stereo, not a slot of its own"
+                )
+            else:
+                result.unplaced.append(
+                    f"{choice.role} ({choice.name}) - it is part of "
+                    f"'{choice.part_of}' but a {choice.category} cannot be "
+                    f"folded into a {host.category if host else 'missing'} block"
+                )
 
     for scene in recipe.scenes:
         on, off, missing = [], [], []

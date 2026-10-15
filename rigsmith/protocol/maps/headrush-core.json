@@ -1,0 +1,192 @@
+{
+  "name": "headrush-core",
+  "base": "/api/v1",
+  "firmware": null,
+  "verified": true,
+  "description": "HeadRush Core / Prime Remote Editor. An object tree, not a REST API: every node has properties you GET and PUT, and typed methods you POST positional arguments to. A rig is not a resource - it is whatever is currently loaded, so building one means making a new rig, setting properties on the live patch, and saving. Captured against a paired Core (AZ0X Web Server 0.6.2); the read path and the object-method call shape were exercised directly, and every method signature here is the device's own x-methods declaration.",
+  "field_names": {
+    "rig_id": "loadedID",
+    "rig_name": "loadedName",
+    "rig_color": "loadedColor"
+  },
+  "notes": {
+    "values": "Continuous parameters are 0-1 on the wire. The minimum/maximum the device publishes is the display range; sending 65 for a Bass knob that reads 0-100 pegs it. See rigsmith.protocol.calibrate.",
+    "chain": "Chain.ModuleType1..14 are the fourteen slots, each an index into the module table at /Evil/API/Blocks ModuleTypes. 0 is an empty slot.",
+    "instances": "Every block type exists twice - 'Amp' and 'Amp 2' - so a rig can hold two. The second is addressed at /Evil/Engine/Patch/<Block>_2.",
+    "pairing": "POST /api/auth is not listed here. Pairing earns the right to use this map, so it cannot be one of its operations."
+  },
+
+  "operations": {
+    "subtree": {
+      "method": "GET",
+      "path": "/subtree{node}",
+      "description": "Everything at and under a node: metadata, methods and live values."
+    },
+    "object_meta": {
+      "method": "GET",
+      "path": "/object-meta{node}",
+      "description": "One node's schema - parameter types, ranges and option lists."
+    },
+    "get_properties": {
+      "method": "GET",
+      "path": "/object-properties{node}",
+      "description": "One node's live values."
+    },
+    "set_properties": {
+      "method": "PUT",
+      "path": "/object-properties{node}",
+      "body": "{properties}",
+      "description": "Set one or more live values on a node. Continuous values are 0-1."
+    },
+
+    "list_rigs": {
+      "method": "GET",
+      "path": "/object-properties/Evil/API/Rigs"
+    },
+    "loaded_rig": {
+      "method": "GET",
+      "path": "/object-properties/Evil/API/Rigs"
+    },
+    "can_save_new_rig": {
+      "method": "POST",
+      "path": "/object-method/Evil/API/Rigs/canSaveNewRig",
+      "args": [],
+      "unwrap": "methodReturnValue"
+    },
+    "new_rig": {
+      "method": "POST",
+      "path": "/object-method/Evil/API/Rigs/makeNewRig",
+      "args": ["{colour}"],
+      "unwrap": "methodReturnValue",
+      "description": "Make and load a new empty rig. Prompts on the device if the loaded rig is dirty; new_rig_confirm answers that prompt."
+    },
+    "new_rig_confirm": {
+      "method": "POST",
+      "path": "/object-method/Evil/API/Rigs/makeNewRigConfirm",
+      "args": ["{colour}"],
+      "unwrap": "methodReturnValue"
+    },
+    "save_rig": {
+      "method": "POST",
+      "path": "/object-method/Evil/API/Rigs/saveRig",
+      "args": [],
+      "unwrap": "methodReturnValue"
+    },
+    "save_rig_as": {
+      "method": "POST",
+      "path": "/object-method/Evil/API/Rigs/saveRigAs",
+      "args": ["{name}", "{colour}"],
+      "unwrap": "methodReturnValue"
+    },
+    "rename_loaded_rig": {
+      "method": "POST",
+      "path": "/object-method/Evil/API/Rigs/renameLoadedRig",
+      "args": ["{name}"],
+      "unwrap": "methodReturnValue"
+    },
+    "load_rig": {
+      "method": "POST",
+      "path": "/object-method/Evil/API/Rigs/loadRig",
+      "args": ["{rig_id}", "{setlist_id}"],
+      "unwrap": "methodReturnValue"
+    },
+    "load_rig_confirm": {
+      "method": "POST",
+      "path": "/object-method/Evil/API/Rigs/loadRigConfirm",
+      "args": ["{rig_id}", "{setlist_id}"],
+      "unwrap": "methodReturnValue"
+    },
+    "delete_rig": {
+      "method": "POST",
+      "path": "/object-method/Evil/API/Rigs/deleteRig",
+      "args": ["{rig_id}"],
+      "unwrap": "methodReturnValue"
+    },
+
+    "get_chain": {
+      "method": "GET",
+      "path": "/object-properties/Evil/Engine/Patch/Chain"
+    },
+    "set_chain": {
+      "method": "PUT",
+      "path": "/object-properties/Evil/Engine/Patch/Chain",
+      "body": "{properties}",
+      "description": "Set ModuleType1..14 to place blocks in slots."
+    },
+    "set_module_type": {
+      "method": "POST",
+      "path": "/object-method/Evil/Engine/Patch/Chain/setModuleTypeInternal",
+      "args": ["{slot}", "{module_type}"],
+      "description": "Put a module in a slot. Slot is 1-14; module_type indexes the module table."
+    },
+
+    "get_block": {
+      "method": "GET",
+      "path": "/object-properties/Evil/Engine/Patch/{block}"
+    },
+    "set_block": {
+      "method": "PUT",
+      "path": "/object-properties/Evil/Engine/Patch/{block}",
+      "body": "{properties}"
+    },
+    "serialize_block": {
+      "method": "POST",
+      "path": "/object-method/Evil/API/Blocks/serializeBlock",
+      "args": ["{block}", "{instance}"],
+      "unwrap": "methodReturnValue",
+      "description": "A block's whole state as a JSON string, in display units. Read-only, and the cheapest way to snapshot a block before changing it."
+    },
+    "deserialize_block": {
+      "method": "POST",
+      "path": "/object-method/Evil/API/Blocks/deserializeBlock",
+      "args": ["{block}", "{instance}", "{data}"],
+      "description": "Restore a block from a serializeBlock string."
+    },
+    "category_blocks": {
+      "method": "POST",
+      "path": "/object-method/Evil/API/Blocks/categoryBlocks",
+      "args": ["{category}", "{include_vocal}"],
+      "unwrap": "methodReturnValue"
+    },
+    "category_of_block": {
+      "method": "POST",
+      "path": "/object-method/Evil/API/Blocks/categoryOfBlock",
+      "args": ["{block}"],
+      "unwrap": "methodReturnValue"
+    },
+    "module_table": {
+      "method": "GET",
+      "path": "/object-properties/Evil/API/Blocks",
+      "description": "ModuleTypes: the index the chain slots refer to."
+    },
+
+    "cpu_meter": {
+      "method": "GET",
+      "path": "/object-properties/Evil/Engine/CPUMeter"
+    },
+    "tone3000_fetch": {
+      "method": "POST",
+      "path": "/object-method/Evil/API/Tone3000/fetchModels",
+      "unwrap": "methodReturnValue",
+      "args": []
+    },
+    "tone3000_download": {
+      "method": "POST",
+      "path": "/object-method/Evil/API/Tone3000/downloadModelToDevice",
+      "unwrap": "methodReturnValue",
+      "args": ["{model_id}"]
+    }
+  },
+
+  "procedures": {
+    "write_rig": {
+      "description": "Build a rig on the device. There is no create-then-populate resource here: makeNewRig loads a blank rig, the chain and block properties are set on whatever is loaded, and saveRigAs commits it under a name.",
+      "steps": [
+        {"operation": "can_save_new_rig", "bind": "can_save"},
+        {"operation": "new_rig", "with": {"colour": "{colour}"}, "bind": "created"},
+        {"operation": "set_chain", "with": {"properties": "{chain}"}},
+        {"operation": "save_rig_as", "with": {"name": "{name}", "colour": "{colour}"}, "bind": "saved"}
+      ]
+    }
+  }
+}

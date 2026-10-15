@@ -131,6 +131,7 @@ def add_gear(
     source_note: str | None = None,
     alternatives: list[str] | None = None,
     note: str | None = None,
+    part_of: str | None = None,
 ) -> ToneRecipe:
     """Record one element of the chain, with the evidence for it.
 
@@ -183,6 +184,7 @@ def add_gear(
             sources=sources,
             alternatives=list(alternatives or []),
             note=note,
+            part_of=part_of,
         )
     )
     save(recipe, recipe_id)
