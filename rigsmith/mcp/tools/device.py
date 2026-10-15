@@ -72,6 +72,28 @@ async def device_scenes(host: str | None = None) -> str:
 
 
 @tool
+def catalog_status() -> str:
+    """How much rigsmith knows about the Core's models and controls: where the
+    catalog came from, whether it is verified, and how many knob curves have
+    been measured (the rest are read as if linear)."""
+    found = devices.catalog_status()
+    lines = [
+        f"{found['models']} models from {found['source']}, {'verified' if found['verified'] else 'NOT verified'}",
+        f"knob curves measured: {found['measured']} of {found['controls']} continuous controls",
+    ]
+    return "\n".join(lines + found["completeness"])
+
+
+@tool
+async def calibrate_catalog(host: str | None = None, blocks: list[str] | None = None) -> str:
+    """Measure the knob curves of the blocks in the Core's loaded rig (or the
+    ones named) and save them into the catalog, so readings and the values
+    sent stop assuming a linear control. Reads the device; writes nothing to it."""
+    result = await devices.calibrate_catalog(host, blocks)
+    return "\n".join(result["lines"] + ([f"saved to {result['saved']}"] if result["saved"] else ["nothing measured, nothing saved"]))
+
+
+@tool
 def device_storage_status(path: str | None = None) -> str:
     """Check whether the device's USB storage is mounted, and what is on it.
 

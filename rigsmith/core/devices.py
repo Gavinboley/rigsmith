@@ -529,3 +529,100 @@ def render_import(imported, skipped) -> str:
         lines.append("\nskipped:")
         lines.extend(f"  {item}" for item in skipped)
     return "\n".join(lines)
+
+
+# --------------------------------------------------------------------------
+# the catalog
+# --------------------------------------------------------------------------
+
+
+def catalog_status() -> dict:
+    """How much rigsmith knows about the Core's models and controls.
+
+    ``measured`` counts the continuous controls whose taper (the curve from
+    the wire's 0-1 to what the knob reads) has been measured; every other
+    reading is worked out as if the control were linear.
+    """
+    from ..rig.catalog import get_catalog
+
+    cat = get_catalog(reload=True)
+    continuous = [p for spec in cat.models.values() for p in spec.params if p.normalised]
+    measured = sum(1 for p in continuous if p.taper in ("linear", "log"))
+    return {
+        "source": cat.source,
+        "models": len(cat.models),
+        "verified": cat.is_verified,
+        "captured_at": cat.captured_at,
+        "controls": len(continuous),
+        "measured": measured,
+        "completeness": cat.completeness_report(),
+        "warnings": list(cat.warnings[:5]),
+    }
+
+
+async def calibrate_catalog(host: str | None = None, blocks: list[str] | None = None) -> dict:
+    """Measure how each control's wire value maps to what the device shows.
+
+    Reads, for every block in the loaded rig (or the ones named), the wire
+    values and the device's own serialised readings side by side, and works
+    out which curve fits; the measured tapers are saved into the workspace
+    catalog. Nothing is written to the device. A control sitting at an end of
+    its range cannot be told apart - move it on the device and run again.
+    """
+    import json
+
+    from ..device.client import DeviceClient
+    from ..protocol.calibrate import calibrate_model, samples_from
+    from ..protocol.map import get as get_map
+    from ..rig.catalog import get_catalog
+
+    cat = get_catalog(reload=True)
+    if not cat.is_verified:
+        raise Invalid(
+            "the catalog is not extracted yet",
+            hint="Run 'rigsmith catalog extract --subtree DIR' first.",
+        )
+    if not host:
+        host = (await find()).host
+    lines: list[str] = []
+    measured = 0
+    async with DeviceClient(f"http://{host}", get_map("headrush-core")) as client:
+        wanted = list(blocks or [])
+        if not wanted:
+            chain = await client.call("get_chain")
+            table = (await client.call("module_table"))["ModuleTypes"]
+            for slot in range(1, 15):
+                index = chain.get(f"ModuleType{slot}")
+                if isinstance(index, int) and 0 < index < len(table):
+                    name = table[index]
+                    if name not in wanted:
+                        wanted.append(name)
+        if not wanted:
+            return {"lines": ["Nothing in the loaded rig to calibrate against."], "measured": 0, "saved": None, "blocks": []}
+        for name in wanted:
+            spec = cat.models.get(name)
+            if spec is None:
+                lines.append(f"  {name}: not in the catalog, skipped")
+                continue
+            try:
+                wire = await client.call("get_block", block=name.replace(" ", "_"))
+                raw = await client.call("serialize_block", block=name, instance=0)
+            except Exception as exc:
+                lines.append(f"  {name}: {exc}")
+                continue
+            try:
+                serialised = json.loads(raw) if isinstance(raw, str) else raw
+            except json.JSONDecodeError:
+                lines.append(f"  {name}: the device sent something unreadable")
+                continue
+            result = calibrate_model(spec, samples_from(wire, serialised))
+            measured += result.measured
+            lines.append(f"{name}: {result.render()}")
+            shared = cat.share_tapers(name)
+            if shared:
+                lines.append(f"  and the same curves for {shared} model(s) selected on {name}")
+    saved = None
+    if measured:
+        require_writable("save the calibrated catalog")
+        saved = str(cat.save(get_settings().workspace / "catalog.json"))
+    return {"lines": lines, "measured": measured, "saved": saved, "blocks": wanted}

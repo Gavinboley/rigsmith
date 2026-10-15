@@ -68,7 +68,10 @@ def build_app():
             "/static", StaticFiles(directory=str(assets)), name="static"
         )
 
-        @app.get("/")
+        # The page is not part of the API, and its return annotation names a
+        # class imported in this function, which a postponed annotation
+        # cannot resolve - in the schema it made /openapi.json a 500.
+        @app.get("/", include_in_schema=False)
         def index() -> FileResponse:
             return FileResponse(assets / "index.html")
 

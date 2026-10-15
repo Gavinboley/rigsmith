@@ -65,3 +65,38 @@ def snapshot(body: HostBody) -> dict:
 
     job = get_manager().submit("snapshot the device", run)
     return {"job_id": job.id, "name": job.name}
+
+
+@router.post("/scenes")
+def scenes(body: HostBody) -> dict:
+    """The loaded rig's scene table, raw - read only."""
+
+    def run(progress):
+        progress.update(0.1, "reading the scenes")
+        rows = asyncio.run(devices.read_scenes(body.host))
+        return {"rows": rows, "render": devices.render_scenes(rows)}
+
+    job = get_manager().submit("read the device's scenes", run)
+    return {"job_id": job.id, "name": job.name}
+
+
+class CalibrateBody(BaseModel):
+    host: str | None = None
+    blocks: list[str] = []
+
+
+@router.get("/catalog")
+def catalog() -> dict:
+    return devices.catalog_status()
+
+
+@router.post("/catalog/calibrate")
+def calibrate(body: CalibrateBody) -> dict:
+    """Measure the loaded rig's knob curves. Reads the device; writes only the catalog."""
+
+    def run(progress):
+        progress.update(0.1, "reading the loaded rig's blocks")
+        return asyncio.run(devices.calibrate_catalog(body.host, body.blocks or None))
+
+    job = get_manager().submit("measure the knob curves", run)
+    return {"job_id": job.id, "name": job.name}

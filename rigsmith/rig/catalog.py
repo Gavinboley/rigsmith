@@ -280,6 +280,39 @@ class Catalog:
         """True when every model came from the device or firmware."""
         return bool(self.models) and all(m.verified for m in self.models.values())
 
+    def share_tapers(self, module: str) -> int:
+        """Give every model selected on a module the curves measured on it.
+
+        The 53 amp models are values of one ``Amp`` block's ``Type``: their
+        knobs are that block's knobs, described by the same node, so a curve
+        measured there is theirs too. Only a control with the same name and
+        the same displayed range is given one. Returns how many models changed.
+        """
+        source = self.models.get(module)
+        if source is None:
+            return 0
+        known = {p.name: p for p in source.params if p.taper in ("linear", "log")}
+        changed = 0
+        for spec in self.models.values():
+            if spec is source or not spec.selector or spec.selector.split(".", 1)[0] != module:
+                continue
+            touched = False
+            for param in spec.params:
+                measured = known.get(param.name)
+                if measured is None or param.taper == measured.taper:
+                    continue
+                if (param.display_min, param.display_max) != (measured.display_min, measured.display_max):
+                    continue
+                param.taper = measured.taper
+                touched = True
+            changed += touched
+        return changed
+
+    def share_measured_tapers(self) -> int:
+        """:meth:`share_tapers` for every module that has a measured curve."""
+        modules = {spec.selector.split(".", 1)[0] for spec in self.models.values() if spec.selector}
+        return sum(self.share_tapers(module) for module in sorted(modules))
+
     def coverage(self) -> dict[str, int]:
         counts: dict[str, int] = {}
         for model in self.models.values():
@@ -437,4 +470,6 @@ def get_catalog(path: Path | None = None, *, reload: bool = False) -> Catalog:
 
     path = Path(path)
     _cached = Catalog.load(path) if path.exists() else seed_catalog()
+    # Curves measured on a module before sharing existed are the models' too.
+    _cached.share_measured_tapers()
     return _cached

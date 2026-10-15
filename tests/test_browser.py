@@ -1123,3 +1123,12 @@ def test_a_mapped_song_hands_its_chosen_parts_to_autopilot(browser, server, monk
             time.sleep(0.1)
     assert started, "the form never started a run"
     assert started[0].song_id == made.song_id and started[0].title == "Handover"
+
+
+def test_the_device_page_says_what_it_knows_about_the_core(browser, server):
+    with page_at(browser, server) as page:
+        page.click("#tabs .tab[data-panel='device']")
+        page.wait_for_selector("#catalog-status .item")
+        status = page.inner_text("#catalog-status")
+        assert "models" in status and "knob curves measured" in status
+        assert page.is_visible("#catalog-calibrate") and page.is_visible("#device-scenes")

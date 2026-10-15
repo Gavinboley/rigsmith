@@ -75,6 +75,30 @@ async function snapshot(host, out) {
   });
 }
 
+async function renderCatalog() {
+  const status = await api.get("/api/device/catalog");
+  const host = clear($("#catalog-status"));
+  host.append(
+    el("div", { class: "item" },
+      el("span", { class: `tag ${status.verified ? "a2" : "warn"}`, text: status.verified ? "verified" : "unverified" }),
+      el("span", { class: "title", text: `${status.models} models` }),
+      el("span", { class: "meta", text: `from ${status.source}${status.captured_at ? `, ${status.captured_at.slice(0, 10)}` : ""}` })),
+    el("div", { class: "item" },
+      el("span", { class: `tag ${status.measured ? "a2" : "warn"}`, text: `${status.measured} of ${status.controls}` }),
+      el("span", { class: "title", text: "knob curves measured" }),
+      el("span", { class: "meta", text: !status.controls ? "this catalog has no ranges to measure - extract the device's own" : status.measured < status.controls ? "the rest are read as if linear" : "every one" }))
+  );
+}
+
+async function deviceJob(path, body, describe) {
+  const out = $("#catalog-out");
+  await attempt(async () => {
+    const { job_id } = await api.post(path, body);
+    const result = await track(job_id, { onUpdate: (job) => (out.textContent = describeJob(job)) });
+    out.textContent = describe(result);
+  });
+}
+
 function deviceItem(device) {
   return el(
     "div",
@@ -254,12 +278,21 @@ export function init() {
       $("#midi-out").textContent = message;
     });
 
+  $("#catalog-calibrate").onclick = () =>
+    deviceJob("/api/device/catalog/calibrate", {}, (result) => {
+      renderCatalog();
+      return result.lines.join("\n") + (result.saved ? `\n\nsaved to ${result.saved}` : "\n\nnothing measured, nothing saved");
+    });
+  $("#device-scenes").onclick = () => deviceJob("/api/device/scenes", {}, (result) => result.render);
+
   renderFootswitches();
   renderPairing();
+  attempt(renderCatalog);
   return refreshDrafts();
 }
 
 export function onShow() {
   attempt(refreshDrafts);
+  attempt(renderCatalog);
   renderPairing();
 }

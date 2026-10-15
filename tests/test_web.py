@@ -1008,3 +1008,11 @@ def test_a_parts_di_says_whose_playing_it_is(client, tmp_path):
     parts = {p["part_id"]: p for p in client.get(f"/api/songs/{made.song_id}").json()["parts"]}
     assert parts["verse-1-stem"]["di"]["kind"] == "yours" and parts["chorus-2-stem"]["di"]["kind"] == "rendered"
     assert client.get(parts["verse-1-stem"]["di"]["url"]).status_code == 200
+
+
+def test_the_api_describes_itself(client):
+    """/api/docs is linked from the app; its schema was a 500."""
+    schema = client.get("/openapi.json")
+    assert schema.status_code == 200
+    paths = schema.json()["paths"]
+    assert "/api/drafts" in paths and "/" not in paths

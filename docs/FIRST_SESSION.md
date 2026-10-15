@@ -51,6 +51,15 @@ you are chasing in the map.
 **Device -> Pairing -> Pair**: the PIN appears on the page and on the Core's
 screen; accept it on the device. `rigsmith device pair` does the same.
 
+Then, while you are on that page, **measure the knob curves**: load a rig
+holding the blocks you use (an Amp, a Cab, a delay, a reverb, a G EQ) and
+press *Measure the loaded rig's knob curves*. It reads, writes nothing to
+the Core, and saves into the catalog how each control's 0-1 maps to what
+its screen shows - a curve measured on the Amp block serves all its amp
+models. Until a control's curve is measured, the tone sheet marks its
+reading `~` and autopilot sets times and rates assuming it is linear.
+`rigsmith catalog calibrate` does the same.
+
 ## 5. Wire the loop
 
 **Loop**: the suggestion for your interface shows its wiring - interface

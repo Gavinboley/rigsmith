@@ -484,6 +484,22 @@
     </div>
 
     <div class="card">
+      <h3>What rigsmith knows about the Core</h3>
+      <p class="hint">
+        The model catalog, and how many knob curves have been measured - until
+        a control's curve is measured, its readings (and the values sent for
+        it) assume it is linear. Measuring reads the blocks in the loaded rig
+        and writes nothing to the device; load a rig with the blocks you use.
+      </p>
+      <div id="catalog-status" class="list"></div>
+      <div class="row">
+        <button class="btn" id="catalog-calibrate">Measure the loaded rig's knob curves</button>
+        <button class="btn" id="device-scenes" title="Read the loaded rig's scene table, raw - read only">Read its scenes</button>
+      </div>
+      <pre id="catalog-out" class="out"></pre>
+    </div>
+
+    <div class="card">
       <h3>MIDI</h3>
       <p class="hint">
         The one fully documented interface. Use it to load the rig you want to

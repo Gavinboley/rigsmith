@@ -1835,73 +1835,13 @@ def catalog_calibrate(host: str | None, blocks: tuple[str, ...]) -> None:
     sitting at an end of its range cannot be told apart; move that control on
     the device and run it again. Nothing is written.
     """
-    import json
-
     from .core import devices
-    from .device.client import DeviceClient
-    from .protocol.calibrate import calibrate_model, samples_from
-    from .protocol.map import get as get_map
-    from .rig.catalog import get_catalog
 
-    if not host:
-        host = asyncio.run(devices.find()).host
-
-    async def run() -> None:
-        cat = get_catalog(reload=True)
-        if not cat.is_verified:
-            raise click.ClickException(
-                "the catalog is not extracted yet - run "
-                "'rigsmith catalog extract --subtree DIR' first"
-            )
-
-        async with DeviceClient(f"http://{host}", get_map("headrush-core")) as client:
-            wanted = list(blocks)
-            if not wanted:
-                chain = await client.call("get_chain")
-                table = (await client.call("module_table"))["ModuleTypes"]
-                for slot in range(1, 15):
-                    index = chain.get(f"ModuleType{slot}")
-                    if isinstance(index, int) and 0 < index < len(table):
-                        name = table[index]
-                        if name not in wanted:
-                            wanted.append(name)
-
-            if not wanted:
-                click.echo("Nothing in the loaded rig to calibrate against.")
-                return
-
-            measured = 0
-            for name in wanted:
-                spec = cat.models.get(name)
-                if spec is None:
-                    click.echo(f"  {name}: not in the catalog, skipped")
-                    continue
-                node = name.replace(" ", "_")
-                try:
-                    wire = await client.call("get_block", block=node)
-                    raw = await client.call(
-                        "serialize_block", block=name, instance=0
-                    )
-                except Exception as exc:
-                    click.echo(f"  {name}: {exc}")
-                    continue
-                try:
-                    serialised = json.loads(raw) if isinstance(raw, str) else raw
-                except json.JSONDecodeError:
-                    click.echo(f"  {name}: the device sent something unreadable")
-                    continue
-
-                result = calibrate_model(spec, samples_from(wire, serialised))
-                measured += result.measured
-                click.echo(f"{name}: {result.render()}")
-
-            if measured:
-                from .config import get_settings
-
-                path = cat.save(get_settings().workspace / "catalog.json")
-                click.echo(f"\nsaved to {path}")
-
-    asyncio.run(run())
+    result = asyncio.run(devices.calibrate_catalog(host, list(blocks)))
+    for line in result["lines"]:
+        click.echo(line)
+    if result["saved"]:
+        click.echo(f"\nsaved to {result['saved']}")
 
 
 @catalog.command("status")
