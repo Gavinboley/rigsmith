@@ -933,7 +933,7 @@ def _stage_rig(run: Run, *, from_ears: bool = False) -> str:
     add("amp", best["model"], knobs)
     add("cab", best["cab"])
     if best.get("geq"):
-        add("effect", "G EQ", best["geq"])
+        add("effect", "G EQ", wire_params({"model": "G EQ", "params": best["geq"], "readings": best.get("geq_db") or {}}))
         shown = ", ".join(f"{k[4:]} {v:+.0f}" for k, v in (best.get("geq_db") or {}).items() if abs(v) >= 1)
         run.note(f"a G EQ after the cab, fitted to the record ({shown}) - it measured closer; trust your ears over it")
     for block in after:
@@ -1100,7 +1100,7 @@ def song_rig(run_ids: list[str], *, name: str | None = None) -> dict:
         knobs = {k.split(".", 1)[1]: round(float(v), 4) for k, v in (owner["best"].get("knobs") or {}).items()}
         slots = [place("amp", config[0], knobs), place("cab", config[1])]
         if owner["best"].get("geq"):
-            slots.append(place("effect", "G EQ", owner["best"]["geq"]))
+            slots.append(place("effect", "G EQ", wire_params({"model": "G EQ", "params": owner["best"]["geq"], "readings": owner["best"].get("geq_db") or {}})))
         sound_slots[config] = [s for s in slots if s]
     for role in ("chorus", "vibrato", "tremolo", "delay", "reverb"):
         place_role(role)

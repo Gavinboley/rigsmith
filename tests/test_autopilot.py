@@ -493,3 +493,18 @@ def test_a_measured_curve_beats_the_linear_guess():
     sent = candidates.wire_params(delay, cat)["DelayTime"]
     assert abs(sent - math.log(375 / 20) / math.log(40)) < 1e-3 and abs(sent - 0.4551) > 0.3
     assert candidates.wire_params(delay, cat)["Mix"] == delay["params"]["Mix"]
+
+
+def test_a_fitted_eq_is_sent_through_its_bands_measured_curves():
+    from rigsmith.rig.catalog import Catalog, ModelSpec, ParamSpec
+    from rigsmith.rig.model import BlockCategory
+
+    cat = Catalog(source="test")
+    cat.models["G EQ"] = ModelSpec(
+        id="G EQ", name="G EQ", category=BlockCategory.EFFECT, verified=True,
+        params=[ParamSpec(name="Gain800Hz", kind="float", minimum=0.0, maximum=1.0, display_min=-15.0, display_max=15.0, unit="dB", taper="linear")],
+    )
+    guessed = {"Gain800Hz": 0.4, "Gain60Hz": 0.6}
+    sent = candidates.wire_params({"model": "G EQ", "params": guessed, "readings": {"Gain800Hz": -6.0, "Gain60Hz": 3.0}}, cat)
+    assert sent["Gain800Hz"] == round((-6.0 + 15) / 30, 4), "a measured band is converted"
+    assert sent["Gain60Hz"] == 0.6, "an unmeasured band keeps the guess"
