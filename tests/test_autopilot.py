@@ -220,3 +220,17 @@ def test_the_device_bench_checks_the_loaded_rig_first(workspace, monkeypatch):
     draft_id = tuning.bench_rig_draft()
     assert tuning.bench_rig_draft() == draft_id  # made once
     assert [b.model_id for b in rigs.get(draft_id).rig.blocks] == [tuning.BENCH_AMP, tuning.BENCH_CAB]
+
+
+def test_what_the_ears_chose_before_is_heard_first(workspace):
+    from rigsmith.core import recipes
+
+    recipe_id, _ = recipes.create("Fixture")
+    recipes.record_measurement(recipe_id, "69 Plexiglas 100W + 4x12 Green 20W (tuned)", "autopilot x", kind="listen", won=True, trials=3)
+    recipes.record_measurement(recipe_id, "92 Treadplate Modern", "autopilot x", kind="listen", won=False, trials=3)
+    run = autopilot.Run(run_id="t7", request=autopilot.Request(title="Fixture"), recipe_id=recipe_id)
+    assert autopilot._ear_winners(run) == ["69 Plexiglas 100W"]
+    field_ = candidates.candidates(0.9, favoured=["69 Plexiglas 100W"], researched=["64 Fox AC30"], count=4)
+    assert [c.model for c in field_[:2]] == ["69 Plexiglas 100W", "64 Fox AC30"]
+    assert field_[0].reason == "your ears chose it last time" and field_[0].tier == "crunch"
+    assert field_[1].tier == "edge"  # the research's amp keeps its own tier's cab and voicing

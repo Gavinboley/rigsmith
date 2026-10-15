@@ -201,7 +201,15 @@ def with_cab(candidate: Candidate, cab: str, *, why: str, index: int | None = No
     )
 
 
-def candidates(gain: float, *, researched: list[str] | None = None, count: int = 6, catalog=None) -> list[Candidate]:
+def _tier_of(name: str, fallback: str) -> str:
+    """The tier a model is listed under, or the measured one if it is not."""
+    return next((tier for tier, (names, _) in TIERS.items() if name in names), fallback)
+
+
+def candidates(
+    gain: float, *, researched: list[str] | None = None, favoured: list[str] | None = None,
+    count: int = 6, catalog=None,
+) -> list[Candidate]:
     """Amps to try: researched ones first, then the measured tier and its neighbours.
 
     Models the catalog does not list are dropped, so a list built against
@@ -223,11 +231,15 @@ def candidates(gain: float, *, researched: list[str] | None = None, count: int =
 
     found: list[Candidate] = []
     seen: set[str] = set()
-    for name in researched or []:
-        ok, device_index = known(name)
-        if ok and name not in seen:
-            found.append(Candidate(name, tier, TIERS[tier][1], "named by the research", device_index, VIRTUAL_VOICING[tier], selector_of(name)))
-            seen.add(name)
+    # What the user's ears chose on an earlier run comes first, then what
+    # the research names - each through its own tier's cab and voicing.
+    for names, reason in ((favoured or [], "your ears chose it last time"), (researched or [], "named by the research")):
+        for name in names:
+            ok, device_index = known(name)
+            if ok and name not in seen:
+                own = _tier_of(name, tier)
+                found.append(Candidate(name, own, TIERS[own][1], reason, device_index, VIRTUAL_VOICING[own], selector_of(name)))
+                seen.add(name)
     primary, cab = TIERS[tier]
     for name in primary:
         if len(found) >= max(1, count - 2):

@@ -347,6 +347,26 @@ def _stage_research(run: Run, progress) -> str:
     return f"researcher run {research_id}: {result[:160]}"
 
 
+def _ear_winners(run: Run) -> list[str]:
+    """Amp models the user's ears chose in earlier blind tests of this song."""
+    from . import recipes
+
+    if not run.recipe_id:
+        return []
+    try:
+        recipe = recipes.get(run.recipe_id)
+    except Exception:
+        return []
+    found = []
+    for measurement in getattr(recipe, "measurements", []) or []:
+        if getattr(measurement, "kind", "") == "listen" and getattr(measurement, "won", False):
+            # "Model + Cab (tuned + G EQ)" -> "Model"
+            model = measurement.label.split(" + ")[0].split(" (")[0].strip()
+            if model and model not in found:
+                found.append(model)
+    return found
+
+
 def _researched_cabs(run: Run) -> list[str]:
     return _researched(run, "cab")
 
@@ -443,7 +463,7 @@ def _stage_candidates(run: Run, progress) -> str:
     song = songs.get(run.song_id)
     part = song.part(run.part_ids[0])
     gain = float((part.sketch or {}).get("gain") or 0)
-    field_ = pick(gain, researched=_researched_amps(run), count=run.request.candidates, catalog=get_catalog())
+    field_ = pick(gain, researched=_researched_amps(run), favoured=_ear_winners(run), count=run.request.candidates, catalog=get_catalog())
     if not field_:
         raise Invalid("no candidate amps to try")
     hosts = _device_hosts(run)
