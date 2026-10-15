@@ -11,7 +11,7 @@ pip install -e ".[all]"
 rigsmith ui
 ```
 
-> **Status: works without hardware; one thing needs it.** Rig authoring, validation, NAM analysis, tone matching, catalog extraction, USB backup, MIDI and the web UI are all done and covered by 850 tests. The Remote Editor's wire protocol still has to be captured against a powered-on Core before `write_rig` can write — everything else runs today. See [docs/PROTOCOL.md](docs/PROTOCOL.md).
+> **Status: works without hardware; one thing needs it.** Rig authoring, validation, NAM analysis, tone matching, catalog extraction, USB backup, MIDI and the web UI are all done and covered by 856 tests. The Remote Editor's wire protocol still has to be captured against a powered-on Core before `write_rig` can write — everything else runs today. See [docs/PROTOCOL.md](docs/PROTOCOL.md).
 
 ---
 
@@ -326,6 +326,25 @@ rigsmith match ab start s1 "Cherub Rock" a.wav b.wav c.wav
 
 Then the same panel runs the blind listening test — both clips are decoded up front and switching is a gain crossfade, so you compare the same instant of each rather than a reload.
 
+### Or let autopilot do all of it
+
+```bash
+rigsmith autopilot run "Going Under" --artist Evanescence --mix going-under.flac \
+    --profile lp-bridge --bench device --route analog-focusrite
+```
+
+One run, nine stages: find the song and its credits, isolate the guitar, map
+it, pick the part (yours, or the most prominent), research the gear into a
+recipe (every claim sourced, or marked as measured), play the part on your
+guitar, hear a field of the Core's amps chosen from the part's measured gain
+- each one switched live on the device and reamped through the loop - tune
+the best two and fit an EQ, then build a draft rig and set up a blind A/B of
+the finalists. Every stage records what it decided and why, a failed stage
+can be resumed, and nothing is written to the device: that stays yours.
+
+`--bench virtual` runs the whole thing on the simulated amp - a rehearsal
+that needs no hardware, and says so on every result.
+
 ### Ask for it in plain words
 
 Everything above is a tool, and the app has a chat in front of all of them.
@@ -364,8 +383,7 @@ Ask for a tone. The agent researches the gear, finds an A2 capture, builds the r
     +---------------+---------------+
     |               |               |
   cli.py       mcp/tools/*      web/api.py
-  (click)       (104
- tools)       (FastAPI)
+  (click)       (106 tools)       (FastAPI)
 ```
 
 Each surface is a thin adapter: parse input, call core, format output. That rule exists because the first version broke it — orchestration lived inside the MCP tools, so anything not reachable from a tool was reachable from nowhere, and whole subsystems ended up built and unwired.

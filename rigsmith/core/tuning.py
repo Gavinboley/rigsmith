@@ -142,8 +142,9 @@ class TuneRun:
         path = _dir() / f"{self.run_id}.json"
         data = self.to_dict()
         data.pop("describe", None)
-        path.write_text(json.dumps(data, indent=2, default=float), encoding="utf-8")
-        return path
+        from . import storage
+
+        return storage.write_json(path, data, default=float)
 
 
 def list_runs() -> list[TuneRun]:

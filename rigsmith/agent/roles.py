@@ -69,6 +69,7 @@ ROLES: dict[str, Role] = {
             "show_guitar_profile", "list_drafts", "explain_rig", "list_recipes", "show_recipe",
             "loop_status", "tuning_runs", "list_jobs", "job_status", "workspace_status",
             "choose_parts", "song_brief", "search_models",
+            "run_autopilot", "autopilot_status",
         ],
     ),
     "researcher": Role(

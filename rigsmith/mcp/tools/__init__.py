@@ -7,6 +7,7 @@ get it too.
 """
 
 from . import (  # noqa: F401
+    autopilot,
     captures,
     device,
     learn,
@@ -21,6 +22,7 @@ from . import (  # noqa: F401
 )
 
 __all__ = [
+    "autopilot",
     "captures",
     "device",
     "learn",

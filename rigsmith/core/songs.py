@@ -169,8 +169,9 @@ class Song:
         path = self.directory / "song.json"
         data = self.to_dict()
         data.pop("describe", None)
-        path.write_text(json.dumps(data, indent=2), encoding="utf-8")
-        return path
+        from . import storage
+
+        return storage.write_json(path, data)
 
 
 # --------------------------------------------------------------------------

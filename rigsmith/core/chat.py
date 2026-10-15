@@ -25,7 +25,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from ..config import get_settings, require_writable
-from . import events
+from . import events, storage
 from .errors import Invalid, NotFound
 from .jobs import get_manager
 
@@ -81,9 +81,7 @@ class Chat:
 
     def save(self) -> None:
         self.updated_at = _now()
-        data = asdict(self)
-        path = _dir() / f"chat-{self.chat_id}.json"
-        path.write_text(json.dumps(data, indent=2, default=str), encoding="utf-8")
+        storage.write_json(_dir() / f"chat-{self.chat_id}.json", asdict(self))
 
 
 _lock = threading.Lock()
@@ -95,7 +93,7 @@ def list_chats() -> list[Chat]:
     chats = []
     for path in _dir().glob("chat-*.json"):
         try:
-            chats.append(Chat.from_dict(json.loads(path.read_text(encoding="utf-8"))))
+            chats.append(Chat.from_dict(storage.read_json(path)))
         except (OSError, ValueError, TypeError):
             continue
     chats.sort(key=lambda c: c.updated_at or c.created_at, reverse=True)
@@ -106,7 +104,16 @@ def get(chat_id: str) -> Chat:
     path = _dir() / f"chat-{chat_id}.json"
     if not path.is_file():
         raise NotFound(f"no chat '{chat_id}'")
-    return Chat.from_dict(json.loads(path.read_text(encoding="utf-8")))
+    return Chat.from_dict(storage.read_json(path))
+
+
+def _edit(chat_id: str, change) -> Chat:
+    """Read, change and save one chat under its lock."""
+    with storage.locked(_dir() / f"chat-{chat_id}.json"):
+        chat = get(chat_id)
+        change(chat)
+        chat.save()
+        return chat
 
 
 def create(*, role: str = "assistant", title: str | None = None, allow_writes: bool = False) -> Chat:
@@ -268,9 +275,7 @@ def send(chat_id: str, text: str) -> dict:
     def publish(entry: dict) -> None:
         entry = {"at": _now(), **entry}
         if entry.get("kind") in ("text", "tool_call", "tool_result", "approval", "reasoning", "final", "error"):
-            current = get(chat_id)
-            current.transcript.append(entry)
-            current.save()
+            _edit(chat_id, lambda current: current.transcript.append(entry))
         events.publish({"type": "chat", "chat_id": chat_id, **entry})
 
     def work(progress):
@@ -284,9 +289,7 @@ def send(chat_id: str, text: str) -> dict:
                     allow_writes=current.allow_writes, local=current.mode == "local",
                     cancelled=cancelled, extra_system=_context_note(),
                 )
-                current = get(chat_id)
-                current.claude_session = result.session_id or current.claude_session
-                current.save()
+                _edit(chat_id, lambda current: setattr(current, "claude_session", result.session_id or current.claude_session))
             else:
                 extra = runner.dispatch_tools(
                     lambda r, t: dispatch(r, t, parent=chat_id),
@@ -300,11 +303,12 @@ def send(chat_id: str, text: str) -> dict:
                     approve=lambda call: get(chat_id).allow_writes or _wait_for_approval(chat_id, call, cancelled=cancelled),
                     max_rounds=role.max_rounds, cancelled=cancelled,
                 )
-                current = get(chat_id)
-                current.native = conversation.history() if hasattr(conversation, "history") else []
-                for key, value in (result.usage or {}).items():
-                    current.usage[key] = current.usage.get(key, 0) + value
-                current.save()
+                def record(current):
+                    current.native = conversation.history() if hasattr(conversation, "history") else []
+                    for key, value in (result.usage or {}).items():
+                        current.usage[key] = current.usage.get(key, 0) + value
+
+                _edit(chat_id, record)
             if result.stopped == "error":
                 publish({"kind": "error", "text": result.text or "the model failed"})
             publish({"kind": "done", "text": result.text, "stopped": result.stopped, "cost": result.cost})
@@ -313,15 +317,14 @@ def send(chat_id: str, text: str) -> dict:
             publish({"kind": "error", "text": f"{type(exc).__name__}: {exc}"})
             raise
         finally:
-            current = get(chat_id)
-            current.busy = False
-            current.job_id = None
-            current.save()
+            def settle(current):
+                current.busy = False
+                current.job_id = None
+
+            _edit(chat_id, settle)
 
     job = get_manager().submit(f"chat: {text[:40]}", work)
-    chat = get(chat_id)
-    chat.job_id = job.id
-    chat.save()
+    _edit(chat_id, lambda current: setattr(current, "job_id", job.id) if current.busy else None)
     return {"chat_id": chat_id, "job_id": job.id, "provider": chat.provider}
 
 
@@ -378,14 +381,15 @@ def dispatch(role_name: str, task: str, *, parent: str | None = None, allow_writ
         "result": None,
         "started_at": _now(),
     }
-    _run_path(run_id).write_text(json.dumps(record, indent=2), encoding="utf-8")
+    storage.write_json(_run_path(run_id), record)
     events.publish({"type": "agent", "kind": "started", "run_id": run_id, "role": role.name, "task": task, "parent": parent})
 
     def emit(entry: dict) -> None:
-        data = json.loads(_run_path(run_id).read_text(encoding="utf-8"))
         if entry.get("kind") in ("text", "tool_call", "tool_result", "final", "error", "approval"):
-            data["events"].append({"at": _now(), **entry})
-            _run_path(run_id).write_text(json.dumps(data, indent=2, default=str), encoding="utf-8")
+            with storage.locked(_run_path(run_id)):
+                data = storage.read_json(_run_path(run_id))
+                data["events"].append({"at": _now(), **entry})
+                storage.write_json(_run_path(run_id), data)
         events.publish({"type": "agent", "run_id": run_id, "role": role.name, "parent": parent, **entry})
 
     def work(progress):
@@ -409,16 +413,18 @@ def dispatch(role_name: str, task: str, *, parent: str | None = None, allow_writ
         except Exception as exc:
             state = "failed"
             payload = {"text": f"{type(exc).__name__}: {exc}", "stopped": "error"}
-        data = json.loads(_run_path(run_id).read_text(encoding="utf-8"))
-        data.update(state=state, result=payload, finished_at=_now())
-        _run_path(run_id).write_text(json.dumps(data, indent=2, default=str), encoding="utf-8")
+        with storage.locked(_run_path(run_id)):
+            data = storage.read_json(_run_path(run_id))
+            data.update(state=state, result=payload, finished_at=_now())
+            storage.write_json(_run_path(run_id), data)
         events.publish({"type": "agent", "kind": "finished", "run_id": run_id, "role": role.name, "state": state, "parent": parent, "text": payload.get("text", "")})
         return payload
 
     job = get_manager().submit(f"{role.name}: {task[:40]}", work)
-    data = json.loads(_run_path(run_id).read_text(encoding="utf-8"))
-    data["job_id"] = job.id
-    _run_path(run_id).write_text(json.dumps(data, indent=2), encoding="utf-8")
+    with storage.locked(_run_path(run_id)):
+        data = storage.read_json(_run_path(run_id))
+        data["job_id"] = job.id
+        storage.write_json(_run_path(run_id), data)
     return f"Dispatched {role.title} as run {run_id}. Check it with agent_result('{run_id}')."
 
 
@@ -426,7 +432,7 @@ def agent_run(run_id: str) -> dict:
     path = _run_path(run_id)
     if not path.is_file():
         raise NotFound(f"no agent run '{run_id}'")
-    return json.loads(path.read_text(encoding="utf-8"))
+    return storage.read_json(path)
 
 
 def agent_result(run_id: str) -> str:
@@ -444,7 +450,7 @@ def list_runs(limit: int = 30) -> list[dict]:
     runs = []
     for path in (_dir() / "runs").glob("*.json"):
         try:
-            data = json.loads(path.read_text(encoding="utf-8"))
+            data = storage.read_json(path)
         except (OSError, ValueError):
             continue
         data.pop("events", None)
