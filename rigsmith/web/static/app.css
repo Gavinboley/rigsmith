@@ -725,3 +725,17 @@ input:focus, select:focus { outline: 1px solid var(--amber-dim); border-color: v
 .setup-step.done .tick { background: var(--amber); border-color: var(--amber); }
 .setup-step.done .t { opacity: 0.7; }
 .setup-step .t { font-weight: 600; }
+/* loop wiring diagrams */
+.wiring { width: 100%; max-width: 640px; height: auto; display: block; margin: 6px 0; }
+.wiring .w-box { fill: var(--bg-raised); stroke: var(--line); }
+.wiring .w-title { fill: var(--text); font-size: 14px; font-weight: 600; }
+.wiring .w-sub { fill: var(--text-faint); font-size: 11px; }
+.wiring .w-jack { fill: var(--amber); }
+.wiring .w-label { fill: var(--text-dim); font-size: 11px; font-family: var(--mono); }
+.wiring .w-wire { fill: none; stroke-width: 2.2; }
+.wiring .w-wire.cable { stroke: var(--amber); }
+.wiring .w-wire.usb { stroke: var(--blue); stroke-dasharray: 6 4; }
+.wiring .w-arrowhead { fill: var(--text-dim); }
+.wiring .w-wire-label { fill: var(--text-dim); font-size: 11px; }
+.wiring .w-note { fill: var(--text-faint); font-size: 11px; }
+.wiring .w-warn { fill: var(--amber); font-size: 11px; }

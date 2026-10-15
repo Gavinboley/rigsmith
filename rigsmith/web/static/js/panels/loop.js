@@ -12,6 +12,7 @@ import { describeJob, track } from "../jobs.js";
 import { goTo } from "../nav.js";
 import { $, attempt, clear, el, prompt, toast, when } from "../ui.js";
 import { dropZone } from "../upload.js";
+import { wiringDiagram } from "../wiring.js";
 
 let metering = null;
 
@@ -57,6 +58,7 @@ function routeCard(route, isDefault) {
     ),
     el("div", { class: "hint mono", text: `${route.output_device} out ${route.output_channels.join(",")}  ->  ${route.input_device} in ${route.input_channels.join(",")}${route.reference_channel ? `  (ref ${route.reference_channel})` : ""}  @ ${route.sample_rate} Hz  send ${route.send_gain_db >= 0 ? "+" : ""}${route.send_gain_db.toFixed(1)} dB` }),
     route.note ? el("div", { class: "hint", text: route.note }) : null,
+    el("details", { class: "wiring-box" }, el("summary", { class: "hint", text: "how it is wired" }), wiringDiagram(route)),
     ...(route.problems || []).map((p) => el("div", { class: "problems", text: p })),
     cal ? el("div", { class: "hint", text: `calibrated ${when(cal.measured_at)}: latency ${cal.latency_samples?.toFixed(1)} samples, ${cal.level_method} level, noise ${cal.noise_floor_db} dBFS${cal.drift_ppm ? `, drift ${cal.drift_ppm} ppm` : ""}` }) : el("div", { class: "problems", text: "never calibrated - the send level is a guess" })
   );
@@ -222,6 +224,7 @@ export async function refresh() {
         el("div", { class: "r-title" }, el("span", { text: route.route_id }), el("span", { class: "tag", text: route.kind }), route.hostapi ? el("span", { class: "tag", text: route.hostapi.replace("Windows ", "") }) : null),
         el("div", { class: "hint mono", text: `${route.output_device} out ${route.output_channels.join(",")}  ->  ${route.input_device} in ${route.input_channels.join(",")}  @ ${route.sample_rate} Hz` }),
         el("div", { class: "hint", text: route.note || "" }),
+        wiringDiagram(route),
         el("div", { class: "row" }, el("button", { class: "btn small primary", text: "use this", onclick: () => attempt(async () => { await api.post(`/api/loop/routes/adopt/${route.route_id}`); refresh(); }) }))
       )
     );
