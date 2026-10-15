@@ -118,6 +118,9 @@ class Run:
     tuning_run: str | None = None
     draft_id: str | None = None
     ab_session: str | None = None
+    remaining: list[dict] = field(default_factory=list)
+    """What still differs from the record, band by band, for the result the
+    draft was built from: ``{band, low, high, delta_db, audible, meaning, try}``."""
     ear_pick: str | None = None
     """The candidate the blind A/B chose, when it was not the score's."""
     notes: list[str] = field(default_factory=list)
@@ -678,8 +681,10 @@ def _stage_tune(run: Run, progress) -> str:
     from ..match.metrics import ComparisonMode
     from ..match.render_offline import load_audio, resample, save_audio
     from ..match.score import score_candidate
+    from ..match.metrics import band_differences
     from ..tune import eq as match_eq
     from ..tune.candidates import Candidate
+    from ..tune.eq import informed_start
     from ..tune.optimize import optimise
     from ..tune.space import virtual_amp
 
@@ -715,7 +720,15 @@ def _stage_tune(run: Run, progress) -> str:
                 audio = audio[: len(target)]
             return score_candidate(target, audio, rate, mode=comparison).composite, {}
 
-        result = optimise(space, evaluate, budget=budget, progress=progress)
+        # Start where the untuned sound says to: too much low end starts
+        # with the bass down. On the simulated amp this lowered the tuned
+        # loss by about a fifth at this budget, and was never worse.
+        try:
+            untuned, _ = load_audio(entry["path"])
+            start = informed_start(space, band_differences(target, untuned, rate))
+        except Exception:
+            start = None
+        result = optimise(space, evaluate, budget=budget, start=start, progress=progress)
         best = result.best
         audio = render(candidate, di, best.values)
         if comparison is ComparisonMode.PERFORMANCE:
@@ -753,7 +766,9 @@ def _with_eq(tuned: list[dict], target, rate: int, comparison) -> list[dict]:
         return []
     top = min(tuned, key=lambda r: r["composite"])
     plan = top.get("eq") or {}
-    if not plan or plan.get("before_db", 0) - plan.get("after_db", 0) < 1.0:
+    # No gate on the fit's own estimate of what it buys: a fit that predicted
+    # 0.8 dB moved the score 5%. Hearing it costs one scoring; the score decides.
+    if not plan or not plan.get("graphic_db"):
         return []
     audio, _ = load_audio(top["path"])
     gains = [plan["graphic_db"].get(name, 0.0) for name in GEQ_NAMES]
@@ -773,6 +788,43 @@ def _with_eq(tuned: list[dict], target, rate: int, comparison) -> list[dict]:
         "geq_db": plan["graphic_db"],
         "untuned": top.get("untuned"),
     }]
+
+
+#: What to reach for when a band is off, in the order worth trying. Only a
+#: starting point - the same band can be the amp, the cab or the record.
+BAND_MOVES = {
+    "sub": ("a high-pass around 80 Hz", "a cab with more low end"),
+    "low end": ("Bass down", "Bass up, or a 4x12"),
+    "body": ("Bass or Mid down a little", "Mid up a little"),
+    "mud": ("Mid down, or a cut around 500 Hz", "Mid up"),
+    "mids": ("Mid down", "Mid up"),
+    "presence": ("Presence down", "Presence up"),
+    "bite": ("Treble down", "Treble up"),
+    "fizz": ("a low-pass around 7 kHz, or a darker cab", "Treble or Presence up, or a brighter cab"),
+    "air": ("nothing - usually the record's own top end", "nothing - usually the record's own top end"),
+}
+
+
+def _remaining(run: Run, best: dict) -> list[dict]:
+    """Band by band: where the result the draft was built from still differs."""
+    from ..match.metrics import band_differences
+    from ..match.render_offline import load_audio, resample
+
+    try:
+        target, rate = load_audio(run.target_path)
+        audio, audio_rate = load_audio(best["path"])
+    except Exception:
+        return []
+    if audio_rate != rate:
+        audio = resample(audio, audio_rate, rate)
+    rows = []
+    for diff in band_differences(target, audio, rate):
+        too_much, too_little = BAND_MOVES.get(diff.name, ("", ""))
+        rows.append({
+            "band": diff.name, "low": diff.low, "high": diff.high, "delta_db": round(diff.delta_db, 1),
+            "audible": diff.audible, "meaning": diff.meaning, "try": too_much if diff.delta_db > 0 else too_little,
+        })
+    return rows
 
 
 def _stage_rig(run: Run, *, from_ears: bool = False) -> str:
@@ -839,6 +891,12 @@ def _stage_rig(run: Run, *, from_ears: bool = False) -> str:
             run.ab_session = session_id
         except Exception as exc:
             run.note(f"the blind A/B could not be set up: {exc}")
+    run.remaining = _remaining(run, best)
+    loudest = sorted((r for r in run.remaining if r["audible"] and r["band"] != "air"), key=lambda r: -abs(r["delta_db"]))[:2]
+    if loudest:
+        run.note("still different from the record: " + "; ".join(
+            f"{r['band']} {r['delta_db']:+.1f} dB (try {r['try']})" for r in loudest
+        ))
     return f"draft '{run.draft_id}' with {best['model']} and {best['cab']}"
 
 

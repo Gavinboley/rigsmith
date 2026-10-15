@@ -150,3 +150,17 @@ def test_live_tuning_refuses_knobs_on_blocks_the_loaded_rig_lacks(tmp_path, monk
         assert "no Amp block" in str(caught.value)
     finally:
         config.set_settings(None)
+
+
+def test_the_search_starts_where_the_untuned_sound_says_to_turn():
+    from rigsmith.match.metrics import band_differences
+    from rigsmith.tune.eq import informed_start
+
+    di = render_notes([(0.2 + i * 0.25, 0.22, 40 + (i * 3) % 12, 0.8) for i in range(32)], seed=2)
+    target = SimAmp(Type=2, Gain=0.6, Bass=0.15, Treble=0.85).process(di)
+    space = virtual_amp(("GainA", "Bass", "Mid", "Treble", "Presence"))
+    untuned = SimAmp(Type=2, Gain=0.5).process(di)
+    start = informed_start(space, band_differences(target, untuned, 48000))
+    assert start["Amp.Bass"] < 0.4 and start["Amp.Treble"] > 0.6
+    assert start["Amp.GainA"] == 0.5  # no band rule for gain: left where it was
+    assert all(abs(start[k] - 0.5) <= 0.3 + 1e-9 for k in start)

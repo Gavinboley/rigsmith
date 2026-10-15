@@ -386,7 +386,20 @@ def tune(
         scored = score_candidate(target_audio, audio, rate, mode=comparison)
         return scored.composite, {m.name: round(m.value, 5) for m in scored.metrics}
 
-    result = optimise(space, evaluate, budget=budget, method=method, progress=progress)
+    # Start from where the untuned sound says to turn (see informed_start) -
+    # one extra render, and a much better first guess than every knob at noon.
+    start = None
+    try:
+        from ..match.metrics import band_differences
+        from ..tune.eq import informed_start
+
+        untuned = render(space.start())
+        if comparison is ComparisonMode.PERFORMANCE:
+            untuned = untuned[: len(target_audio)]
+        start = informed_start(space, band_differences(target_audio, untuned, rate))
+    except Exception:
+        start = None
+    result = optimise(space, evaluate, budget=budget, method=method, start=start, progress=progress)
     run.result = result.to_dict()
     best = result.best
     if best is not None:

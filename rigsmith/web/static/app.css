@@ -761,3 +761,13 @@ button.pill { cursor: pointer; font: inherit; font-size: 11px; }
 .palette-item .title { color: var(--text); }
 .palette-item .hint { margin-left: auto; font-size: 12px; }
 .palette-item.on, .palette-item:hover { background: var(--bg-raised); }
+/* autopilot: what is still different */
+.remaining { margin-top: 14px; }
+.rem-row { display: grid; grid-template-columns: 80px minmax(160px, 1fr) 52px minmax(0, 1.4fr); gap: 10px; align-items: center; padding: 3px 0; }
+.rem-band { font-size: 12px; color: var(--text-dim); }
+.rem-track { position: relative; height: 10px; background: var(--bg-sunken); border-radius: 5px; }
+.rem-mid { position: absolute; left: 50%; top: -2px; bottom: -2px; width: 1px; background: var(--line); }
+.rem-bar { position: absolute; top: 2px; height: 6px; border-radius: 3px; background: var(--text-faint); }
+.rem-bar.audible { background: var(--amber); }
+.rem-db { font-size: 12px; text-align: right; }
+.rem-try { font-size: 12px; }

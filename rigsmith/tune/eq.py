@@ -181,3 +181,42 @@ def match(target, candidate, sample_rate: int) -> EQPlan:
         curve=[round(float(v), 2) for v in diff],
         grid=[round(float(f), 1) for f in GRID],
     )
+
+
+#: How each amp knob is moved by what the record has more (or less) of, as
+#: (band weights, dB per unit of knob travel). A tone stack's bass shelf
+#: moves the low end; mids the 400-1600 band; treble the bite; presence the
+#: top. The scale is the simulated amp's (24 dB per full turn, 18 for
+#: presence) - on a real amp it is only a direction and a rough size, which is
+#: all a starting point needs.
+KNOB_BANDS = {
+    "Bass": ({"low end": 0.6, "body": 0.4}, 24.0),
+    "Mid": ({"mids": 0.7, "mud": 0.3}, 24.0),
+    "Treble": ({"bite": 1.0}, 24.0),
+    "Presence": ({"presence": 0.5, "fizz": 0.5}, 18.0),
+}
+
+#: The furthest a starting point moves any knob from where it was.
+MAX_START_MOVE = 0.3
+
+
+def informed_start(space, differences, *, current: dict | None = None) -> dict:
+    """Where to start turning knobs, from where the candidate is off.
+
+    ``differences`` is :func:`rigsmith.match.metrics.band_differences` of the
+    untuned candidate against the target: too much low end starts the search
+    with the bass down, and so on. Without this the search starts every knob
+    at noon and a small budget can end before it gets to the obvious move.
+    """
+    delta = {d.name: d.delta_db for d in differences}
+    start = dict(current or space.start())
+    for knob in space.knobs:
+        rule = KNOB_BANDS.get(knob.param) or KNOB_BANDS.get({"Pres": "Presence"}.get(knob.param, ""))
+        if rule is None:
+            continue
+        weights, scale = rule
+        excess = sum(delta.get(band, 0.0) * weight for band, weight in weights.items())
+        move = max(-MAX_START_MOVE, min(MAX_START_MOVE, -excess / scale))
+        start[knob.key] = start.get(knob.key, (knob.low + knob.high) / 2) + move * (knob.high - knob.low)
+    return space.clip(start)
+

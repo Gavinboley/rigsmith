@@ -88,6 +88,9 @@ def test_a_whole_run_ends_in_a_draft_and_a_listening_test(workspace):
     assert run.draft_id and rigs.get(run.draft_id).rig.blocks
     assert run.ab_session
     assert any("rehearsal" in n for n in run.all_notes())
+    # What is still different, band by band, with something to try.
+    assert {r["band"] for r in run.remaining} >= {"low end", "mids", "presence"}
+    assert all(r["try"] for r in run.remaining)
     assert any("pickup was moved toward strat" in n for n in run.all_notes()), run.all_notes()
     # Research was off: the gear measured from the record is not "research".
     assert not any("named by the research" in str(r.get("reason")) for r in run.results), run.results

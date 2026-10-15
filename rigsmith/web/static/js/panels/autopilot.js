@@ -170,6 +170,32 @@ function audioLink(label, url) {
   return button;
 }
 
+/* Band by band, where the draft's sound still differs from the record: a
+ * bar right of centre is too much, left is not enough, amber is audible. */
+function remainingCard(rows) {
+  const span = 12;
+  const box = el(
+    "div",
+    { class: "remaining" },
+    el("div", { class: "scenes-head" }, el("h3", { text: "Still different from the record" }), el("span", { class: "hint", text: "right of centre: more than the record; left: less. Differences under 1.5 dB are hard to hear." }))
+  );
+  for (const row of rows) {
+    const width = Math.min(Math.abs(row.delta_db), span) / span * 50;
+    const bar = el("div", { class: `rem-bar ${row.audible ? "audible" : ""}`, style: row.delta_db >= 0 ? `left:50%;width:${width}%` : `left:${50 - width}%;width:${width}%` });
+    box.append(
+      el(
+        "div",
+        { class: "rem-row", title: row.meaning },
+        el("span", { class: "rem-band", text: row.band }),
+        el("div", { class: "rem-track" }, el("div", { class: "rem-mid" }), bar),
+        el("span", { class: "rem-db mono", text: `${row.delta_db > 0 ? "+" : ""}${row.delta_db.toFixed(1)}` }),
+        el("span", { class: "hint rem-try", text: row.audible ? `try ${row.try}` : "" })
+      )
+    );
+  }
+  return box;
+}
+
 function show(run) {
   // A run that just finished - by the poll or by a pushed event, whichever
   // got here first - changes the past-runs list too.
@@ -237,6 +263,7 @@ function show(run) {
     }
     card.append(el("h3", { text: "Closest first", style: "margin-top:14px" }), list);
   }
+  if (run.remaining?.length) card.append(remainingCard(run.remaining));
   for (const note of run.notes || []) card.append(el("div", { class: "notice", text: note }));
   host.append(card);
 
