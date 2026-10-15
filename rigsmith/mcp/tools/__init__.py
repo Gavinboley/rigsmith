@@ -16,6 +16,7 @@ from . import (  # noqa: F401
     rigs,
     songs,
     takes,
+    tuning,
     workspace,
 )
 
@@ -29,5 +30,6 @@ __all__ = [
     "rigs",
     "songs",
     "takes",
+    "tuning",
     "workspace",
 ]

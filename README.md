@@ -11,7 +11,7 @@ pip install -e ".[all]"
 rigsmith ui
 ```
 
-> **Status: works without hardware; one thing needs it.** Rig authoring, validation, NAM analysis, tone matching, catalog extraction, USB backup, MIDI and the web UI are all done and covered by 826 tests. The Remote Editor's wire protocol still has to be captured against a powered-on Core before `write_rig` can write — everything else runs today. See [docs/PROTOCOL.md](docs/PROTOCOL.md).
+> **Status: works without hardware; one thing needs it.** Rig authoring, validation, NAM analysis, tone matching, catalog extraction, USB backup, MIDI and the web UI are all done and covered by 833 tests. The Remote Editor's wire protocol still has to be captured against a powered-on Core before `write_rig` can write — everything else runs today. See [docs/PROTOCOL.md](docs/PROTOCOL.md).
 
 ---
 
@@ -262,6 +262,29 @@ No hardware connected? `rigsmith loop demo` sets up a simulated interface and
 Core - with jittery latency, drifting clocks and a hot send, the faults the
 real loop has to undo - and labels everything made on it as simulated.
 
+### Let it turn the knobs
+
+A capture search picks which amp; `tune` turns its knobs. Each setting is
+rendered, scored against the part, and the next one chosen from what the
+scores so far say - offline, or **live on the Core**: written to the loaded
+patch over the network and reamped through the loop, so every evaluation is
+the device's own output.
+
+```bash
+rigsmith tune run verse-target.wav --di verse-on-my-lp --mode performance \
+    --renderer loop --draft going-under --budget 40
+rigsmith tune apply 20261015-051226-38ea going-under --eq
+```
+
+Built for small budgets - a hardware evaluation is seconds of real audio - so
+it spreads a few starting points (an amp's gain landscape has more than one
+basin) and then pattern-searches from the best. What the knobs cannot close
+is handed to a match EQ fitted by least squares to the Core's own G EQ bands
+or a block's slot EQ, with the remaining difference measured, not promised.
+In performance mode it finds its way back to the settings that made a target
+from a different performance of the same notes; in distribution mode the low
+end is barely constrained, which is why the part DI exists.
+
 ### What it can read
 
 Whatever libsndfile on your machine can: **wav, aiff, flac, ogg, and mp3**
@@ -319,7 +342,7 @@ Ask for a tone. The agent researches the gear, finds an A2 capture, builds the r
     +---------------+---------------+
     |               |               |
   cli.py       mcp/tools/*      web/api.py
-  (click)       (101 tools)       (FastAPI)
+  (click)       (104 tools)       (FastAPI)
 ```
 
 Each surface is a thin adapter: parse input, call core, format output. That rule exists because the first version broke it — orchestration lived inside the MCP tools, so anything not reachable from a tool was reachable from nowhere, and whole subsystems ended up built and unwired.

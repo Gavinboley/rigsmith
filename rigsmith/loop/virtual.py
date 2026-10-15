@@ -106,8 +106,14 @@ class SimAmp:
     enabled: bool = True
     cab: bool = True
 
+    #: The Core's Amp block calls these GainA, Presence and Master; the
+    #: simulated amp answers to both, so a tuner written against the real
+    #: block's parameter names drives this one unchanged.
+    ALIASES = {"GainA": "Gain", "Presence": "Pres", "Master": "Level"}
+
     def set(self, **values) -> None:
         for name, value in values.items():
+            name = self.ALIASES.get(name, name)
             if name == "Type":
                 self.Type = int(value) if int(value) in VOICINGS else self.Type
             elif name in CONTROLS:
