@@ -48,7 +48,7 @@ def progress_bar(label: str):
 
 
 #: Modules under this package that each define a click ``group``.
-MODULES = ("learn", "loop", "song", "tune", "settings")
+MODULES = ("learn", "loop", "song", "tune", "settings", "agent")
 
 
 def register(root: click.Group) -> None:
@@ -57,3 +57,6 @@ def register(root: click.Group) -> None:
     for name in MODULES:
         module = import_module(f"{__name__}.{name}")
         root.add_command(module.group)
+    from .agent import chat_command
+
+    root.add_command(chat_command)

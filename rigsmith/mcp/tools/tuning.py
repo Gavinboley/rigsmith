@@ -44,7 +44,7 @@ def tune_rig(
 
 @tool
 def tuning_runs() -> str:
-    """Past tuning runs and how far each got."""
+    """Past tuning runs: which renderer and mode each used, and how far each got."""
     runs = tuning.list_runs()
     return "\n".join(r.describe().splitlines()[0] for r in runs[:20]) or "No tuning runs yet."
 

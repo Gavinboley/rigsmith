@@ -11,7 +11,7 @@ pip install -e ".[all]"
 rigsmith ui
 ```
 
-> **Status: works without hardware; one thing needs it.** Rig authoring, validation, NAM analysis, tone matching, catalog extraction, USB backup, MIDI and the web UI are all done and covered by 833 tests. The Remote Editor's wire protocol still has to be captured against a powered-on Core before `write_rig` can write — everything else runs today. See [docs/PROTOCOL.md](docs/PROTOCOL.md).
+> **Status: works without hardware; one thing needs it.** Rig authoring, validation, NAM analysis, tone matching, catalog extraction, USB backup, MIDI and the web UI are all done and covered by 850 tests. The Remote Editor's wire protocol still has to be captured against a powered-on Core before `write_rig` can write — everything else runs today. See [docs/PROTOCOL.md](docs/PROTOCOL.md).
 
 ---
 
@@ -326,6 +326,28 @@ rigsmith match ab start s1 "Cherub Rock" a.wav b.wav c.wav
 
 Then the same panel runs the blind listening test — both clips are decoded up front and switching is a gain crossfade, so you compare the same instant of each rather than a reload.
 
+### Ask for it in plain words
+
+Everything above is a tool, and the app has a chat in front of all of them.
+Type what you want; the assistant looks things up, and hands bigger jobs to
+specialists - a researcher, a song mapper, a guitar coach, a tone matcher, a
+rig builder - that work in the background with only the tools their job
+needs. Anything that would change the device or delete work stops and asks
+you first.
+
+```bash
+rigsmith chat                                   # the same assistant, in a terminal
+rigsmith agent run researcher "the gear on Going Under's verse riff"
+rigsmith agent status                           # which models are available
+```
+
+In accuracy mode the agents are Claude, through Claude Code (with rigsmith's
+tools and web search) or the Anthropic API. In local mode they run on
+whatever OpenAI-compatible server is on this machine - LM Studio, Ollama,
+llama.cpp - with Qwen's tool-call formats handled, including the ones it
+writes into its text instead of the proper field. See
+[docs/LOCAL_MODELS.md](docs/LOCAL_MODELS.md) for which models to load.
+
 ### Use it from Claude Code
 
 ```bash
@@ -342,7 +364,8 @@ Ask for a tone. The agent researches the gear, finds an A2 capture, builds the r
     +---------------+---------------+
     |               |               |
   cli.py       mcp/tools/*      web/api.py
-  (click)       (104 tools)       (FastAPI)
+  (click)       (104
+ tools)       (FastAPI)
 ```
 
 Each surface is a thin adapter: parse input, call core, format output. That rule exists because the first version broke it — orchestration lived inside the MCP tools, so anything not reachable from a tool was reachable from nowhere, and whole subsystems ended up built and unwired.
@@ -375,7 +398,7 @@ pip install -e ".[all]"     # everything, including the UI and test deps
 pip install -e .            # core only: discovery, protocol capture, rig authoring
 ```
 
-Extras: `ui`, `mcp`, `midi`, `audio`, `match`, `separation`, `browser`, `dev`. `rigsmith doctor` tells you which you're missing and why you'd want each.
+Extras: `ui`, `mcp`, `midi`, `audio`, `match`, `separation`, `browser`, `claude` (the Anthropic SDK, for agents on the API rather than through Claude Code), `tune` (Optuna, for larger tuning budgets), `dev`. `rigsmith doctor` tells you which you're missing and why you'd want each.
 
 ## Documentation
 
