@@ -137,23 +137,63 @@ def _band_db(power, freqs, low, high):
     return 10 * math.log10(max(float(power[mask].mean()) if mask.any() else 0.0, 1e-20))
 
 
-def _gain(frames, freqs, crest_db) -> float:
+def _periodicity(audio, sample_rate, *, n: int = 2048, hop: int = 1024) -> float:
+    """Median normalised autocorrelation peak over the playing frames, 70 Hz-1.2 kHz.
+
+    About 0.95 for single notes up the neck, 0.75 for a low single-note
+    riff, 0.4 for chords - which is what the gain estimate needs to know,
+    because each of those fills the spectrum differently when driven.
+    """
+    x = np.asarray(audio, dtype=np.float64)
+    if len(x) < n * 2:
+        return 0.0
+    frames = np.lib.stride_tricks.sliding_window_view(x, n)[::hop]
+    energy = (frames**2).sum(axis=1)
+    frames = frames[energy > energy.max() * 10 ** (-25 / 10)]
+    if not len(frames):
+        return 0.0
+    frames = frames - frames.mean(axis=1, keepdims=True)
+    spectrum = np.fft.rfft(frames, 2 * n, axis=1)
+    correlation = np.fft.irfft(np.abs(spectrum) ** 2, axis=1)[:, :n]
+    zero = np.maximum(correlation[:, :1], 1e-20)
+    low, high = int(sample_rate / 1200), int(sample_rate / 70)
+    return float(np.median((correlation[:, low:high] / zero).max(axis=1)))
+
+
+def _gain(frames, freqs, crest_db, periodicity: float | None = None) -> float:
     """0-1 drive estimate.
 
     Two things distortion does, scaled and weighted: it flattens the peaks
-    (crest factor falls from ~14 dB clean to ~7 saturated) and it fills the
-    spectrum in between harmonics (1-5 kHz flatness rises from ~0.2 to ~0.3).
-    The scales were set on the simulated amp's voicings, from clean to its
-    hottest; a mastered stem's limiter lowers the crest of everything, which
-    is the main reason this reads a little high on records.
+    (crest factor falls from ~14 dB clean to ~6 saturated) and it fills the
+    spectrum in between harmonics. How much it fills depends on what is
+    played, so ``periodicity`` (:func:`_periodicity`) picks the scale:
+
+    - single notes up the neck have harmonics too far apart to fill - 1-5 kHz
+      flatness sits at ~0.06 at any drive - so crest carries the estimate
+      (before, a lead through a high-gain amp could not read above 0.6);
+    - chords fill it fast, from ~0.1 clean to ~0.4 driven, through
+      intermodulation, so their flatness scale is wider (before, a chord
+      part through a medium-gain amp read as fuzz);
+    - low single-note riffs are what the original scales were set on.
+
+    The scales were set on the simulated amp's voicings; a mastered stem's
+    limiter lowers the crest of everything, which is the main reason this
+    reads a little high on records.
     """
     if not len(frames):
         return 0.0
     band = (freqs >= 1000) & (freqs <= 5000)
     segment = frames[:, band] + 1e-12
     flatness = float(np.median(np.exp(np.mean(np.log(segment), axis=1)) / np.mean(segment, axis=1)))
+    if periodicity is not None and periodicity >= 0.85:
+        c_term = np.clip((14.0 - crest_db) / 8.5, 0, 1)
+        f_term = np.clip((flatness - 0.06) / 0.1, 0, 1)
+        return float(np.clip(0.9 * c_term + 0.1 * f_term, 0, 1))
     c_term = np.clip((14.0 - crest_db) / 7.0, 0, 1)
-    f_term = np.clip((flatness - 0.2) / 0.12, 0, 1)
+    if periodicity is not None and periodicity < 0.55:
+        f_term = np.clip((flatness - 0.2) / 0.2, 0, 1)
+    else:
+        f_term = np.clip((flatness - 0.2) / 0.12, 0, 1)
     return float(np.clip(0.6 * c_term + 0.4 * f_term, 0, 1))
 
 
@@ -534,7 +574,7 @@ def sketch(audio, sample_rate: int, *, tempo: float | None = None, from_stem: bo
         "heavily compressed" if result.dynamic_range_db < 6 else "compressed" if result.dynamic_range_db < 12 else "dynamic"
     )
 
-    result.gain = round(_gain(frames, freqs, result.crest_db), 3)
+    result.gain = round(_gain(frames, freqs, result.crest_db, _periodicity(audio, sample_rate)), 3)
     result.gain_label = _gain_label(result.gain)
 
     mid = result.bands_db["mid"]

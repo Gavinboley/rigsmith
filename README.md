@@ -11,7 +11,7 @@ pip install -e ".[all]"
 rigsmith ui
 ```
 
-> **Status: everything runs today.** Rig authoring, validation, NAM analysis, tone matching, catalog extraction, USB backup, MIDI, guitar learning, song maps, the hardware loop, the tuner, autopilot, the chat and the web UI are covered by 878 tests. The Remote Editor protocol has been captured against a real Core and a rig written to it and read back exactly - see [docs/PROTOCOL.md](docs/PROTOCOL.md). What still wants hardware is *measuring*: the loop and the blind A/B need the Core and an interface plugged in.
+> **Status: everything runs today.** Rig authoring, validation, NAM analysis, tone matching, catalog extraction, USB backup, MIDI, guitar learning, song maps, the hardware loop, the tuner, autopilot, the chat and the web UI are covered by 879 tests. The Remote Editor protocol has been captured against a real Core and a rig written to it and read back exactly - see [docs/PROTOCOL.md](docs/PROTOCOL.md). What still wants hardware is *measuring*: the loop and the blind A/B need the Core and an interface plugged in.
 
 ---
 

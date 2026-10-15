@@ -319,3 +319,20 @@ def test_tremolo_is_a_level_wobble_inside_notes_not_the_rhythm():
     assert wobbling.modulation == "tremolo" and 4.6 < wobbling.modulation_hz < 5.4, wobbling.describe()
     # Steady eighth notes put their own pulse in the level; that is not tremolo.
     assert describe.sketch(SimAmp(Type=0, Gain=0.1).process(riff_di()), RATE, from_stem=False).modulation == ""
+
+
+def test_gain_reads_the_same_drive_alike_for_a_lead_a_riff_and_chords():
+    rng = np.random.default_rng(3)
+    lead = render_notes([(0.2 + i * 0.3, 0.28, int(m), 0.8) for i, m in enumerate(rng.integers(62, 79, size=40))], seed=2)
+    chords = render_notes(
+        [(0.2 + i * 0.5 + k * 0.005, 0.45, 40 + [0, 5, 7, 3][i % 4] + interval, 0.7) for i in range(24) for k, interval in enumerate((0, 7, 12))],
+        seed=4,
+    )
+    order = ["clean", "edge", "crunch", "high", "modern"]
+    from rigsmith.tune.candidates import tier_for
+
+    for voicing, drive in ((0, 0.1), (1, 0.3), (1, 0.6), (2, 0.6), (3, 0.9)):
+        tiers = [order.index(tier_for(describe.sketch(SimAmp(Type=voicing, Gain=drive).process(src), RATE, from_stem=False).gain)) for src in (lead, riff_di(), chords)]
+        assert max(tiers) - min(tiers) <= 1, (voicing, drive, tiers)
+    # A lead through a high-gain amp reads as high gain, not crunch.
+    assert describe.sketch(SimAmp(Type=2, Gain=0.6).process(lead), RATE, from_stem=False).gain >= 0.58
