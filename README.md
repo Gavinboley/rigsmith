@@ -11,7 +11,7 @@ pip install -e ".[all]"
 rigsmith ui
 ```
 
-> **Status: everything runs today.** Rig authoring, validation, NAM analysis, tone matching, catalog extraction, USB backup, MIDI, guitar learning, song maps, the hardware loop, the tuner, autopilot, the chat and the web UI are covered by 910 tests. The Remote Editor protocol has been captured against a real Core and a rig written to it and read back exactly - see [docs/PROTOCOL.md](docs/PROTOCOL.md). What still wants hardware is *measuring*: the loop and the blind A/B need the Core and an interface plugged in - [docs/FIRST_SESSION.md](docs/FIRST_SESSION.md) walks through that first session.
+> **Status: everything runs today.** Rig authoring, validation, NAM analysis, tone matching, catalog extraction, USB backup, MIDI, guitar learning, song maps, the hardware loop, the tuner, autopilot, the chat and the web UI are covered by 915 tests. The Remote Editor protocol has been captured against a real Core and a rig written to it and read back exactly - see [docs/PROTOCOL.md](docs/PROTOCOL.md). What still wants hardware is *measuring*: the loop and the blind A/B need the Core and an interface plugged in - [docs/FIRST_SESSION.md](docs/FIRST_SESSION.md) walks through that first session.
 
 ---
 
@@ -244,6 +244,7 @@ time against the tempo, room, tremolo.
 rigsmith song new "Going Under" --artist Evanescence --mix ~/Music/going-under.flac --lookup
 rigsmith song isolate going-under-evanescence      # the guitar stem, via Demucs
 rigsmith song analyse going-under-evanescence      # sections x layers -> parts
+rigsmith song tempo going-under-evanescence --double   # if it heard half notes as beats
 rigsmith song choose going-under-evanescence verse-2-left --only
 rigsmith song di going-under-evanescence verse-2-left lp-bridge --midi tab.mid
 rigsmith song brief going-under-evanescence        # what a researcher starts from
@@ -251,6 +252,11 @@ rigsmith song brief going-under-evanescence        # what a researcher starts fr
 
 The lookup fills in album, year and recording credits; it never fetches the
 song itself - the record you chase is the copy you own.
+
+The tempo decides each delay's note value and the tempo a draft rig is
+saved with, and a beat tracker's known mistake is an octave (70 for 140).
+Halve it, double it, type it, or tap along with the record on the song's
+page; a tempo set by hand survives re-mapping.
 
 Already recorded yourself playing the part, along with the record or to a
 click at its tempo? `rigsmith song take <song> <part> <take>` (or *my take*
@@ -458,7 +464,7 @@ Ask for a tone. The agent researches the gear, finds an A2 capture, builds the r
     +---------------+---------------+
     |               |               |
   cli.py       mcp/tools/*      web/api.py
-  (click)       (119 tools)       (FastAPI)
+  (click)       (120 tools)       (FastAPI)
 ```
 
 Each surface is a thin adapter: parse input, call core, format output. That rule exists because the first version broke it — orchestration lived inside the MCP tools, so anything not reachable from a tool was reachable from nowhere, and whole subsystems ended up built and unwired.

@@ -347,5 +347,11 @@ def test_synced_blocks_give_the_draft_the_songs_tempo(workspace):
     other = rigs.create("fast").draft.draft_id
     autopilot._carry_tempo(None, other, [{"role": "tremolo", "division": "1/8"}], 300.0, notes)
     assert rigs.get(other).rig.tempo is None and "tap it in" in notes[0]
+    notes.clear()
+    autopilot._carry_tempo(None, other, [{"role": "delay", "division": "1/8"}], 70.0, notes, structure={"tempo_confidence": 0.2})
+    assert "was a guess" in notes[0]
+    notes.clear()
+    autopilot._carry_tempo(None, other, [{"role": "delay", "division": "1/8"}], 70.0, notes, structure={"tempo_confidence": 0.2, "tempo_source": "hand"})
+    assert "guess" not in notes[0], "a tempo set by hand is not a guess"
     with pytest.raises(Exception):
         rigs.set_tempo(other, 20.0)

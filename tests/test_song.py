@@ -383,3 +383,37 @@ def test_a_take_of_a_part_becomes_its_di_when_it_follows_the_record(workspace, t
     assert result["aligned"] and songs.get(made.song_id).part(part.part_id).di_take == result["take_id"]
     noise = save_audio(tmp_path / "noise.wav", np.random.default_rng(0).normal(0, 0.05, RATE * 8), RATE)
     assert not songs.take_for_part(made.song_id, part.part_id, str(noise))["aligned"]
+
+
+def test_a_corrected_tempo_retimes_each_parts_delay(workspace):
+    from rigsmith.core.errors import Invalid
+    from rigsmith.core.songs import Part
+
+    made = songs.create("Tempo")
+    made.structure = {"tempo": 60.0, "tempo_confidence": 0.3, "sections": []}
+    # 375 ms is nothing in particular at 60 BPM, and a dotted eighth at 120.
+    made.parts = [Part("verse-1-stem", 0, "verse", "stem", 0.0, 10.0, sketch=describe.ToneSketch(delay_ms=375.0).to_dict())]
+    made.save()
+
+    doubled = songs.set_tempo(made.song_id, factor=2)
+    assert doubled.structure["tempo"] == 120 and doubled.structure["tempo_source"] == "hand"
+    sketch = doubled.parts[0].sketch
+    assert sketch["delay_note"] == "dotted eighth" and "dotted eighth" in sketch["summary"]
+    assert any("dotted eighth" in s for s in sketch["suggestions"])
+    assert "(set)" in doubled.describe()
+    assert songs.set_tempo(made.song_id, 100.0).parts[0].sketch["delay_note"] is None
+    with pytest.raises(Invalid):
+        songs.set_tempo(made.song_id, 500.0)
+    with pytest.raises(Invalid):
+        songs.set_tempo(songs.create("Unmapped").song_id, factor=2)
+
+
+def test_a_tempo_set_by_hand_survives_a_remap(workspace):
+    from rigsmith.match.render_offline import save_audio
+
+    stem, _ = song(seconds_per_section=8.0)
+    made = songs.create("Remap", stem=str(save_audio(workspace / "stem.wav", stem, RATE)))
+    songs.analyse(made.song_id)
+    songs.set_tempo(made.song_id, 97.5)
+    again = songs.analyse(made.song_id)
+    assert again.structure["tempo"] == 97.5 and again.structure["tempo_source"] == "hand"

@@ -173,6 +173,28 @@ def song_rename_section(song_id, index, name) -> None:
     click.echo(f"section {index} is now '{name}'")
 
 
+@group.command("tempo")
+@click.argument("song_id")
+@click.argument("bpm", type=float, required=False)
+@click.option("--half", "factor", flag_value=0.5, help="Halve the detected tempo.")
+@click.option("--double", "factor", flag_value=2.0, help="Double the detected tempo.")
+@handled
+def song_tempo(song_id, bpm, factor) -> None:
+    """Show or correct the song's tempo (the detector can be an octave out)."""
+    from ..core import songs
+
+    if bpm is None and factor is None:
+        structure = songs.get(song_id).structure or {}
+        if not structure.get("tempo"):
+            click.echo("no tempo yet - map the song, or give the BPM")
+            return
+        how = "set by hand" if structure.get("tempo_source") == "hand" else f"detected, {structure.get('tempo_confidence', 0):.0%} sure"
+        click.echo(f"{structure['tempo']:g} BPM ({how})")
+        return
+    song = songs.set_tempo(song_id, bpm, factor=factor)
+    click.echo(f"{song.structure['tempo']:g} BPM, set by hand - delay note values re-timed for {len(song.parts)} part(s)")
+
+
 @group.command("target")
 @click.argument("song_id")
 @click.argument("part_id")

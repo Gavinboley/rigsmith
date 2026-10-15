@@ -124,7 +124,7 @@ function render() {
           el("h2", { text: song.title }),
           el("div", { class: "song-meta", text: [song.artist, song.album, song.year].filter(Boolean).join("  -  ") }),
           credits.length ? el("div", { class: "hint", text: "guitar: " + credits.map((c) => c.name).join(", ") }) : null,
-          song.structure ? el("div", { class: "hint mono", text: `${song.structure.tempo.toFixed(0)} BPM  ${song.structure.key}  ${song.structure.duration.toFixed(0)}s` }) : null
+          song.structure ? tempoLine() : null
         )
       ),
       el(
@@ -163,6 +163,64 @@ function render() {
     return;
   }
   host.append(timeline(), partsGrid());
+}
+
+/* The tempo decides each part's delay note value and the tempo a draft rig
+ * is saved with, and the detector's known mistake is an octave - so it can
+ * be halved, doubled, tapped along with the record, or typed. */
+function tempoLine() {
+  const s = song.structure;
+  const bpm = Number(s.tempo || 0);
+  const byHand = s.tempo_source === "hand";
+  const unsure = !byHand && (s.tempo_confidence ?? 1) < 0.35;
+  const setTempo = (body) =>
+    attempt(async () => {
+      song = await api.post(`/api/songs/${songId}/tempo`, body);
+      render();
+    }, { success: "Tempo set - delay note values re-timed" });
+  const exact = async () => {
+    const values = await prompt("Song tempo", [
+      { type: "note", text: "Synced delays and tremolos in a draft follow this, and the rig is saved with it." },
+      { name: "bpm", label: "BPM", type: "number", value: bpm || "" },
+    ]);
+    if (values && Number(values.bpm)) setTempo({ bpm: Number(values.bpm) });
+  };
+  return el(
+    "div",
+    { class: "tempo-line hint mono" },
+    el("button", { class: "btn small ghost", id: "song-tempo", text: `${bpm.toFixed(Number.isInteger(bpm) ? 0 : 1)} BPM`, title: "Set the tempo exactly", onclick: exact }),
+    byHand ? el("span", { class: "tag", text: "set", title: "Set by hand - kept when the song is re-mapped" }) : null,
+    unsure ? el("span", { class: "tag warn", text: "unsure", title: "The beat was not clear - check it against the record" }) : null,
+    el("button", { class: "btn small ghost", text: "\u00bd", title: "Halve it (the detector heard eighth notes as beats)", onclick: () => setTempo({ factor: 0.5 }) }),
+    el("button", { class: "btn small ghost", text: "\u00d72", title: "Double it (the detector heard half notes as beats)", onclick: () => setTempo({ factor: 2 }) }),
+    tapButton(setTempo),
+    el("span", { text: `${s.key}  ${Number(s.duration || 0).toFixed(0)}s` })
+  );
+}
+
+function tapButton(setTempo) {
+  let taps = [];
+  let timer = null;
+  const button = el("button", { class: "btn small ghost", id: "tempo-tap", text: "tap", title: "Tap along with the record - four taps or more, then stop" });
+  button.onclick = () => {
+    const now = performance.now();
+    if (taps.length && now - taps.at(-1) > 2000) taps = [];
+    taps.push(now);
+    clearTimeout(timer);
+    if (taps.length < 2) {
+      button.textContent = "tap...";
+      return;
+    }
+    const bpm = 60000 / ((taps.at(-1) - taps[0]) / (taps.length - 1));
+    button.textContent = `tap ${bpm.toFixed(1)}`;
+    if (taps.length >= 4) {
+      timer = setTimeout(() => {
+        taps = [];
+        setTempo({ bpm: Math.round(bpm * 10) / 10 });
+      }, 1600);
+    }
+  };
+  return button;
 }
 
 function timeline() {

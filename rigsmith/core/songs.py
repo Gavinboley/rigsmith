@@ -146,7 +146,9 @@ class Song:
         lines.append(f"  stem: {self.stem or '(none - isolate it, or add one)'}")
         if self.structure:
             lines.append(
-                f"  {self.structure.get('tempo', 0):.0f} BPM, {self.structure.get('key')}, "
+                f"  {self.structure.get('tempo', 0):.0f} BPM"
+                + (" (set)" if self.structure.get("tempo_source") == "hand" else "")
+                + f", {self.structure.get('key')}, "
                 f"{len(self.structure.get('sections', []))} sections"
             )
         if self.layers:
@@ -390,8 +392,14 @@ def analyse(song_id: str, *, progress: Progress | None = None, min_presence: flo
     source = song.mix or song.stem
     mix_audio, rate = load_audio(source, mono=False)
     step(0.15, "finding the sections")
+    # A tempo somebody corrected outlives the beat tracker's next guess.
+    kept = (song.structure or {}).get("tempo") if (song.structure or {}).get("tempo_source") == "hand" else None
     shape = structure.analyse(mix_audio, rate)
+    if kept:
+        shape.tempo = float(kept)
     song.structure = shape.to_dict()
+    if kept:
+        song.structure["tempo_source"] = "hand"
     song.analysis_version = ANALYSIS_VERSION
 
     stem_audio = mix_audio
@@ -502,6 +510,46 @@ def rename_section(song_id: str, index: int, name: str) -> Song:
     for part in song.parts:
         if part.section == index:
             part.section_name = name
+    song.save()
+    return song
+
+
+#: Tempos a song can be set to, in BPM.
+TEMPO_LIMITS = (40.0, 300.0)
+
+
+def set_tempo(song_id: str, bpm: float | None = None, *, factor: float | None = None) -> Song:
+    """Correct the song's tempo: an exact BPM, or the detected one halved or doubled.
+
+    The beat tracker's known failure is an octave - 70 for 140. The tempo
+    decides which note value each part's delay is and the tempo a draft
+    rig is saved with, so a wrong one is worth a click to fix. Each part's
+    sketch is re-timed (no re-analysis - the measurements do not depend on
+    it), and a tempo set here survives re-mapping.
+    """
+    from ..song import describe
+
+    require_writable("set a song's tempo")
+    song = get(song_id)
+    structure = dict(song.structure or {})
+    current = float(structure.get("tempo") or 0)
+    if bpm:
+        tempo = float(bpm)
+    elif factor:
+        if not current:
+            raise Invalid("there is no tempo to halve or double yet", hint="Map the song first, or give the BPM.")
+        tempo = current * float(factor)
+    else:
+        raise Invalid("give a BPM, or a factor to halve (0.5) or double (2) the detected one")
+    low, high = TEMPO_LIMITS
+    if not low <= tempo <= high:
+        raise Invalid(f"{tempo:.1f} BPM is outside {low:g}-{high:g}", hint="Halve or double it instead.")
+    structure["tempo"] = round(tempo, 2)
+    structure["tempo_source"] = "hand"
+    song.structure = structure
+    for part in song.parts:
+        if part.sketch:
+            part.sketch = describe.retime(part.sketch, tempo)
     song.save()
     return song
 

@@ -123,6 +123,15 @@ def rename_song_section(song_id: str, index: int, name: str) -> str:
 
 
 @tool
+def set_song_tempo(song_id: str, bpm: float | None = None, factor: float | None = None) -> str:
+    """Correct a song's tempo: an exact bpm, or factor 0.5/2 to halve or
+    double the detected one (its known mistake is an octave). Re-times every
+    part's delay note value; drafts built after it carry the new tempo."""
+    song = songs.set_tempo(song_id, bpm, factor=factor)
+    return f"{song.title}: {song.structure['tempo']:g} BPM (set by hand)"
+
+
+@tool
 def find_song_file(title: str, artist: str | None = None) -> str:
     """Find the user's own copy of a song in their music library, by name.
 

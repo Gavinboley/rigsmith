@@ -1012,3 +1012,57 @@ def test_a_local_model_reply_streams_into_the_chat_without_its_thinking(browser,
     assert final == "The verse is a Plexi pushed hard with the mids up."
     assert final.startswith(partial.strip()) and len(partial.strip()) < len(final)
     assert "hmm" not in partial and "think" not in partial
+
+
+def test_a_rigs_tempo_is_typed_beside_its_signal_path(browser, server):
+    from rigsmith.core import rigs
+
+    draft_id = rigs.create("Tempo").draft.draft_id
+    with page_at(browser, server) as page:
+        page.click("#tabs .tab[data-panel='rig']")
+        page.wait_for_selector("#rig-tempo")
+        page.select_option("#draft-select", draft_id)
+        page.fill("#rig-tempo", "137.5")
+        page.press("#rig-tempo", "Tab")
+        deadline = time.monotonic() + 5
+        while rigs.get(draft_id).rig.tempo != 137.5 and time.monotonic() < deadline:
+            time.sleep(0.1)
+        assert rigs.get(draft_id).rig.tempo == 137.5
+
+
+def test_a_songs_tempo_can_be_doubled_and_tapped(browser, server):
+    """The detector's known mistake is an octave; the fix is a click."""
+    from rigsmith.core import songs
+    from rigsmith.core.songs import Part
+
+    made = songs.create("Tempo")
+    made.structure = {
+        "tempo": 70.0, "tempo_confidence": 0.2, "key": "E minor", "duration": 30.0,
+        "sections": [{"start": 0.0, "end": 30.0, "label": "A", "name": "verse"}],
+    }
+    made.parts = [Part("verse-1-stem", 0, "verse", "stem", 0.0, 30.0)]
+    made.save()
+
+    def tempo_now(test):
+        deadline = time.monotonic() + 8
+        while time.monotonic() < deadline:
+            tempo = songs.get(made.song_id).structure["tempo"]
+            if test(tempo):
+                return tempo
+            time.sleep(0.1)
+        return songs.get(made.song_id).structure["tempo"]
+
+    with page_at(browser, server) as page:
+        page.click("#tabs .tab[data-panel='songs']")
+        page.wait_for_selector("#song-tempo")
+        assert page.inner_text("#song-tempo").startswith("70 BPM")
+        assert page.locator(".tempo-line .tag.warn").is_visible(), "a low-confidence tempo says so"
+        page.click(".tempo-line button[title^='Double']")
+        assert tempo_now(lambda t: t == 140) == 140
+        page.wait_for_selector(".tempo-line .tag:not(.warn)")
+
+        for _ in range(5):
+            page.click("#tempo-tap")
+            page.wait_for_timeout(500)
+        tapped = tempo_now(lambda t: t != 140)
+        assert 95 <= tapped <= 130, f"five taps half a second apart read {tapped}"

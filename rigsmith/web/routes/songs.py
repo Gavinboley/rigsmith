@@ -145,6 +145,16 @@ def rename_section(song_id: str, index: int, body: RenameBody) -> dict:
     return _payload(songs.rename_section(song_id, index, body.name))
 
 
+class TempoBody(BaseModel):
+    bpm: float | None = None
+    factor: float | None = None
+
+
+@router.post("/{song_id}/tempo")
+def set_tempo(song_id: str, body: TempoBody) -> dict:
+    return _payload(songs.set_tempo(song_id, body.bpm, factor=body.factor))
+
+
 @router.get("/{song_id}/parts/{part_id}/audio")
 def part_audio(song_id: str, part_id: str) -> dict:
     path = songs.part_audio(song_id, part_id)

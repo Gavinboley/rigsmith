@@ -319,14 +319,30 @@ def _delay(audio, sample_rate, tempo) -> tuple[float | None, float, str | None]:
         break
     if lag is None:
         return None, 0.0, None
-    note = None
-    if tempo and tempo > 0:
-        beat = 60000.0 / tempo
-        for name, fraction in (("quarter", 1.0), ("dotted eighth", 0.75), ("eighth", 0.5), ("triplet quarter", 2 / 3), ("dotted quarter", 1.5), ("sixteenth", 0.25), ("half", 2.0)):
-            if abs(lag - beat * fraction) / (beat * fraction) < 0.03:
-                note = name
-                break
-    return round(lag, 1), round(z, 1), note
+    return round(lag, 1), round(z, 1), delay_note(lag, tempo)
+
+
+def delay_note(lag_ms: float | None, tempo: float | None) -> str | None:
+    """The note value an echo's time is at a tempo, within 3%, or None."""
+    if not lag_ms or not tempo or tempo <= 0:
+        return None
+    beat = 60000.0 / tempo
+    for name, fraction in (("quarter", 1.0), ("dotted eighth", 0.75), ("eighth", 0.5), ("triplet quarter", 2 / 3), ("dotted quarter", 1.5), ("sixteenth", 0.25), ("half", 2.0)):
+        if abs(lag_ms - beat * fraction) / (beat * fraction) < 0.03:
+            return name
+    return None
+
+
+def retime(data: dict, tempo: float | None) -> dict:
+    """A stored sketch with its tempo-relative readings worked out again.
+
+    Only the delay's note value depends on the tempo; the measurements
+    themselves do not, so a corrected tempo needs no re-analysis.
+    """
+    sketch = ToneSketch.from_dict(data)
+    sketch.delay_note = delay_note(sketch.delay_ms, tempo)
+    sketch.suggestions = _suggestions(sketch)
+    return {**data, **sketch.to_dict()}
 
 
 def _pitch_periods_ms(audio, sample_rate) -> list[float]:

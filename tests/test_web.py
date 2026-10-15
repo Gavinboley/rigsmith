@@ -959,3 +959,12 @@ def test_the_rig_tempo_is_set_and_cleared_through_the_api(client):
     assert client.patch(f"/api/drafts/{draft['draft_id']}", json={"tempo": 500}).status_code == 400
     cleared = client.patch(f"/api/drafts/{draft['draft_id']}", json={"tempo": 0}).json()
     assert "tempo" not in cleared["rig"], "0 means follow the device's tempo"
+
+
+def test_a_songs_tempo_is_corrected_through_the_api(client):
+    created = client.post("/api/songs", json={"title": "Tempo"}).json()
+    assert client.post(f"/api/songs/{created['song_id']}/tempo", json={"factor": 2}).status_code == 400, "nothing to double yet"
+    set_ = client.post(f"/api/songs/{created['song_id']}/tempo", json={"bpm": 88}).json()
+    assert set_["structure"]["tempo"] == 88 and set_["structure"]["tempo_source"] == "hand"
+    halved = client.post(f"/api/songs/{created['song_id']}/tempo", json={"factor": 0.5}).json()
+    assert halved["structure"]["tempo"] == 44

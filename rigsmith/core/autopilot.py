@@ -896,7 +896,7 @@ def _stage_rig(run: Run, *, from_ears: bool = False) -> str:
         run.note(f"a G EQ after the cab, fitted to the record ({shown}) - it measured closer; trust your ears over it")
     for block in after:
         add(block["category"], block["model"], block.get("params"))
-    _carry_tempo(run, run.draft_id, after, tempo)
+    _carry_tempo(run, run.draft_id, after, tempo, structure=song.structure)
     for text in notes:
         run.note(text)
     if run.request.bench == "virtual":
@@ -1058,7 +1058,7 @@ def song_rig(run_ids: list[str], *, name: str | None = None) -> dict:
                     slots.remove(slot)
         notes.append("the fitted EQs were left out to keep the rig inside the Core's DSP budget")
 
-    _carry_tempo(None, draft_id, [wanted[role] for role in slots_by_role], tempo, notes)
+    _carry_tempo(None, draft_id, [wanted[role] for role in slots_by_role], tempo, notes, structure=song.structure)
 
     scenes = []
     for index, item in enumerate(parts, start=1):
@@ -1072,7 +1072,11 @@ def song_rig(run_ids: list[str], *, name: str | None = None) -> dict:
     return {"draft_id": draft_id, "name": title[:40], "scenes": scenes, "sounds": [list(c) for c in kept], "notes": notes}
 
 
-def _carry_tempo(run: Run | None, draft_id: str, blocks: list[dict], tempo: float | None, notes: list | None = None) -> None:
+#: Below this beat-tracking confidence, a detected tempo is called a guess.
+SURE_TEMPO = 0.35
+
+
+def _carry_tempo(run: Run | None, draft_id: str, blocks: list[dict], tempo: float | None, notes: list | None = None, *, structure: dict | None = None) -> None:
     """Give the rig the song's tempo when anything in it is synced to the beat.
 
     A synced delay is a dotted eighth of *whatever tempo the device is at* -
@@ -1091,6 +1095,9 @@ def _carry_tempo(run: Run | None, draft_id: str, blocks: list[dict], tempo: floa
     else:
         rigs.set_tempo(draft_id, round(float(tempo), 2))
         text = f"the rig carries the song's tempo ({tempo:.1f} BPM, Fixed), so the {what} land on the beat - tap tempo still moves it live"
+    structure = structure or {}
+    if structure.get("tempo_source") != "hand" and float(structure.get("tempo_confidence", 1.0)) < SURE_TEMPO:
+        text += "; the tempo was a guess - check it on the song's page (half or double is the usual mistake)"
     if run is not None:
         run.note(text)
     if notes is not None:
