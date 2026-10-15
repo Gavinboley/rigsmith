@@ -67,3 +67,8 @@ include = ["rigsmith*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+filterwarnings = [
+  # librosa 0.11's time_stretch passes its own deprecated arguments to itself.
+  "ignore:The `hop_length` parameter is deprecated:FutureWarning",
+  "ignore:The `n_fft` parameter is deprecated:FutureWarning",
+]
