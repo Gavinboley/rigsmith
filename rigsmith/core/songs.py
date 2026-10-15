@@ -410,6 +410,14 @@ def analyse(song_id: str, *, progress: Progress | None = None, min_presence: flo
     done = 0
     for index, section in enumerate(shape.sections):
         name = section.name or section.label
+
+        def present(layer_id: str) -> float:
+            layer = next((l for l in layer_map.layers if l.layer_id == layer_id), None)
+            return (layer.sections or {}).get(f"{section.start:.2f}", 0.0) if layer else 0.0
+
+        # Where both sides carry a part, the centre is the two takes' common
+        # ground summed - which beats like a chorus without being one.
+        doubled = present("left") >= min_presence and present("right") >= min_presence
         for layer_id, audio in sources.items():
             done += 1
             presence = 1.0
@@ -422,7 +430,10 @@ def analyse(song_id: str, *, progress: Progress | None = None, min_presence: flo
             piece = audio[a:b]
             if len(piece) < rate:
                 continue
-            sketch = describe.sketch(piece, rate, tempo=shape.tempo, from_stem=bool(song.stem))
+            sketch = describe.sketch(
+                piece, rate, tempo=shape.tempo, from_stem=bool(song.stem),
+                pitch=not (layer_id == "centre" and doubled),
+            )
             part_id = f"{slugify(name)}-{index + 1}-{layer_id}"
             part = Part(
                 part_id=part_id,

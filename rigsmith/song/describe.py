@@ -60,6 +60,12 @@ class ToneSketch:
     space: str = ""
     modulation_hz: float | None = None
     modulation: str = ""
+    wobble_cents: float | None = None
+    """How far sustained notes wander in pitch, peak, after bends are
+    removed - a few cents for a chorus, tens for vibrato, ~0 for neither."""
+    wobble_share: float | None = None
+    """The share of notes that wobble - all of them for an effect, some of
+    them for a player's hand."""
     gated: bool = False
     width: float | None = None
     suggestions: list[str] = field(default_factory=list)
@@ -345,46 +351,162 @@ def _decay(audio, sample_rate) -> float | None:
 
 
 def _modulation(audio, sample_rate, *, note_rate_hz=None) -> tuple[float | None, str]:
-    """A steady wobble in level, 0.3-10 Hz - but not the playing's own pulse.
+    """A steady wobble in level, 2-10 Hz, inside sustained sound.
 
-    Notes every 500 ms put a 2 Hz line in the level envelope exactly as a
-    2 Hz tremolo would, so a rate at the note rate (or twice or half it) is
-    taken as rhythm.
+    Measured only within stretches that stay loud - each one detrended for
+    its own decay - because the gaps between notes put the rhythm's pulse
+    and every harmonic of it into a whole-part envelope, and a part with a
+    note every 1.6 s read as a 2.5 Hz tremolo. What is left must also not sit
+    on the playing's own pulse (or a small multiple of it), and must be deep
+    enough to hear.
     """
     hop_s = 0.01
     env = _envelope(audio, sample_rate, hop_s)
-    if len(env) < 600:
+    if len(env) < 300:
         return None, ""
     db = 20 * np.log10(np.maximum(env, 1e-9))
-    loud = db > np.percentile(db, 60)
-    if loud.mean() < 0.3:
+    loud = db > max(np.percentile(db, 40), db.max() - 30)
+    edges = np.diff(np.concatenate([[0], loud.astype(int), [0]]))
+    starts, ends = np.where(edges == 1)[0], np.where(edges == -1)[0]
+    pad = int(8 / hop_s)
+    rates = np.fft.rfftfreq(pad, hop_s)
+    spectra, depths, weights = [], [], []
+    for a, b in zip(starts, ends):
+        if b - a < int(0.6 / hop_s):
+            continue
+        t = np.arange(b - a) * hop_s
+        level = db[a:b] - np.polyval(np.polyfit(t, db[a:b], 2), t)
+        power = np.abs(np.fft.rfft(level * np.hanning(len(level)), n=pad)) ** 2
+        spectra.append(power / max(power.sum(), 1e-20) * len(level))
+        depths.append(float(np.sqrt(2 * np.mean(level**2))))
+        weights.append(len(level))
+    if not spectra or sum(weights) * hop_s < 1.5:
         return None, ""
-    signal = np.where(loud, db - db[loud].mean(), 0.0)
-    spectrum = np.abs(np.fft.rfft(signal * np.hanning(len(signal))))
-    freqs = np.fft.rfftfreq(len(signal), hop_s)
-    # Only tremolo-speed movement is claimed. Slower wobble in the level
-    # envelope is overwhelmingly chord changes and phrasing, and a chorus or
-    # phaser moves pitch and phase far more than level - this cannot see it.
-    band = (freqs >= 2.0) & (freqs <= 10)
-    if not band.any():
+    total = np.sum(spectra, axis=0)
+    band = (rates >= 2.0) & (rates <= 10.0)
+    peak = int(np.where(band)[0][np.argmax(total[band])])
+    near = band & (np.abs(rates - rates[peak]) <= 0.5)
+    concentration = float(total[near].sum() / max(total[(rates >= 0.5) & (rates <= 12)].sum(), 1e-20))
+    depth_db = float(np.average(depths, weights=weights))
+    if concentration < 0.35 or depth_db < 1.0:
         return None, ""
-    index = np.where(band)[0][np.argmax(spectrum[band])]
-    peak = float(spectrum[index])
-    floor = float(np.median(spectrum[band])) or 1e-12
-    if peak / floor < 6:
-        return None, ""
-    rate = float(freqs[index])
+    rate = float(rates[peak])
     if callable(note_rate_hz):
         note_rate_hz = note_rate_hz()
     if note_rate_hz:
-        for multiple in (0.5, 1.0, 2.0, 3.0):
+        for multiple in (0.5, 1.0, 2.0, 3.0, 4.0):
             if abs(rate - note_rate_hz * multiple) / (note_rate_hz * multiple) < 0.08:
                 return None, ""
     return round(rate, 2), "tremolo"
 
 
-def sketch(audio, sample_rate: int, *, tempo: float | None = None, from_stem: bool = True) -> ToneSketch:
-    """Measure a part and suggest where to start building it."""
+def _princarg(phase):
+    return (phase + np.pi) % (2 * np.pi) - np.pi
+
+
+def _pitch_wobble(audio, sample_rate, *, n_fft: int = 2048, hop: int = 256) -> dict | None:
+    """How sustained notes move in pitch: what a chorus or vibrato does.
+
+    Level cannot see a chorus - it moves pitch and phase. So each note
+    (from the onset segmenter) gets one partial, chosen from the note's
+    time-averaged spectrum - per-frame tracking fails, because a chorus's
+    moving comb makes the loudest partial jump between harmonics - and that
+    partial's instantaneous frequency is read from the phase vocoder,
+    magnitude-weighted over its neighbouring bins. Moments where the dry and
+    delayed copies cancel spike it, so those are interpolated over rather
+    than counted. A straight line through each note removes bends and drift;
+    what is left is the wobble, and its spectrum gives a rate.
+
+    On a synthetic part: no effect reads 0.1-0.4 cents, a chorus 4-27,
+    vibrato ~30; rates of 1.5 Hz and up come out right, slower ones cannot be
+    resolved inside a single note and are reported as slow.
+    """
+    from ..learn.segment import segment
+
+    x = np.asarray(audio, dtype=np.float64)
+    count = 1 + (len(x) - n_fft) // hop
+    if count < 40:
+        return None
+    frames = np.lib.stride_tricks.sliding_window_view(x, n_fft)[::hop][:count]
+    spec = np.fft.rfft(frames * np.hanning(n_fft)[None, :], axis=1)
+    magnitude, phase = np.abs(spec), np.angle(spec)
+    freqs = np.fft.rfftfreq(n_fft, 1 / sample_rate)
+    low, high = np.searchsorted(freqs, 150), np.searchsorted(freqs, 2500)
+    frame_s = hop / sample_rate
+    bins = np.arange(magnitude.shape[1])
+    advance = 2 * np.pi * bins * hop / n_fft
+    deviation = _princarg(np.diff(phase, axis=0) - advance[None, :])
+    instantaneous = (bins[None, :] + deviation * n_fft / (2 * np.pi * hop)) * sample_rate / n_fft
+
+    depths, weights, spectra = [], [], []
+    pad = int(8 / frame_s)
+    rates = np.fft.rfftfreq(pad, frame_s)
+    for note in segment(x, sample_rate):
+        start = int((note.start + 0.08) / frame_s) + 1  # past the attack
+        end = min(count, int(note.end / frame_s))
+        if end - start < int(0.45 / frame_s):
+            continue
+        k = low + int(np.argmax(magnitude[start:end, low:high].mean(axis=0)))
+        around = slice(max(k - 2, 0), k + 3)
+        weight = magnitude[start:end, around] ** 2
+        f = (instantaneous[start - 1 : end - 1, around] * weight).sum(axis=1) / np.maximum(weight.sum(axis=1), 1e-20)
+        valid = f > 0
+        if valid.mean() < 0.7:
+            continue
+        cents = np.zeros(len(f))
+        cents[valid] = 1200 * np.log2(f[valid] / np.median(f[valid]))
+        level = magnitude[start:end, k]
+        bad = ~valid | (np.abs(cents) > 50) | (level < level.max() * 10 ** (-30 / 20))
+        if bad.mean() > 0.3:
+            continue
+        t = np.arange(len(cents)) * frame_s
+        cents = np.interp(t, t[~bad], cents[~bad])
+        cents = cents - np.polyval(np.polyfit(t, cents, 1), t)
+        width = max(1, int(1 / 24 / frame_s))
+        smooth = np.convolve(cents, np.ones(width) / width, mode="same")
+        depths.append(float(np.sqrt(2 * np.mean(smooth**2))))
+        power = np.abs(np.fft.rfft(smooth * np.hanning(len(smooth)), n=pad)) ** 2
+        spectra.append(power / max(power.sum(), 1e-20) * len(smooth))
+        weights.append(len(smooth))
+    if len(depths) < 2:
+        return None
+    total = np.sum(spectra, axis=0)
+    band = (rates >= 0.2) & (rates <= 9)
+    peak = int(np.where(band)[0][np.argmax(total[band])])
+    near = band & (np.abs(rates - rates[peak]) <= 0.6)
+    return {
+        "depth": float(np.average(depths, weights=weights)),
+        "rate": float(rates[peak]),
+        "concentration": float(total[near].sum() / max(total[band].sum(), 1e-20)),
+        "share": float(np.mean(np.array(depths) >= WOBBLE_CENTS)),
+        "notes": len(depths),
+    }
+
+
+#: Below this the pitch is steady. An unaffected part reads under half a cent.
+WOBBLE_CENTS = 3.0
+
+
+def _pitch_modulation(audio, sample_rate) -> tuple[float | None, str, float | None, float | None]:
+    """(rate, label, depth, share) for chorus or vibrato, from :func:`_pitch_wobble`."""
+    found = _pitch_wobble(audio, sample_rate)
+    if not found or found["depth"] < WOBBLE_CENTS:
+        return None, "", (round(found["depth"], 1) if found else None), (round(found["share"], 2) if found else None)
+    depth, share = round(found["depth"], 1), round(found["share"], 2)
+    if found["rate"] >= 4.0 and found["concentration"] >= 0.5 and depth >= 12:
+        label = "vibrato" if share >= 0.7 else "vibrato on some notes (likely the player's hand)"
+        return round(found["rate"], 2), label, depth, share
+    rate = round(found["rate"], 2) if found["rate"] <= 3.5 and found["concentration"] >= 0.3 else None
+    return rate, "chorus" if share >= 0.5 else "a chorus-like wobble on some notes", depth, share
+
+
+def sketch(audio, sample_rate: int, *, tempo: float | None = None, from_stem: bool = True, pitch: bool = True) -> ToneSketch:
+    """Measure a part and suggest where to start building it.
+
+    ``pitch`` False skips looking for chorus and vibrato - for audio known to
+    be two performances summed (the centre of a double-tracked part), which
+    beat against each other exactly like a chorus.
+    """
     stereo = np.asarray(audio, dtype=np.float64)
     audio = _mono(stereo)
     result = ToneSketch()
@@ -435,6 +557,22 @@ def sketch(audio, sample_rate: int, *, tempo: float | None = None, from_stem: bo
         return (1000.0 / spacing) if spacing else None
 
     result.modulation_hz, result.modulation = _modulation(audio, sample_rate, note_rate_hz=note_rate)
+    if pitch and not result.modulation and result.gain < 0.85:
+        # Pitch movement is only looked for under tremolo's absence, and not
+        # on the most saturated parts, where distortion's intermodulation
+        # makes every partial wander.
+        if stereo.ndim > 1 and stereo.shape[1] == 2:
+            # Each side on its own, and the steadier one decides: a chorus
+            # (mono or stereo) moves both sides, while a double-tracked part
+            # is steady on each side and only beats when they are summed.
+            sides = [_pitch_modulation(stereo[:, c], sample_rate) for c in (0, 1)]
+            rate, label, result.wobble_cents, result.wobble_share = min(sides, key=lambda side: side[2] if side[2] is not None else -1.0)
+        else:
+            rate, label, result.wobble_cents, result.wobble_share = _pitch_modulation(audio, sample_rate)
+        if label:
+            result.modulation, result.modulation_hz = label, rate
+            if label.startswith("chorus") and stereo.ndim == 1:
+                result.caveats.append("a double-tracked part summed to mono also wobbles like a chorus")
 
     # Gated: hard silence *between notes* of a driven part - not a channel
     # with nothing on it, which is just silence.
@@ -480,7 +618,15 @@ def _suggestions(s: ToneSketch) -> list[str]:
     elif s.space == "a room":
         out.append("a short room reverb")
     if s.modulation:
-        out.append(f"a modulation block at about {s.modulation_hz:.1f} Hz")
+        rate = f" at about {s.modulation_hz:.1f} Hz" if s.modulation_hz else ""
+        if s.modulation.startswith("chorus"):
+            out.append(f"a chorus{rate}, depth modest (the notes move about {s.wobble_cents:.0f} cents)")
+        elif s.modulation.startswith("vibrato on some"):
+            out.append("no vibrato block - the wobble is on some notes only, which is a hand, not a pedal")
+        elif s.modulation.startswith("vibrato"):
+            out.append(f"a vibrato block{rate}")
+        else:
+            out.append(f"a {s.modulation} block{rate}")
     if s.gated:
         out.append("a noise gate - the gaps between notes are silent, not hiss")
     return out

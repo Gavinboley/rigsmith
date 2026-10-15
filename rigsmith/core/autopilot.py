@@ -696,7 +696,7 @@ def _stage_rig(run: Run) -> str:
     draft = rigs.create(name, notes=f"autopilot {run.run_id}: {part.label}, {part.sketch.get('summary', '')}").draft
     run.draft_id = draft.draft_id
 
-    order = {"gate": 0, "boost": 1, "tremolo": 5, "delay": 6, "reverb": 7}
+    order = {"gate": 0, "boost": 1, "chorus": 4, "vibrato": 4, "tremolo": 5, "delay": 6, "reverb": 7}
     extras = surrounding_blocks(part.sketch or {})
     before = [b for b in extras if order.get(b["role"], 9) < 2]
     after = [b for b in extras if order.get(b["role"], 9) >= 2]

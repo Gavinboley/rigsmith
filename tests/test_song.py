@@ -273,3 +273,49 @@ def test_an_unknown_part_lists_the_real_ones(workspace):
     with pytest.raises(NotFound) as caught:
         made.part("nope")
     assert made.parts[0].part_id in caught.value.hint
+
+
+def sustained(seed=1):
+    """Clean notes long enough to hear a chorus move them."""
+    rng = np.random.default_rng(seed)
+    return render_notes([(1.6 * i, 1.5, int(m), 0.8) for i, m in enumerate(rng.integers(45, 70, size=10))], seed=seed)
+
+
+def modulated_delay(audio, rate_hz, depth_ms, base_ms, mix):
+    t = np.arange(len(audio)) / RATE
+    delay = (base_ms + depth_ms * np.sin(2 * np.pi * rate_hz * t)) / 1000 * RATE
+    wet = np.interp(np.arange(len(audio)) - delay, np.arange(len(audio)), audio, left=0, right=0)
+    return (1 - mix) * audio + mix * wet
+
+
+def test_a_chorus_is_heard_in_the_pitch_and_a_dry_part_is_not():
+    clean = SimAmp(Type=0, Gain=0.1)
+    dry = clean.process(sustained())
+    assert describe.sketch(dry, RATE, from_stem=False).modulation == ""
+    chorused = describe.sketch(clean.process(modulated_delay(sustained(), 1.5, 3.0, 12.0, 0.45)), RATE, from_stem=False)
+    assert chorused.modulation == "chorus", chorused.describe()
+    assert 1.2 < chorused.modulation_hz < 1.8 and chorused.wobble_cents > 5
+    assert any("chorus" in s for s in chorused.suggestions)
+    from rigsmith.tune.candidates import surrounding_blocks
+
+    assert "chorus" in [b["role"] for b in surrounding_blocks(chorused.to_dict())]
+
+
+def test_vibrato_on_every_note_is_a_block_and_a_double_is_not_a_chorus():
+    vibrato = describe.sketch(modulated_delay(sustained(), 5.5, 0.6, 2.0, 1.0), RATE, from_stem=False)
+    assert vibrato.modulation == "vibrato" and 5.0 < vibrato.modulation_hz < 6.0
+    # Two takes of the same notes, one per side: steady on each side, so no
+    # chorus - even though summed they would beat like one.
+    left, right = sustained(seed=1), sustained(seed=1)
+    right = np.interp(np.arange(len(left)) * 1.0007, np.arange(len(left)), right)  # a few cents apart
+    double = describe.sketch(np.stack([left, right], axis=1), RATE, from_stem=False)
+    assert double.modulation == "", double.describe()
+
+
+def test_tremolo_is_a_level_wobble_inside_notes_not_the_rhythm():
+    clean = SimAmp(Type=0, Gain=0.1).process(sustained())
+    t = np.arange(len(clean)) / RATE
+    wobbling = describe.sketch(clean * (1 - 0.35 * (1 + np.sin(2 * np.pi * 5.0 * t)) / 2), RATE, from_stem=False)
+    assert wobbling.modulation == "tremolo" and 4.6 < wobbling.modulation_hz < 5.4, wobbling.describe()
+    # Steady eighth notes put their own pulse in the level; that is not tremolo.
+    assert describe.sketch(SimAmp(Type=0, Gain=0.1).process(riff_di()), RATE, from_stem=False).modulation == ""

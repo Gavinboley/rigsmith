@@ -278,8 +278,14 @@ def surrounding_blocks(sketch: dict) -> list[dict]:
             "why": f"a {sketch['delay_ms']:.0f} ms echo" + (f" ({sketch['delay_note']})" if sketch.get("delay_note") else ""),
             "delay_ms": sketch["delay_ms"],
         })
-    if sketch.get("modulation") == "tremolo":
+    modulation = sketch.get("modulation") or ""
+    rate = f" at {sketch['modulation_hz']:.1f} Hz" if sketch.get("modulation_hz") else ""
+    if modulation == "tremolo":
         blocks.append({"category": "effect", "model": "Tremolo", "role": "tremolo", "params": {}, "why": f"a {sketch.get('modulation_hz', 0):.1f} Hz wobble"})
+    elif modulation == "chorus":
+        blocks.append({"category": "effect", "model": "Chorus", "role": "chorus", "params": {}, "why": f"sustained notes wander about {sketch.get('wobble_cents') or 0:.0f} cents{rate}"})
+    elif modulation == "vibrato":
+        blocks.append({"category": "effect", "model": "Vibrato", "role": "vibrato", "params": {}, "why": f"every note wobbles in pitch{rate}"})
     space = sketch.get("space") or ""
     if space in ("a plate or hall", "a long wash"):
         blocks.append({"category": "effect", "model": "AIR Reverb", "role": "reverb", "params": {}, "why": f"{space} on the part"})
