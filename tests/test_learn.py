@@ -420,3 +420,12 @@ def test_a_take_that_rushes_is_called_faster():
     rushing = TakeAlignment(rate=1.1, offset_s=0.0, residual_s=0.01, agreement=0.9, contrast=0.3, tonality=2.0, level=0.5)
     dragging = TakeAlignment(rate=0.9, offset_s=0.0, residual_s=0.01, agreement=0.9, contrast=0.3, tonality=2.0, level=0.5)
     assert "10.0% faster" in rushing.describe() and "10.0% slower" in dragging.describe()
+
+
+def test_a_note_that_starts_a_hair_before_zero_is_trimmed_not_a_crash():
+    """Humanised timing put the first note at -5 ms; the index wrapped and broke."""
+    from rigsmith.learn.pluck import render_notes
+
+    audio = render_notes([(-0.005, 0.3, 40, 0.8), (0.5, 0.3, 45, 0.8)], sample_rate=44100)
+    assert np.abs(audio[:2000]).max() > 0, "the first note is heard from the start"
+    assert len(audio) > int(0.8 * 44100)

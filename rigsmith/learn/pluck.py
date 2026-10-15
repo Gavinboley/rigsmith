@@ -217,5 +217,11 @@ def render_notes(
             seed=int(rng.integers(0, 2**31)),
         )
         first = int(round(start * sample_rate))
+        if first < 0:
+            # Humanised timing can put the first note a hair before zero; a
+            # negative index would wrap to the end of the buffer instead.
+            note, first = note[-first:], 0
+        if first >= len(out) or not len(note):
+            continue
         out[first : first + len(note)] += note[: len(out) - first]
     return out

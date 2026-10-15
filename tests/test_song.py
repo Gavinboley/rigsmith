@@ -428,3 +428,23 @@ def test_a_deep_choppy_tremolo_is_heard_and_its_depth_read():
     assert chopped.modulation == "tremolo" and abs(chopped.modulation_hz - 4.0) < 0.3, chopped.describe()
     assert abs(chopped.modulation_depth - 0.8) < 0.06, chopped.modulation_depth
     assert any("depth about" in s for s in chopped.suggestions), chopped.suggestions
+
+
+def test_a_fast_eighth_note_part_is_not_read_at_two_thirds():
+    """155 BPM read as 103 - three eighths taken for the beat, which no
+    halve or double button can fix."""
+    bpm = 155.0
+    beat = 60 / bpm
+    notes = [(b * beat + k * beat / 2, beat / 2 * 0.85, [40, 40, 43, 45, 47, 45, 43, 40][(2 * b + k) % 8], 0.8) for b in range(48) for k in range(2)]
+    audio = SimAmp(Type=3, Gain=0.6).process(render_notes(notes, seed=2))
+    audio = audio / np.abs(audio).max() * 0.6
+    rng = np.random.default_rng(1)
+    kick = np.sin(2 * np.pi * 55 * np.arange(2000) / RATE) * np.exp(-np.arange(2000) / 400) * 0.6
+    snare = rng.normal(0, 1, 3000) * np.exp(-np.arange(3000) / 500) * 0.3
+    hat = rng.normal(0, 1, 600) * np.exp(-np.arange(600) / 80) * 0.08
+    for b in range(48):
+        for start, hit in ((int(b * beat * RATE), kick if b % 2 == 0 else snare), (int((b + 0.5) * beat * RATE), hat)):
+            if start + len(hit) < len(audio):
+                audio[start : start + len(hit)] += hit
+    tempo, _ = structure.estimate_tempo(audio, RATE)
+    assert abs(tempo / bpm - 1) < 0.02, tempo
