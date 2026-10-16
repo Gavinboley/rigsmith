@@ -4,12 +4,17 @@
  * about. Type part of a name - a panel, a song, a rig, a guitar, a recipe -
  * and Enter goes there; anything that matches nothing is a question for the
  * assistant, so the palette is never a dead end.
+ *
+ * It also knows the things you can do, by what they are called rather than
+ * where they live: "knob curves" or "local model" opens the page and points
+ * at the control. It points rather than presses - several of them play
+ * audio into the Core or write to it, and that should stay a click you make.
  */
 
 import { api } from "./api.js";
 import { ask } from "./chat.js";
 import { goTo } from "./nav.js";
-import { clear, el, when } from "./ui.js";
+import { clear, el, toast, when } from "./ui.js";
 
 const PANELS = [
   ["autopilot", "Autopilot", "a song in, a rig and a listening test out"],
@@ -27,9 +32,73 @@ const PANELS = [
   ["settings", "Settings", "accuracy or local mode; who answers"],
 ];
 
+/* [what it is called, page, the control, what it does, and what to do first
+ * when the control is not there yet]. The control is a selector, or the text
+ * on a button the page draws for itself. */
+const ACTIONS = [
+  ["Start autopilot", "autopilot", { text: "Start autopilot" }, "a song in, a rig out"],
+  ["Add a song", "songs", "#song-new", "the record you are chasing"],
+  ["Isolate the guitar", "songs", { text: "Isolate guitar" }, "split the stem out of the mix", "Pick a song with a mix and no stem yet - the button is on it."],
+  ["Research a tone", "recipes", "#new-recipe", "the gear behind a sound"],
+  ["Teach it my guitar", "guitar", "#profile-new", "every note on every string"],
+  ["Check my level", "guitar", { text: "check my level" }, "is the input hot enough", "Pick or add a guitar first - the check is on its page."],
+  ["Record a take", "takes", "#take-record", "over USB, both halves kept"],
+  ["Compare guitars", "takes", "#guitar-compare", "yours against the record's"],
+  ["Search TONE3000", "captures", "#t3k-search", "NAM captures online"],
+  ["Scan for captures", "captures", "#scan-btn", "NAM files already on disk"],
+  ["Nudge the tone by ear", "rig", "#nudge-text", "a bit brighter, a lot tighter"],
+  ["Tone sheet", "rig", "#sheet-btn", "the rig as you would dial it by hand"],
+  ["Write the rig to the Core", "rig", "#write-btn", "save it to the HeadRush"],
+  ["Score against the record", "match", "#score-btn", "how close is it"],
+  ["Start tuning", "tune", { text: "Start tuning" }, "let it turn the knobs"],
+  ["Calibrate the loop", "loop", { text: "calibrate" }, "level and latency of the cables", "Set up a route first: which output feeds the Core and which input hears it."],
+  ["Reamp a take", "loop", { text: "reamp a take" }, "through the real Core", "Set up a route first: which output feeds the Core and which input hears it."],
+  ["Pair with the Core", "device", { text: "Pair" }, "over the network", "Already paired - forget the pairing on this page to pair again."],
+  ["Back up the Core", "device", "#backup-btn", "copy its rigs over USB"],
+  ["Measure knob curves", "device", "#catalog-calibrate", "what each knob really does"],
+  ["Learn scene numbers", "device", "#device-scenes-learn", "so scenes can be written"],
+  ["Tap tempo", "device", "#midi-tap", "over MIDI"],
+  ["Verify a rig over MIDI", "device", "#midi-verify", "is the Core playing what was sent"],
+  ["Clean up the workspace", "workspace", "#prune-dry", "see what would go first"],
+  ["Test the local model", "settings", "#check-model", "can it drive the tools"],
+];
+
 let overlay = null;
 let items = [];
 let index = 0;
+
+/** The control on ``panel`` that ``find`` names, if the page has drawn it. */
+function locate(panel, find) {
+  const section = document.querySelector(`.panel[data-panel="${panel}"]`) || document;
+  if (typeof find === "string") return section.querySelector(find);
+  const want = find.text.toLowerCase();
+  return [...section.querySelectorAll("button")].find((b) => b.textContent.trim().toLowerCase() === want && b.offsetParent !== null) || null;
+}
+
+/** Go to the page and draw the eye to the control - it may take a moment to appear. */
+function pointAt(panel, find, first) {
+  goTo(panel);
+  document.querySelectorAll(".spotlight").forEach((old) => old.classList.remove("spotlight"));
+  const started = performance.now();
+  const look = () => {
+    const target = locate(panel, find);
+    if (target && target.offsetParent !== null) {
+      target.scrollIntoView({ block: "center", behavior: "smooth" });
+      target.focus({ preventScroll: true });
+      target.classList.remove("spotlight");
+      void target.offsetWidth;
+      target.classList.add("spotlight");
+      setTimeout(() => target.classList.remove("spotlight"), 2000);
+    } else if (performance.now() - started < 2500) {
+      setTimeout(look, 100);
+    } else if (first) {
+      toast(first);
+    }
+  };
+  requestAnimationFrame(look);
+}
+
+const actionItems = () => ACTIONS.map(([title, panel, find, hint, first]) => ({ kind: "do", title, hint, go: () => pointAt(panel, find, first) }));
 
 async function gather() {
   const [songs, drafts, profiles, recipes] = await Promise.all([
@@ -40,6 +109,7 @@ async function gather() {
   ]);
   return [
     ...PANELS.map(([panel, title, hint]) => ({ kind: "panel", title, hint, go: () => goTo(panel) })),
+    ...actionItems(),
     ...(songs.songs || []).map((s) => ({ kind: "song", title: s.title + (s.artist ? ` - ${s.artist}` : ""), hint: `${s.parts} parts, ${s.chosen} chosen`, go: () => goTo("songs", { songId: s.song_id }) })),
     ...(drafts.drafts || []).map((d) => ({ kind: "rig", title: d.name || d.draft_id, hint: `${d.blocks} blocks, ${when(d.updated_at)}`, go: () => goTo("rig", { draftId: d.draft_id }) })),
     ...(profiles.profiles || []).map((p) => ({ kind: "guitar", title: p.label || p.profile_id, hint: `${p.sample_count} notes`, go: () => goTo("guitar", { profileId: p.profile_id }) })),
@@ -53,9 +123,18 @@ function matches(item, text) {
   return text.toLowerCase().split(/\s+/).filter(Boolean).every((word) => haystack.includes(word));
 }
 
+/** Lower is better: the title starts with what was typed, then has every word, then only the hint does. */
+function rank(item, text) {
+  const title = item.title.toLowerCase();
+  const typed = text.toLowerCase();
+  if (title.startsWith(typed)) return 0;
+  return typed.split(/\s+/).filter(Boolean).every((word) => title.includes(word)) ? 1 : 2;
+}
+
 function render(list, input) {
   const text = input.value.trim();
-  const shown = (text ? items.filter((item) => matches(item, text)) : items.filter((i) => i.kind === "panel")).slice(0, 9);
+  const found = text ? items.filter((item) => matches(item, text)).map((item, i) => [rank(item, text), i, item]).sort((a, b) => a[0] - b[0] || a[1] - b[1]).map(([, , item]) => item) : items.filter((i) => i.kind === "panel");
+  const shown = found.slice(0, 9);
   if (text) shown.push({ kind: "ask", title: `Ask: "${text}"`, hint: "the assistant, in the chat", go: () => ask(text, { send: true }) });
   index = Math.min(index, shown.length - 1);
   clear(list);
@@ -85,12 +164,12 @@ function close() {
 
 export async function open() {
   if (overlay) return;
-  const input = el("input", { type: "text", placeholder: "Go to a page, a song, a rig, a guitar - or ask anything", "aria-label": "Search" });
+  const input = el("input", { type: "text", placeholder: "Go to a page, a song, a rig, a guitar, something to do - or ask anything", "aria-label": "Search" });
   const list = el("div", { class: "palette-list" });
   overlay = el("div", { class: "palette-overlay", onmousedown: (event) => event.target === overlay && close() }, el("div", { class: "palette" }, input, list));
   document.body.append(overlay);
   input.focus();
-  items = PANELS.map(([panel, title, hint]) => ({ kind: "panel", title, hint, go: () => goTo(panel) }));
+  items = [...PANELS.map(([panel, title, hint]) => ({ kind: "panel", title, hint, go: () => goTo(panel) })), ...actionItems()];
   index = 0;
   let shown = render(list, input);
   gather().then((found) => {

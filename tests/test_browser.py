@@ -931,6 +931,20 @@ def test_ctrl_k_goes_to_a_page_by_name_or_asks(browser, server):
         assert page.locator(".palette-overlay").count() == 0
 
 
+def test_ctrl_k_points_at_a_control_by_what_it_does(browser, server):
+    with page_at(browser, server) as page:
+        page.keyboard.press("Control+k")
+        page.wait_for_selector(".palette input")
+        page.keyboard.type("knob curves")
+        first = page.locator(".palette-item").first
+        assert "Measure knob curves" in first.inner_text()
+        page.keyboard.press("Enter")
+        page.wait_for_selector("#tabs .tab[data-panel='device'][aria-selected='true']")
+        # It points at the button and leaves pressing it to you.
+        page.wait_for_selector("#catalog-calibrate.spotlight")
+        assert page.evaluate("document.activeElement.id") == "catalog-calibrate"
+
+
 def test_every_loop_route_draws_its_wiring(browser, server):
     with page_at(browser, server) as page:
         page.click("#tabs .tab[data-panel='loop']")

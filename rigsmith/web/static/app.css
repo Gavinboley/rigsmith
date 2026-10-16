@@ -770,6 +770,10 @@ button.pill { cursor: pointer; font: inherit; font-size: 11px; }
 .palette-item .title { color: var(--text); }
 .palette-item .hint { margin-left: auto; font-size: 12px; }
 .palette-item.on, .palette-item:hover { background: var(--bg-raised); }
+/* where a palette action points */
+.spotlight { animation: spotlight 0.65s ease-out 3; outline: 2px solid var(--amber); outline-offset: 3px; }
+@keyframes spotlight { from { box-shadow: 0 0 0 0 rgba(240, 160, 32, 0.7); } to { box-shadow: 0 0 0 12px rgba(240, 160, 32, 0); } }
+@media (prefers-reduced-motion: reduce) { .spotlight { animation: none; } }
 /* autopilot: what is still different */
 .remaining { margin-top: 14px; }
 .rem-row { display: grid; grid-template-columns: 80px minmax(160px, 1fr) 52px minmax(0, 1.4fr); gap: 10px; align-items: center; padding: 3px 0; }
