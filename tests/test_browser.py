@@ -234,9 +234,11 @@ def test_opening_a_target_draws_a_waveform(browser, server, tmp_path):
 
         page.wait_for_selector("#target-wave-block:not([hidden])", timeout=15000)
         page.wait_for_selector("#target-wave canvas", timeout=15000)
+        # The name and length are filled in once the file is read - wait for
+        # them rather than racing the request under a loaded suite.
+        page.wait_for_function("document.querySelector('#target-wave-name').textContent.includes('3.0s')", timeout=15000)
         assert "riff.wav" in page.inner_text("#target-wave-name")
-        assert "3.0s" in page.inner_text("#target-wave-name")
-        assert page.inner_text("#target-region-label") == "whole file"
+        page.wait_for_function("document.querySelector('#target-region-label').textContent === 'whole file'", timeout=15000)
 
 
 def test_dragging_across_the_waveform_selects_a_region(browser, server, tmp_path):
@@ -1188,3 +1190,28 @@ def test_a_finished_run_hands_its_draft_over_to_be_finished_by_ear(browser, serv
         page.wait_for_selector("#nudge-text.spotlight")
         assert page.evaluate("document.activeElement.id") == "nudge-text"
         assert page.input_value("#draft-select") == draft_id
+
+
+def test_an_edit_on_the_board_can_be_undone_from_the_keyboard(browser, server):
+    from rigsmith.core import rigs
+
+    draft_id = rigs.create("Undo").draft.draft_id
+    rigs.add_block(draft_id, "amp", "Some Amp", params={"Treble": 0.5})
+    with page_at(browser, server) as page:
+        page.click("#tabs .tab[data-panel='rig']")
+        page.wait_for_selector("#nudge-row")
+        page.select_option("#draft-select", draft_id)
+        page.click("#nudge-row [data-nudge='brighter']")
+        page.wait_for_selector("#undo-draft:not([disabled])")
+        page.wait_for_function("document.querySelector('#undo-draft').title.includes('2 to go')")
+        page.evaluate("document.activeElement.blur()")
+        page.keyboard.press("Control+z")
+        deadline = time.monotonic() + 5
+        while rigs.get(draft_id).rig.blocks[0].params.get("Treble") != 0.5 and time.monotonic() < deadline:
+            time.sleep(0.1)
+        assert rigs.get(draft_id).rig.blocks[0].params["Treble"] == 0.5
+        page.wait_for_selector("#redo-draft:not([disabled])")
+        page.click("#redo-draft")
+        while rigs.get(draft_id).rig.blocks[0].params.get("Treble") != 0.58 and time.monotonic() < deadline + 5:
+            time.sleep(0.1)
+        assert rigs.get(draft_id).rig.blocks[0].params["Treble"] == 0.58

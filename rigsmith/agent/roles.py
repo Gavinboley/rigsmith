@@ -79,6 +79,7 @@ ROLES: dict[str, Role] = {
             "run_autopilot", "autopilot_status",
             "setup_status", "device_sessions", "estimate_pickup",
             "autopilot_listen_back", "check_bench_rig", "tone_sheet", "resume_autopilot", "nudge_tone",
+            "undo_rig_edit",
         ],
     ),
     "researcher": Role(
@@ -161,7 +162,7 @@ ROLES: dict[str, Role] = {
 # can dispatch, and with Claude, which is given everything.
 ROLES["assistant"].local_tools = [
     "app_mode", "list_songs", "show_song", "choose_parts", "song_brief",
-    "list_drafts", "explain_rig", "tone_sheet", "nudge_tone", "search_models",
+    "list_drafts", "explain_rig", "tone_sheet", "nudge_tone", "undo_rig_edit", "search_models",
     "run_autopilot", "autopilot_status", "autopilot_listen_back", "resume_autopilot",
     "setup_status", "workspace_status", "list_jobs", "job_status",
 ]
@@ -174,7 +175,7 @@ ROLES["tone-matcher"].local_tools = [
 ROLES["rig-builder"].local_tools = [
     "create_rig", "list_drafts", "explain_rig", "add_block", "remove_block", "move_block",
     "set_param", "toggle_block", "configure_scene", "set_signal_path", "set_rig_tempo",
-    "nudge_tone", "search_models", "describe_model", "compile_recipe", "show_recipe",
+    "nudge_tone", "undo_rig_edit", "search_models", "describe_model", "compile_recipe", "show_recipe",
     "validate_rig", "preview_changes", "write_rig", "tone_sheet",
 ]
 

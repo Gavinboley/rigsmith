@@ -499,10 +499,15 @@ def _draft_payload(draft) -> dict:
     from ..rig.catalog import get_catalog
     from ..rig.sheet import readings
 
+    from ..core.drafts import get_store
+
     result = rigs.validate(draft.draft_id)
+    undo, redo = get_store().steps(draft.draft_id)
     return {
         "draft_id": draft.draft_id,
         "updated_at": draft.updated_at,
+        "undo": undo,
+        "redo": redo,
         "rig": rig_to_dict(draft.rig),
         "chain": draft.rig.signal_chain(),
         "stereo": draft.rig.is_stereo,
@@ -577,6 +582,12 @@ class NudgeBody(BaseModel):
 @router.post("/drafts/{draft_id}/nudge")
 def nudge_draft(draft_id: str, body: NudgeBody) -> dict:
     result = rigs.nudge(draft_id, body.how, slot=body.slot, live=body.live)
+    return {**_draft_payload(result.draft), "message": result.summary}
+
+
+@router.post("/drafts/{draft_id}/undo")
+def undo_draft(draft_id: str, redo: bool = False) -> dict:
+    result = rigs.undo(draft_id, redo=redo)
     return {**_draft_payload(result.draft), "message": result.summary}
 
 

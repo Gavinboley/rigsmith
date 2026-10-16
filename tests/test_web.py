@@ -1039,3 +1039,9 @@ def test_a_draft_is_nudged_by_ear_through_the_api(client):
     client.post(f"/api/drafts/{draft['draft_id']}/blocks", json={"category": "amp", "model_id": "Some Amp", "params": {"GainA": 0.5}})
     nudged = client.post(f"/api/drafts/{draft['draft_id']}/nudge", json={"how": "more gain"}).json()
     assert nudged["rig"]["blocks"][0]["params"]["GainA"] == 0.58 and "GainA 50% -> 58%" in nudged["message"]
+    assert nudged["undo"] == 2 and nudged["redo"] == 0
+    undone = client.post(f"/api/drafts/{draft['draft_id']}/undo").json()
+    assert undone["rig"]["blocks"][0]["params"]["GainA"] == 0.5 and undone["message"].startswith("undid: ")
+    assert undone["undo"] == 1 and undone["redo"] == 1
+    redone = client.post(f"/api/drafts/{draft['draft_id']}/undo", params={"redo": True}).json()
+    assert redone["rig"]["blocks"][0]["params"]["GainA"] == 0.58

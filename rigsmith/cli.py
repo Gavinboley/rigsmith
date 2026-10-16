@@ -365,6 +365,17 @@ def rig_nudge(draft_id: str, how: str, slot: int | None, live: bool) -> None:
     click.echo(rigs.nudge(draft_id, how, slot=slot, live=live).summary)
 
 
+@rig.command("undo")
+@click.argument("draft_id")
+@click.option("--redo", is_flag=True, help="Step forward again, after an undo.")
+@handled
+def rig_undo(draft_id: str, redo: bool) -> None:
+    """Step a draft back to before its last edit."""
+    from .core import rigs
+
+    click.echo(rigs.undo(draft_id, redo=redo).summary)
+
+
 @rig.command("tempo")
 @click.argument("draft_id")
 @click.argument("bpm", type=float, required=False)

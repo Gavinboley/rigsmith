@@ -253,6 +253,9 @@ function apply(payload) {
   }`;
   $("#signal-path").value = payload.rig.signal_path;
   $("#rig-tempo").value = payload.rig.tempo ?? "";
+  $("#undo-draft").disabled = !payload.undo;
+  $("#undo-draft").title = payload.undo ? `Step back before the last edit (Ctrl+Z) - ${payload.undo} to go` : "Nothing to undo";
+  $("#redo-draft").disabled = !payload.redo;
   renderMeter(payload.validation);
   renderBoard();
   renderScenes();
@@ -513,6 +516,23 @@ export function init() {
   $("#draft-select").onchange = async (event) => {
     await attempt(() => api.draft(event.target.value).then(apply));
   };
+
+  const step = (redo) =>
+    current &&
+    attempt(async () => {
+      const result = await api.post(`/api/drafts/${encodeURIComponent(current.draft_id)}/undo`, {}, { redo });
+      apply(result);
+      toast(result.message, { kind: "ok", timeout: 4000 });
+    });
+  $("#undo-draft").onclick = () => step(false);
+  $("#redo-draft").onclick = () => step(true);
+  document.addEventListener("keydown", (event) => {
+    if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "z") return;
+    // Only on the Rig page, and never inside a text box - that undo is the box's own.
+    if ($('.panel[data-panel="rig"]').hidden || event.target.closest("input, textarea, select, [contenteditable]")) return;
+    event.preventDefault();
+    if (event.shiftKey ? current?.redo : current?.undo) step(event.shiftKey);
+  });
 
   $("#dup-draft").onclick = () =>
     attempt(async () => {

@@ -231,7 +231,7 @@ def parse_doubling(value: str) -> Doubling:
 
 def _finish(draft: Draft, summary: str, *, details: list[str] | None = None) -> EditResult:
     """Persist the draft and package the result the same way every time."""
-    get_store().save(draft)
+    get_store().save(draft, change=summary)
     return EditResult(
         draft=draft,
         summary=summary,
@@ -467,6 +467,20 @@ def nudge(draft_id: str, text: str, *, slot: int | None = None, live: bool = Fal
     if asked.unknown:
         message += f" (not understood: {', '.join(asked.unknown)})"
     return _finish(draft, message)
+
+
+def undo(draft_id: str, *, redo: bool = False) -> EditResult:
+    """Step the draft back to before its last edit - or, ``redo``, forward again.
+
+    Up to :data:`rigsmith.core.drafts.HISTORY` edits back; a new edit after
+    an undo drops what could have been redone, as in any editor.
+    """
+    _get(draft_id)
+    try:
+        draft, change = get_store().undo(draft_id, redo=redo)
+    except LookupError as exc:
+        raise Invalid(f"{exc} on '{draft_id}'", hint="Up to the last 30 edits to a draft can be stepped back through.") from exc
+    return EditResult(draft=draft, summary=f"{'redid' if redo else 'undid'}: {change}", validation=_validate_rig(draft.rig))
 
 
 def toggle_block(draft_id: str, slot: int, enabled: bool) -> EditResult:

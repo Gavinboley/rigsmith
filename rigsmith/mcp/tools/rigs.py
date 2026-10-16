@@ -212,6 +212,14 @@ def set_signal_path(draft_id: str, signal_path: SignalPathName) -> str:
 
 
 @tool
+def undo_rig_edit(draft_id: str, redo: bool = False) -> str:
+    """Step the draft back to before its last edit - a nudge the user did
+    not like, a block removed by mistake - and say which edit that was.
+    redo=True steps forward again. Up to 30 edits back."""
+    return rigs.undo(draft_id, redo=redo).summary
+
+
+@tool
 def nudge_tone(draft_id: str, how: str, slot: int | None = None) -> str:
     """Turn the draft's amp the way the user said, in their words - "a bit
     brighter", "tighter low end", "a lot more gain, less fizz" - or what is

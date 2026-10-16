@@ -47,6 +47,7 @@ const ACTIONS = [
   ["Search TONE3000", "captures", "#t3k-search", "NAM captures online"],
   ["Scan for captures", "captures", "#scan-btn", "NAM files already on disk"],
   ["Nudge the tone by ear", "rig", "#nudge-text", "a bit brighter, too boomy"],
+  ["Undo the last rig edit", "rig", "#undo-draft", "Ctrl+Z on the Rig page"],
   ["Tone sheet", "rig", "#sheet-btn", "the rig as you would dial it by hand"],
   ["Write the rig to the Core", "rig", "#write-btn", "save it to the HeadRush"],
   ["Score against the record", "match", "#score-btn", "how close is it"],

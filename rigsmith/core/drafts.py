@@ -7,10 +7,14 @@ a half-built rig that evaporates is worse than useless.
 
 Drafts are plain JSON on disk in the workspace. Nothing here touches the
 device; writing is a separate, explicitly gated step.
+
+Each save keeps the version it replaces, so an edit can be undone - most
+of all a nudge by ear, where "that was worse" is half the point of trying.
 """
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -21,6 +25,9 @@ from ..rig.codec import load_rig, rig_to_dict, save_rig
 from ..rig.model import Rig
 
 _SLUG = re.compile(r"[^a-z0-9]+")
+
+#: Versions of a draft kept to step back through.
+HISTORY = 30
 
 
 def slugify(name: str) -> str:
@@ -62,6 +69,50 @@ class DraftStore:
     def _baseline_path(self, draft_id: str) -> Path:
         return self.directory / f"{draft_id}.baseline.json"
 
+    def _history_path(self, draft_id: str) -> Path:
+        return self.directory / f"{draft_id}.history.json"
+
+    # -- history ----------------------------------------------------------
+
+    def _history(self, draft_id: str) -> dict:
+        """``{"past": [...], "future": [...]}``, each entry a saved version
+        and the change that separates it from the one after."""
+        try:
+            data = json.loads(self._history_path(draft_id).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {"past": [], "future": []}
+        return {"past": list(data.get("past") or []), "future": list(data.get("future") or [])}
+
+    @staticmethod
+    def _content(payload: dict) -> dict:
+        """A saved version without its timestamp, to tell a change from a re-save."""
+        meta = {k: v for k, v in (payload.get("_draft") or {}).items() if k != "updated_at"}
+        return {**payload, "_draft": meta}
+
+    def steps(self, draft_id: str) -> tuple[int, int]:
+        """How many edits can be undone, and how many redone."""
+        history = self._history(draft_id)
+        return len(history["past"]), len(history["future"])
+
+    def undo(self, draft_id: str, *, redo: bool = False) -> tuple[Draft, str]:
+        """Put back the version before the last edit (or, ``redo``, after the
+        last undo) and say which change that was. LookupError if there is none."""
+        from . import storage
+
+        history = self._history(draft_id)
+        source, target = ("future", "past") if redo else ("past", "future")
+        if not history[source]:
+            raise LookupError("nothing to redo" if redo else "nothing to undo")
+        entry = history[source].pop()
+        current = json.loads(self._path(draft_id).read_text(encoding="utf-8"))
+        history[target].append({"payload": current, "change": entry.get("change") or "an edit"})
+        restored = entry["payload"]
+        restored.setdefault("_draft", {})["updated_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        storage.write_json(self._history_path(draft_id), history)
+        storage.write_json(self._path(draft_id), restored)
+        self._cache.pop(draft_id, None)
+        return self.get(draft_id), entry.get("change") or "an edit"
+
     # -- crud -------------------------------------------------------------
 
     def create(self, rig: Rig, *, baseline: Rig | None = None, draft_id: str | None = None) -> Draft:
@@ -85,7 +136,9 @@ class DraftStore:
             index += 1
         return candidate
 
-    def save(self, draft: Draft) -> Draft:
+    def save(self, draft: Draft, *, change: str | None = None) -> Draft:
+        """Write ``draft``, keeping the version it replaces as one step back;
+        ``change`` is what this save did, said when it is undone."""
         draft.touch()
         self.directory.mkdir(parents=True, exist_ok=True)
         payload = rig_to_dict(draft.rig)
@@ -97,6 +150,17 @@ class DraftStore:
             "has_baseline": draft.baseline is not None,
         }
         from . import storage
+
+        path = self._path(draft.draft_id)
+        try:
+            before = json.loads(path.read_text(encoding="utf-8")) if path.exists() else None
+        except (OSError, ValueError):
+            before = None
+        if before is not None and self._content(before) != self._content(payload):
+            history = self._history(draft.draft_id)
+            history["past"] = (history["past"] + [{"payload": before, "change": change or "an edit"}])[-HISTORY:]
+            history["future"] = []
+            storage.write_json(self._history_path(draft.draft_id), history)
 
         # Baseline first: a crash between the two then leaves an older draft
         # beside its baseline, never a newer draft diffed against a baseline
@@ -115,8 +179,6 @@ class DraftStore:
         if not path.exists():
             known = ", ".join(self.list_ids()) or "none"
             raise KeyError(f"no draft '{draft_id}'. Known drafts: {known}")
-
-        import json
 
         payload = json.loads(path.read_text(encoding="utf-8"))
         meta = payload.pop("_draft", {})
@@ -140,7 +202,7 @@ class DraftStore:
 
     def delete(self, draft_id: str) -> None:
         self._cache.pop(draft_id, None)
-        for path in (self._path(draft_id), self._baseline_path(draft_id)):
+        for path in (self._path(draft_id), self._baseline_path(draft_id), self._history_path(draft_id)):
             if path.exists():
                 path.unlink()
 
@@ -150,7 +212,7 @@ class DraftStore:
         return sorted(
             p.stem
             for p in self.directory.glob("*.json")
-            if not p.name.endswith(".baseline.json")
+            if not p.name.endswith((".baseline.json", ".history.json"))
         )
 
     def list_drafts(self) -> list[Draft]:
