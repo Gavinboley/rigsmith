@@ -126,6 +126,10 @@ def test_tempo_and_most_section_changes_are_found():
     # and vocals move with the sections. Guitar and a kick alone is the hard
     # case; half of them found is the floor this has to stay above.
     assert hits >= len(boundaries) // 2
+    # The same music twice in a row is one section, not a chorus cut in two
+    # wherever its chord cycle happened to light the curve up.
+    assert all(a.label != b.label for a, b in zip(result.sections, result.sections[1:]))
+    assert all(a.end == b.start for a, b in zip(result.sections, result.sections[1:])), "no gaps"
 
 
 def test_a_quiet_intro_is_named_an_intro_not_a_verse():

@@ -326,12 +326,33 @@ def analyse(audio: np.ndarray, sample_rate: int, *, min_section_s: float | None 
         Section(round(a * HOP_S, 2), round(min(b * HOP_S, duration), 2), labels[i], energy_db=round(e, 1))
         for i, (a, b, _, e) in enumerate(segments)
     ]
-    counts = {label: labels.count(label) for label in set(labels)}
+    sections = _merge_runs(sections)
+    counts: dict[str, int] = {}
+    for section in sections:
+        counts[section.label] = counts.get(section.label, 0) + 1
     for section in sections:
         section.repeats = counts[section.label]
     _name(sections)
     result.sections = sections
     return result
+
+
+def _merge_runs(sections: list["Section"]) -> list["Section"]:
+    """One section where the clustering heard the same music twice in a row.
+
+    A long chorus over a four-chord cycle can light the curve up halfway
+    through; when both halves come back with the same letter, they were one.
+    """
+    merged: list[Section] = []
+    for section in sections:
+        if merged and merged[-1].label == section.label:
+            last = merged[-1]
+            a, b = last.end - last.start, section.end - section.start
+            last.energy_db = round((last.energy_db * a + section.energy_db * b) / max(a + b, 1e-9), 1)
+            last.end = section.end
+        else:
+            merged.append(section)
+    return merged
 
 
 def _cluster(vectors: list[np.ndarray], threshold: float = 0.6) -> list[str]:
