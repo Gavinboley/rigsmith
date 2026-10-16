@@ -444,3 +444,25 @@ def test_a_high_gain_riff_is_transcribed_as_single_notes():
     assert result.mode == "monophonic", result.polyphony
     hits = sum(any(abs(e.start - t) < 0.05 and abs(e.midi - m) < 0.5 for e in result.events) for t, _, m, _ in truth)
     assert hits >= 0.95 * len(truth)
+
+
+def test_strummed_triads_are_read_as_their_chords_not_a_fundamental_below():
+    """The note-by-note estimate heard E-G#-B as one E an octave down."""
+    from rigsmith.learn.pluck import render_notes
+    from rigsmith.learn.transcribe import transcribe
+    from rigsmith.loop.virtual import SimAmp
+
+    beat = 60 / 110
+    truth = []
+    for b in range(0, 32, 2):
+        root = [52, 57, 55, 50][(b // 2) % 4]
+        truth += [(b * beat, beat * 1.8, m, 0.7) for m in (root, root + 4, root + 7)]
+    audio = SimAmp(Type=2, Gain=0.5).process(render_notes(truth, seed=5))
+    result = transcribe(audio, 48000, method="builtin", match_record_pitch=False)
+    right = 0
+    for start in sorted({t for t, _, _, _ in truth}):
+        want = {m % 12 for t, _, m, _ in truth if t == start}
+        got = {round(e.midi) % 12 for e in result.events if abs(e.start - start) < 0.06}
+        right += bool(got) and len(want & got) / len(want | got) >= 0.66
+    assert right >= 0.8 * 16, right
+    assert any("pitch classes" in note for note in result.notes_text)

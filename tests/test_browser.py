@@ -530,6 +530,9 @@ def test_a_path_can_be_picked_instead_of_typed(browser, server, tmp_path):
         page.click("#target-path + button")
         page.wait_for_selector("dialog.picker", state="visible")
 
+        # The folder is listed after the dialog opens; under load, counting
+        # the moment it appears found it still empty.
+        page.wait_for_function("() => document.querySelectorAll('dialog.picker .picker-row.file').length >= 2", timeout=10000)
         rows = page.locator("dialog.picker .picker-row.file")
         assert rows.count() == 2, "both takes should be listed"
 
