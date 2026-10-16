@@ -43,7 +43,9 @@ def origin(draft_id: str) -> dict:
     else:
         if song is not None and run.part_ids:
             try:
-                part = song.part(run.part_ids[0])
+                from .autopilot import _part
+
+                part = _part(song, run)
                 found["origin"].append(("Part", part.label + (f" - {part.sketch['summary']}" if (part.sketch or {}).get("summary") else "")))
             except Exception:
                 pass

@@ -251,6 +251,8 @@ def test_a_nudge_reaches_the_reverb_and_the_delay(workspace):
     assert echo.params["Feedback"] == 0.42
     with pytest.raises(Invalid, match="slot 1 is not a reverb"):
         rigs.nudge(draft_id, "more reverb", slot=1)
+    with pytest.raises(Invalid, match=r"slot 3 \(Tape Echo\) has no Treble"):
+        rigs.nudge(draft_id, "brighter", slot=3)
     dry = rigs.create("Dry").draft.draft_id
     rigs.add_block(dry, "amp", "Some Amp")
     with pytest.raises(Invalid, match="no reverb block"):

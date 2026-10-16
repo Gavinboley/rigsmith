@@ -445,6 +445,13 @@ def nudge(draft_id: str, text: str, *, slot: int | None = None, live: bool = Fal
             # whatever that block happens to call Mix or Level.
             missing.append(f"slot {chosen.slot} is not a {kind}")
             continue
+        if chosen is not None and kind == "amp" and chosen.category is not BlockCategory.AMP:
+            # "Brighter" on a delay would give it a Treble its model has not
+            # got; a clone or capture takes the word only if it has the knob.
+            spec = catalog.get(chosen.model_id)
+            if spec is None or spec.param(name) is None:
+                missing.append(f"slot {chosen.slot} ({chosen.model_id}) has no {name}")
+                continue
         candidates = [chosen] if chosen is not None else [b for b in ordered if is_kind(b, kind)]
         found = next(((b, control_on(b, kind, name)) for b in candidates if control_on(b, kind, name)), None)
         if found is None:

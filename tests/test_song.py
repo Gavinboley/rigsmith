@@ -503,3 +503,33 @@ def test_a_choice_follows_its_part_when_a_re_map_merges_its_section():
     assert renamed[0].chosen and renamed[0].note == "the big one", "the choice follows the part that covers it"
     assert renamed[0].di_take is None, "a DI made for 60-72 s does not fit 60-84 s"
     assert not after[1].chosen, "only on its own layer"
+
+
+def test_two_old_parts_merged_into_one_keep_both_notes():
+    from rigsmith.core.songs import Part, carry_over
+
+    before = {
+        "chorus-3-left": Part("chorus-3-left", 2, "chorus", "left", 60.0, 72.0, chosen=True, note="first half", recipe_id="r1"),
+        "chorus-4-left": Part("chorus-4-left", 3, "chorus", "left", 72.0, 84.0, note="second half", recipe_id="r2"),
+    }
+    merged = [Part("chorus-5-left", 4, "chorus", "left", 60.0, 84.0)]
+    carry_over(before, merged)
+    assert merged[0].chosen and merged[0].recipe_id == "r1"
+    assert "first half" in merged[0].note and "second half" in merged[0].note and "r2" in merged[0].note
+
+
+def test_a_run_finds_its_part_again_after_a_re_map_renames_it(workspace):
+    from rigsmith.core import autopilot
+    from rigsmith.core.songs import Part
+
+    made = songs.create("Renamed")
+    made.parts = [Part("refrain-2-left", 1, "refrain", "left", 20.0, 50.0)]
+    made.save()
+    run = autopilot.Run(run_id="renamed", request=autopilot.Request(title="Renamed"), song_id=made.song_id, part_ids=["chorus-2-left"])
+    run.part_spans = {"chorus-2-left": ["left", 20.5, 49.5]}
+    part = autopilot._part(songs.get(made.song_id), run)
+    assert part.part_id == "refrain-2-left" and run.part_ids == ["refrain-2-left"]
+    assert any("re-mapped" in n for n in run.notes)
+    lost = autopilot.Run(run_id="lost", request=autopilot.Request(title="Renamed"), song_id=made.song_id, part_ids=["gone-9-left"])
+    with pytest.raises(NotFound):
+        autopilot._part(songs.get(made.song_id), lost)

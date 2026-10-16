@@ -128,6 +128,17 @@ class Song:
         """The best audio to measure against: the stem, else the mix."""
         return self.stem or self.mix
 
+    def covering(self, layer: str, start: float, end: float, *, at_least: float = 0.5) -> Part | None:
+        """The part on ``layer`` that covers most of ``start``-``end`` (at least half), if any."""
+        span = max(end - start, 1e-9)
+        best, cover = None, 0.0
+        for part in self.parts:
+            if part.layer == layer:
+                overlap = (min(part.end, end) - max(part.start, start)) / span
+                if overlap > cover:
+                    best, cover = part, overlap
+        return best if cover >= at_least else None
+
     def part(self, part_id: str) -> Part:
         for part in self.parts:
             if part.part_id == part_id:
@@ -496,22 +507,22 @@ def carry_over(previous: dict[str, Part], parts: list[Part]) -> None:
     part spans the same stretch, since both were made for that stretch.
     """
     kept = {p.part_id for p in parts}
+    mapped = Song(song_id="", title="", parts=parts)
     for old in previous.values():
         if old.part_id in kept or not (old.chosen or old.note or old.recipe_id or old.di_take or old.best or old.history):
             continue
-        span = max(old.end - old.start, 1e-9)
-        heir, cover = None, 0.0
-        for new in parts:
-            if new.layer == old.layer:
-                overlap = (min(new.end, old.end) - max(new.start, old.start)) / span
-                if overlap > cover:
-                    heir, cover = new, overlap
-        if heir is None or cover < 0.5:
+        heir = mapped.covering(old.layer, old.start, old.end)
+        if heir is None:
             continue
+        # Two old parts can land on one new one (their sections merged):
+        # keep both notes and histories, not only the first.
         heir.chosen = heir.chosen or old.chosen
-        heir.note = heir.note or old.note
+        if old.note and old.note != heir.note:
+            heir.note = f"{heir.note}; {old.note}" if heir.note else old.note
+        if old.recipe_id and heir.recipe_id and old.recipe_id != heir.recipe_id:
+            heir.note = f"{heir.note + '; ' if heir.note else ''}also researched as {old.recipe_id}"
         heir.recipe_id = heir.recipe_id or old.recipe_id
-        heir.history = heir.history or old.history
+        heir.history = (heir.history or []) + [h for h in (old.history or []) if h not in (heir.history or [])]
         if abs(heir.start - old.start) < 0.5 and abs(heir.end - old.end) < 0.5:
             heir.di_take = heir.di_take or old.di_take
             heir.best = heir.best or old.best

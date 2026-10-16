@@ -141,6 +141,9 @@ class Run:
     built_at: str | None = None
     """The draft's ``updated_at`` when the build finished: a draft saved
     since then has your edits in it, and a rebuild keeps it."""
+    part_spans: dict = field(default_factory=dict)
+    """``{part_id: [layer, start, end]}`` - so the run still finds its part
+    after a re-map renames it (:func:`_part`)."""
     notes: list[str] = field(default_factory=list)
     created_at: str = field(default_factory=_now)
     finished_at: str | None = None
@@ -305,7 +308,28 @@ def _stage_parts(run: Run) -> str:
         run.note(f"no part chosen, so the most prominent guitar part was picked: {wanted[0]}")
     songs.choose(run.song_id, wanted)
     run.part_ids = wanted
+    for part_id in wanted:
+        part = song.part(part_id)
+        run.part_spans[part_id] = [part.layer, part.start, part.end]
     return ", ".join(wanted)
+
+
+def _part(song, run: Run, index: int = 0):
+    """The run's part - by id, or, when a re-map renamed it, by where it was."""
+    from .errors import NotFound
+
+    part_id = run.part_ids[index]
+    try:
+        return song.part(part_id)
+    except NotFound:
+        span = run.part_spans.get(part_id)
+        heir = song.covering(*span) if span else None
+        if heir is None:
+            raise
+        run.part_ids[index] = heir.part_id
+        run.part_spans[heir.part_id] = [heir.layer, heir.start, heir.end]
+        run.note(f"the song was re-mapped: part {part_id} is now {heir.part_id}")
+        return heir
 
 
 def _most_prominent(song):
@@ -333,7 +357,7 @@ def _stage_research(run: Run, progress) -> str:
     from . import appsettings, chat, recipes, songs
 
     song = songs.get(run.song_id)
-    part = song.part(run.part_ids[0])
+    part = _part(song, run)
     sketch = part.sketch or {}
     recipe_id = song.recipe_id
     if not recipe_id:
@@ -550,7 +574,7 @@ def _stage_di(run: Run, progress) -> str:
     from . import appsettings, songs
 
     song = songs.get(run.song_id)
-    part = song.part(run.part_ids[0])
+    part = _part(song, run)
     run.target_path = str(songs.part_audio(run.song_id, part.part_id))
     if run.request.di:
         return _take_as_di(run)
@@ -594,7 +618,7 @@ def _stage_candidates(run: Run, progress) -> str:
     from . import songs
 
     song = songs.get(run.song_id)
-    part = song.part(run.part_ids[0])
+    part = _part(song, run)
     gain = float((part.sketch or {}).get("gain") or 0)
     field_ = pick(gain, researched=_researched_amps(run), favoured=_ear_winners(run), count=run.request.candidates, catalog=get_catalog())
     if not field_:
@@ -973,7 +997,7 @@ def _stage_rig(run: Run, *, from_ears: bool = False) -> str:
     if run.ear_pick:
         best = next((r for r in run.results if r["label"] == run.ear_pick), best)
     song = songs.get(run.song_id)
-    part = song.part(run.part_ids[0])
+    part = _part(song, run)
     name = f"{song.title} - {part.section_name}"[:40]
     if run.draft_id:
         # A re-run replaces this run's draft rather than adding another -
@@ -987,7 +1011,8 @@ def _stage_rig(run: Run, *, from_ears: bool = False) -> str:
         if old is not None and run.built_at and old.updated_at == run.built_at:
             rigs.delete(run.draft_id)
         elif old is not None:
-            run.note(f"kept '{old.rig.name}' ({old.draft_id}) as you left it - it was edited after it was built; the rebuild is a new draft (Rig page, Compare with..., shows what differs)")
+            why = "it was edited after it was built" if run.built_at else "this run is from before a rebuild could tell whether you had edited it"
+            run.note(f"kept '{old.rig.name}' ({old.draft_id}) as you left it - {why}; the rebuild is a new draft (Rig page, Compare with..., shows what differs)")
     draft = rigs.create(name, notes=f"autopilot {run.run_id}: {part.label}, {part.sketch.get('summary', '')}").draft
     run.draft_id = draft.draft_id
 
@@ -1113,7 +1138,7 @@ def song_rig(run_ids: list[str], *, name: str | None = None) -> dict:
 
     parts = []
     for run in runs:
-        part = song.part(run.part_ids[0])
+        part = _part(song, run)
         best = _choice(run)
         parts.append({"run": run, "part": part, "best": best, "config": (best["model"], best["cab"])})
 
