@@ -568,7 +568,7 @@ Extras: `ui`, `mcp`, `midi`, `audio`, `match`, `separation`, `browser`, `claude`
 - [x] ~~Extract the full model catalog from a real device~~ - 327 models, verified
 - [ ] **A first measured session on the Core** - the loop, a reamped search, and a blind A/B; everything up to it is built and rehearsed on the simulated bench ([docs/FIRST_SESSION.md](docs/FIRST_SESSION.md))
 - [ ] Measure the knob curves - 39 measured on the Core so far, 1113 once shared across each block's models; the Device page measures the loaded rig's
-- [ ] Write scenes over the network - read already; waiting on one scene set by hand to confirm which mode number means on
+- [ ] Write scenes over the network - built and read back after each write; it needs the Core's on/off numbers learned once, from one scene set by hand (Device -> *Learn on/off from FS1*), and until then the write report lists what each footswitch should do
 
 ## License
 
