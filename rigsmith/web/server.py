@@ -84,6 +84,18 @@ def build_app(*, hosts=None):
         def index() -> FileResponse:
             return FileResponse(assets / "index.html")
 
+    from fastapi.responses import HTMLResponse
+
+    from . import docs as guides
+
+    # The guides in docs/, as pages (no return annotation, as above).
+    @app.get("/docs/{name}", include_in_schema=False)
+    def guide(name: str):
+        page = guides.page(name)
+        if page is None:
+            return HTMLResponse(f"<p>No guide called {name!r} here - they are {', '.join(guides.GUIDES)}.</p>", status_code=404)
+        return HTMLResponse(page)
+
     return app
 
 

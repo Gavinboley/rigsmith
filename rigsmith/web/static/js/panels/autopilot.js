@@ -375,6 +375,7 @@ async function renderSetup() {
         el("h3", { text: "Getting set up" }),
         el("span", { class: "hint", text: `${doneCount} of ${setup.steps.length} - autopilot already works; each step replaces a stand-in with the real thing` }),
         el("span", { class: "grow" }),
+        el("a", { class: "hint", href: "/docs/first-session", target: "_blank", text: "the first session with the Core, step by step" }),
         essential.every((s) => s.done) ? null : el("button", { class: "btn small ghost", text: "ask what's next", onclick: () => ask("What should I set up next, and why?") }),
         el("button", { class: "btn small ghost", text: "hide", onclick: () => attempt(async () => { await api.patch("/api/settings", { onboarding_done: true }); clear(host); }) })
       ),

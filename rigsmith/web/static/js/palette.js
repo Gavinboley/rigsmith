@@ -94,7 +94,18 @@ function pointAt(panel, find, first) {
   requestAnimationFrame(look);
 }
 
-const actionItems = () => ACTIONS.map(([title, panel, find, hint, first]) => ({ kind: "do", title, hint, go: () => pointAt(panel, find, first) }));
+/* The guides in docs/, opened as their own pages. */
+const GUIDES = [
+  ["First session with the Core", "first-session", "step by step: guitar, loop, a run, the write, by ear"],
+  ["Which local model", "local-models", "servers, models and what to expect"],
+  ["What the match numbers mean", "tone-matching", "scores, modes, and what they cannot tell you"],
+  ["The Remote Editor protocol", "protocol", "how rigsmith talks to the Core"],
+];
+
+const actionItems = () => [
+  ...ACTIONS.map(([title, panel, find, hint, first]) => ({ kind: "do", title, hint, go: () => pointAt(panel, find, first) })),
+  ...GUIDES.map(([title, slug, hint]) => ({ kind: "guide", title, hint, go: () => window.open(`/docs/${slug}`, "_blank") })),
+];
 
 async function gather() {
   const [songs, drafts, profiles, recipes] = await Promise.all([

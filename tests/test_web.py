@@ -1047,3 +1047,20 @@ def test_a_draft_is_nudged_by_ear_through_the_api(client):
     assert undone["undo"] == 1 and undone["redo"] == 1
     redone = client.post(f"/api/drafts/{draft['draft_id']}/undo", params={"redo": True}).json()
     assert redone["rig"]["blocks"][0]["params"]["GainA"] == 0.58
+
+
+def test_the_guides_are_pages(client):
+    page = client.get("/docs/first-session")
+    assert page.status_code == 200 and "text/html" in page.headers["content-type"]
+    assert "<h1>Your first session with the hardware</h1>" in page.text
+    assert '<a href="/docs/local-models">' in page.text, "a link to another guide goes to its page"
+    assert "<script" not in page.text.lower()
+    assert client.get("/docs/nope").status_code == 404, "only the guides by name - no path into the repo"
+
+
+def test_markdown_is_escaped_before_it_is_marked_up():
+    from rigsmith.web import docs
+
+    assert docs._inline("**`a<b>`** and <script>") == "<b><code>a&lt;b&gt;</code></b> and &lt;script&gt;"
+    title, body = docs.render("# T\n\n| a | b |\n|---|---|\n| 1 | **2** |\n\n- one\n- two\n")
+    assert title == "T" and "<td><b>2</b></td>" in body and "<ul><li>one</li><li>two</li></ul>" in body
