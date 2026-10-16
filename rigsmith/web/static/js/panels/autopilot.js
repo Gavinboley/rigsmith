@@ -273,7 +273,10 @@ function show(run) {
       el("div", { class: "row" }, el("button", { class: "btn small primary", text: "Open the song rig", onclick: () => goTo("rig", { draftId: run.song_rig.draft_id }) }))
     );
   }
-  for (const note of run.notes || []) card.append(el("div", { class: "notice", text: note }));
+  // The chart above already says what still differs; its sentence is for
+  // the text views (the CLI, an agent's report).
+  const notes = (run.notes || []).filter((note) => !(run.remaining?.length && note.startsWith("still different from the record")));
+  for (const note of notes) card.append(el("div", { class: "notice", text: note }));
   host.append(card);
 
   clearInterval(polling);
