@@ -22,6 +22,7 @@ def run_autopilot(
     route_id: str | None = None,
     research: bool = True,
     like: str | None = None,
+    ear_habits: bool = False,
 ) -> str:
     """Chase a song's guitar tone end to end, in the background.
 
@@ -31,17 +32,33 @@ def run_autopilot(
     'virtual' bench rehearses on a simulated amp; 'device' switches the Core's
     amp live and reamps through the loop. Nothing is written to the device.
     The part DI follows the research's guitar (a Strat record gets a single
-    coil) unless ``like`` names one. Returns a run id; check it with
-    autopilot_status.
+    coil) unless ``like`` names one. ``ear_habits`` starts the amp from the
+    knobs the user keeps turning after autopilot (see ear_habits) - only
+    when they ask for it. Returns a run id; check it with autopilot_status.
     """
     run = autopilot.start(
         autopilot.Request(
             title=title, artist=artist, mix=mix_path, stem=stem_path, song_id=song_id,
             parts=list(parts or []), profile_id=profile_id, midi=midi_path, bench=bench,
-            route_id=route_id, research=research, like=like,
+            route_id=route_id, research=research, like=like, ear_habits=ear_habits,
         )
     )
     return f"Started autopilot {run.run_id}. Check it with autopilot_status('{run.run_id}')."
+
+
+@tool
+def ear_habits(bench: Literal["virtual", "device"] = "device") -> str:
+    """The amp knobs the user keeps turning the same way after autopilot
+    builds a rig - their room, monitors or taste rather than any one song -
+    learned from what each finished run built and what its draft holds now.
+    A run can start from them (run_autopilot ear_habits=True)."""
+    from ...core import habits
+
+    found = habits.habits(bench)
+    if not found:
+        looked = sum(1 for where, _ in habits.turns() if where == bench)
+        return f"no habits yet on the {bench} bench ({looked} finished rig(s) looked at; a habit needs {habits.MIN_RIGS} turned the same way)"
+    return "\n".join(h.describe() for h in found)
 
 
 @tool

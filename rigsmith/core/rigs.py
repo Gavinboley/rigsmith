@@ -384,6 +384,18 @@ def set_param(draft_id: str, slot: int, name: str, value: Any) -> EditResult:
     return _finish(draft, f"slot {slot} ({block.model_id}): {name} = {value}")
 
 
+def set_params(draft_id: str, slot: int, values: dict[str, float], *, why: str = "") -> EditResult:
+    """Set several of one block's numbers as one edit - one step to undo."""
+    draft = _get(draft_id)
+    block = _block(draft, slot)
+    said = []
+    for name, value in values.items():
+        before = block.params.get(name)
+        block.params[name] = value
+        said.append(f"{name} {before:.0%} -> {value:.0%}" if isinstance(before, (int, float)) and not isinstance(before, bool) else f"{name} = {value}")
+    return _finish(draft, f"slot {slot} ({block.model_id}): " + (f"{why} - " if why else "") + ", ".join(said))
+
+
 def nudge(draft_id: str, text: str, *, slot: int | None = None, live: bool = False) -> EditResult:
     """Move the knobs the way the words say: "a bit brighter, too much reverb".
 

@@ -88,6 +88,11 @@ class Request:
     use_part_take: bool = True
     """Use your own take of the part, when one was lined up with it before
     ('song take'), instead of rendering a DI from your guitar's voice."""
+    ear_habits: bool = False
+    """Start the amp from your ear habits (:mod:`rigsmith.core.habits`) -
+    the knobs you keep turning the same way after autopilot, on this bench -
+    as one edit after the build, so a single undo steps back to what
+    measured closest."""
 
 
 @dataclass
@@ -130,6 +135,9 @@ class Run:
     """The runs that chased this song's other chosen parts, one each."""
     song_rig: dict | None = None
     """When several parts were chased: the one rig with a scene per part."""
+    built_amp: dict | None = None
+    """The amp as the measurement left it - ``{model, params}`` - so what
+    you turned afterwards can be told apart (:mod:`rigsmith.core.habits`)."""
     notes: list[str] = field(default_factory=list)
     created_at: str = field(default_factory=_now)
     finished_at: str | None = None
@@ -933,6 +941,25 @@ def _remaining(run: Run, best: dict) -> list[dict]:
     return remaining(target, audio, rate)
 
 
+def _start_from_habits(run: Run, model_id: str) -> None:
+    """Turn the built amp the way your ears usually do, as one edit to undo."""
+    from . import habits as ears
+    from . import rigs
+
+    found = ears.habits(run.request.bench)
+    if not found:
+        run.note("asked to start from your ear habits, but there are none yet on this bench - they show after a few runs you have finished by ear")
+        return
+    amp = next((b for b in sorted(rigs.get(run.draft_id).rig.blocks, key=lambda b: b.slot) if b.model_id == model_id), None)
+    if amp is None:
+        return
+    moved, said = ears.apply(dict(amp.params), model_id, found)
+    if not said:
+        return
+    rigs.set_params(run.draft_id, amp.slot, {c: moved[c] for c in moved if moved[c] != amp.params.get(c)}, why="your ear habits")
+    run.note(f"started from your ear habits ({', '.join(said)}); what measured closest is one undo away on the Rig page")
+
+
 def _stage_rig(run: Run, *, from_ears: bool = False) -> str:
     from ..tune.candidates import surrounding_blocks, wire_params
     from . import matching, rigs, songs
@@ -970,6 +997,9 @@ def _stage_rig(run: Run, *, from_ears: bool = False) -> str:
     for block in before:
         add(block["category"], block["model"], wire_params(block))
     knobs = {k.split(".", 1)[1]: round(float(v), 4) for k, v in (best.get("knobs") or {}).items()}
+    from . import habits as ears
+
+    run.built_amp = ears.built(best["model"], knobs)
     add("amp", best["model"], knobs)
     add("cab", best["cab"])
     if best.get("geq"):
@@ -988,6 +1018,8 @@ def _stage_rig(run: Run, *, from_ears: bool = False) -> str:
         )
     for text in notes:
         run.note(text)
+    if run.request.ear_habits:
+        _start_from_habits(run, best["model"])
     if run.request.bench == "virtual":
         run.note(
             "the amp knob values came from the simulated amp - a rehearsal of the search. "

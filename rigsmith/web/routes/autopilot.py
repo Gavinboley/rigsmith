@@ -32,6 +32,7 @@ class RunBody(BaseModel):
     like_amount: float = 1.0
     match_guitar: bool = True
     use_part_take: bool = True
+    ear_habits: bool = False
 
 
 def _payload(run) -> dict:
@@ -50,6 +51,19 @@ def _payload(run) -> dict:
 @router.get("")
 def list_runs() -> dict:
     return {"runs": [_payload(r) for r in autopilot.list_runs()[:30]], "stages": list(autopilot.STAGES)}
+
+
+@router.get("/habits")
+def ear_habits(bench: str = "device") -> dict:
+    """The knobs you keep turning the same way after autopilot, on ``bench``."""
+    from ...core import habits
+
+    return {
+        "bench": bench,
+        "habits": [h.to_dict() for h in habits.habits(bench)],
+        "rigs": sum(1 for where, _ in habits.turns() if where == bench),
+        "needs": habits.MIN_RIGS,
+    }
 
 
 @router.post("")

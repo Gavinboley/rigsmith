@@ -32,9 +32,10 @@ def group() -> None:
 @click.option("--like", help="The record's guitar (strat, p90, paf, a learned guitar...); default: what the research says.")
 @click.option("--keep-my-pickup", is_flag=True, help="Do not move the DI toward the researched guitar.")
 @click.option("--render-di", is_flag=True, help="Render the DI even when the part has your own take lined up.")
+@click.option("--ear-habits", is_flag=True, help="Start the amp from the knobs you keep turning after autopilot ('autopilot habits').")
 @click.option("--detach", is_flag=True, help="Start it and return; check with 'autopilot show'.")
 @handled
-def autopilot_run(title, artist, mix, stem, song_id, parts, profile_id, di, midi, bench, route_id, candidates, tune_budget, no_research, like, keep_my_pickup, render_di, detach) -> None:
+def autopilot_run(title, artist, mix, stem, song_id, parts, profile_id, di, midi, bench, route_id, candidates, tune_budget, no_research, like, keep_my_pickup, render_di, ear_habits, detach) -> None:
     """Chase TITLE's guitar tone, start to finish."""
     from ..core import autopilot
 
@@ -42,7 +43,7 @@ def autopilot_run(title, artist, mix, stem, song_id, parts, profile_id, di, midi
         title=title, artist=artist, mix=mix, stem=stem, song_id=song_id, parts=list(parts),
         profile_id=profile_id, di=di, midi=midi, bench=bench, route_id=route_id,
         candidates=candidates, tune_budget=tune_budget, research=not no_research,
-        like=like, match_guitar=not keep_my_pickup, use_part_take=not render_di,
+        like=like, match_guitar=not keep_my_pickup, use_part_take=not render_di, ear_habits=ear_habits,
     )
     run = autopilot.start(request)
     click.echo(f"autopilot {run.run_id} started.")
@@ -61,6 +62,23 @@ def autopilot_run(title, artist, mix, stem, song_id, parts, profile_id, di, midi
             break
         time.sleep(0.5)
     click.echo("\n" + autopilot.get(run.run_id).describe())
+
+
+@group.command("habits")
+@click.option("--bench", type=click.Choice(["virtual", "device"]), default="device", show_default=True)
+@handled
+def autopilot_habits(bench) -> None:
+    """The knobs you keep turning the same way after autopilot."""
+    from ..core import habits
+
+    found = habits.habits(bench)
+    looked = sum(1 for where, _ in habits.turns() if where == bench)
+    if not found:
+        click.echo(f"No habits yet on the {bench} bench ({looked} finished rig(s) looked at; a habit needs {habits.MIN_RIGS} turned the same way).")
+        return
+    for habit in found:
+        click.echo(f"  {habit.describe()}")
+    click.echo("Start a run from them with --ear-habits.")
 
 
 @group.command("listen")

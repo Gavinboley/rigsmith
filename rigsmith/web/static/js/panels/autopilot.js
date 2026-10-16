@@ -114,6 +114,21 @@ function renderForm() {
     zones.mix.setPath(best.path);
     libraryHint.textContent = `Found in your music library: ${best.name}`;
   };
+  // What your ears keep doing after a run, on the chosen bench - offered,
+  // never assumed.
+  const useHabits = el("input", { type: "checkbox" });
+  const habitsText = el("span", {});
+  const habitsBox = el("label", { class: "check hint", hidden: true }, useHabits, habitsText);
+  const showHabits = async () => {
+    const found = await api.get("/api/autopilot/habits", { bench: bench.value }).catch(() => null);
+    habitsBox.hidden = !found?.habits?.length;
+    if (found?.habits?.length) {
+      habitsText.textContent = `start from my ear habits: ${found.habits.map((h) => h.describe).join("; ")}`;
+      habitsBox.title = `Learned from ${found.rigs} finished ${found.bench}-bench rigs: what autopilot built against what the draft holds now`;
+    }
+  };
+  bench.addEventListener("change", showHabits);
+  showHabits();
   const start = el("button", { class: "btn primary", text: "Start autopilot" });
   start.onclick = () =>
     attempt(async () => {
@@ -132,6 +147,7 @@ function renderForm() {
         like: like.like && like.like !== "auto" ? like.like : null,
         like_amount: like.amount,
         match_guitar: like.like === "auto",
+        ear_habits: !habitsBox.hidden && useHabits.checked,
       };
       if (fromSong && fromSong.title === body.title) body.song_id = fromSong.songId;
       if (!body.title) throw new Error("Give the song a title - search for it, or type it");
@@ -155,6 +171,7 @@ function renderForm() {
       like.node,
       el("span", { class: "hint" }, "tuning budget"),
       budget,
+      habitsBox,
       el("span", { class: "grow" }),
       el("button", { class: "btn ghost", text: "Ask instead", title: "Describe what you want to the assistant", onclick: () => ask(`I want the guitar tone from ${title.value || "a song"}${artist.value ? " by " + artist.value : ""}. What do you need from me?`) }),
       start
