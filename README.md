@@ -289,6 +289,13 @@ Ollama, llama.cpp), and every call that would reach the internet refuses.
 The Core on your LAN is still reachable. `rigsmith settings mode local`, or
 `RIGSMITH_MODE=local` for one run.
 
+Which local model? **Test it on rigsmith's tools** in Settings (or
+`rigsmith settings check-model`) asks the loaded one six everyday requests
+with the assistant's real tools and scores whether it reaches for the right
+one - nothing is run. In accuracy mode, Settings says when Claude Code is
+installed but signed out, and the app falls back to the API or a local model
+until you `/login`. See [docs/LOCAL_MODELS.md](docs/LOCAL_MODELS.md).
+
 ### Put the real Core in the loop
 
 The offline renderer approximates the Core; the loop *is* the Core. A DI
@@ -373,8 +380,10 @@ own error is bigger than the difference between candidates — enough to put
 the right answer last — and it is reported when it happens rather than done
 quietly.
 
-`m4a` is not something libsndfile decodes; the error says so and says what
-does work, rather than surfacing a decoder message.
+`m4a` and other AAC files - what iTunes sells - are not something
+libsndfile decodes; with the `codecs` extra (`pip install
+"rigsmith[codecs]"`) they are read through PyAV, the encoder's priming
+samples taken off so they line up, and marked lossy like an mp3.
 
 ### Match it against the record
 
@@ -423,6 +432,19 @@ that part's sound and the effects it measures as having. A HeadRush scene
 switches blocks rather than holding knob values, so parts whose best sound
 did not make the two are moved to the nearest one, and the run says which.
 `rigsmith autopilot song-rig <run> <run> ...` builds one from finished runs.
+
+The effects are set to what was measured rather than left at their
+defaults: a delay synced to the note value its echo is at the song's tempo
+(a dotted eighth is the Core's 3/16), a tremolo synced when its rate sits
+on the beat and set to the depth it was heard at, a reverb of the kind and
+length the room measures as - and the rig saved with the song's tempo, so
+the synced ones load on the beat. Times and rates are sent through the
+catalog's measured knob curves where it has them. When the research
+recorded how the amp was set ("gain on 7, mids at noon"), tuning starts
+there; and once a part has your own take lined up with it, every later run
+uses that as the DI. Each draft has a **tone sheet**: the rig as the Core's
+screen reads it, and where it came from, to print or keep beside the
+device.
 
 Then listen. Once the blind test is done, `rigsmith autopilot listen <run>`
 (or the button on the run) lets your ears decide: every finalist's verdict
@@ -520,9 +542,11 @@ Extras: `ui`, `mcp`, `midi`, `audio`, `match`, `separation`, `browser`, `claude`
 
 ## What's left
 
-- [ ] **Capture the Remote Editor protocol against hardware** — the one remaining blocker
-- [x] ~~Native device client and the real `write_rig`~~ - built and tested against the simulator; needs a verified protocol map to reach real hardware
-- [ ] Extract the full model catalog from a real device (`rigsmith catalog extract` works; it needs a bundle to read)
+- [x] ~~Capture the Remote Editor protocol against hardware~~ - captured, and a rig written to a Core and read back exactly
+- [x] ~~Extract the full model catalog from a real device~~ - 327 models, verified
+- [ ] **A first measured session on the Core** - the loop, a reamped search, and a blind A/B; everything up to it is built and rehearsed on the simulated bench ([docs/FIRST_SESSION.md](docs/FIRST_SESSION.md))
+- [ ] Measure the knob curves - 39 measured on the Core so far, 1113 once shared across each block's models; the Device page measures the loaded rig's
+- [ ] Write scenes over the network - read already; waiting on one scene set by hand to confirm which mode number means on
 
 ## License
 
