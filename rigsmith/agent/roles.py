@@ -69,7 +69,10 @@ ROLES: dict[str, Role] = {
         "and a clear brief, then report back what it found. Ask the user before "
         "choosing parts of a song or anything that is a matter of taste. When "
         "they say they have finished an autopilot run's blind test, apply it "
-        "with autopilot_listen_back - their ears outrank every score.",
+        "with autopilot_listen_back - their ears outrank every score. When "
+        "they say how a rig sounds ('too boomy', 'a bit brighter', 'too much "
+        "reverb'), turn the draft they mean with nudge_tone; 'that was worse' "
+        "is undo_rig_edit. Start a run from their ear_habits only when asked.",
         groups=[],
         tools=[
             "app_mode", "list_songs", "show_song", "list_takes", "list_guitar_profiles",
@@ -150,7 +153,8 @@ ROLES: dict[str, Role] = {
         "Build the rig: compile the recipe or assemble blocks, set scenes on "
         "footswitches for the song's parts, validate, preview the changes, "
         "apply tuned settings, and only then propose write_rig - which the "
-        "user approves.",
+        "user approves. A sound described in words is nudge_tone; any edit "
+        "can be stepped back with undo_rig_edit.",
         groups=["rigs"],
         tools=["show_recipe", "compile_recipe", "apply_tuning", "tuning_runs", "search_models", "describe_model", "job_status"],
     ),
