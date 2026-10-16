@@ -358,6 +358,10 @@ def _notes_from_frames(frames, onsets_s, sample_rate, energies) -> list[NoteEven
 #: spectrum either side of it it must stand.
 FIFTH_FLOOR = 0.05
 FIFTH_CONTRAST = 3.0
+#: ...and how loud against the louder shoulder: a little under it still
+#: counts, for a sus chord whose fourth and fifth crowd each other's
+#: shoulders. 0.6 let the slopes of a chug's harmonics pass for chord tones.
+PEAK_SHARE = 0.8
 
 #: Chord tones above a bass that no harmonic of the bass note is near, as
 #: (ratio, left shoulder, right shoulder): the fifth, the major and minor
@@ -428,7 +432,7 @@ def _collapse_single_notes(audio, sample_rate, events: list[NoteEvent]) -> tuple
             # sus4's fourth beside its fifth - does not hide it.
             tone = peak(f0 * ratio)
             low, high = peak(f0 * left), peak(f0 * right)
-            return tone >= FIFTH_FLOOR * root and tone >= max(low, high) and tone >= FIFTH_CONTRAST * min(low, high)
+            return tone >= FIFTH_FLOOR * root and tone >= PEAK_SHARE * max(low, high) and tone >= FIFTH_CONTRAST * min(low, high)
 
         # A chord tone above the bass where no harmonic of one note is: the
         # fifth, the thirds, a sus4's or an inversion's fourth and sixth - and
