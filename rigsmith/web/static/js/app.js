@@ -22,6 +22,16 @@ import * as workspace from "./panels/workspace.js";
 
 /* Job ids to their names, from the jobs ticks - so "finished" can say what. */
 const jobNames = new Map();
+let runningJobs = new Set();
+
+function showRunning() {
+  if (runningJobs.size) {
+    setPill("pill-jobs", `${runningJobs.size} running`, "busy");
+  } else {
+    const pill = document.getElementById("pill-jobs");
+    if (pill) pill.hidden = true;
+  }
+}
 
 const PANELS = { autopilot, songs, recipes, guitar, takes, captures, rig, match, tune, loop, device, workspace, settings };
 
@@ -85,13 +95,8 @@ function connectLive() {
       if (message.type === "jobs") {
         for (const job of message.jobs) jobNames.set(job.id, job.name);
         jobsTick(message.jobs);
-        const running = message.jobs.filter((j) => !j.finished);
-        if (running.length) {
-          setPill("pill-jobs", `${running.length} running`, "busy");
-        } else {
-          const pill = document.getElementById("pill-jobs");
-          if (pill) pill.hidden = true;
-        }
+        runningJobs = new Set(message.jobs.filter((j) => !j.finished).map((j) => j.id));
+        showRunning();
         if (activePanel === "workspace") workspace.refreshJobs(message.jobs);
         // A panel that started a job watches it wherever the user is, so
         // wandering off to another tab does not lose the progress.
@@ -99,6 +104,8 @@ function connectLive() {
       }
 
       if (message.type === "job" && message.kind === "state") {
+        // Said at once, not at the next list of jobs a few seconds later.
+        if (["succeeded", "failed", "cancelled"].includes(message.state) && runningJobs.delete(message.job_id)) showRunning();
         const name = jobNames.get(message.job_id) || "a background job";
         if (message.state === "succeeded") {
           toast(`Finished: ${name}`, { kind: "ok" });
