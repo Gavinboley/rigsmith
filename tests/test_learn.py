@@ -509,6 +509,29 @@ def test_palm_muted_chugs_are_single_notes_not_chords():
     assert len(result.events) <= 1.15 * len(truth), "no chord stacked on each chug"
 
 
+@pytest.mark.parametrize("intervals, driven", [
+    ((0, 5, 7), False),          # a sus4: its fourth sits beside its fifth
+    ((0, 5, 7), True),
+    ((0, 5, 9), True),           # an inversion - C over G - with no fifth or third above the bass
+    ((0, 7, 12, 16, 19), True),  # an open-position voicing
+    ((0, 4, 7), False),
+])
+def test_a_real_chord_is_never_collapsed_to_one_note(intervals, driven):
+    """The test for 'one note with harmonics' must not take real chords."""
+    from rigsmith.learn.pluck import render_notes
+    from rigsmith.learn.synth import NoteEvent
+    from rigsmith.learn.transcribe import _collapse_single_notes
+    from rigsmith.loop.virtual import SimAmp
+
+    notes = [(0.5, 0.98, 40 + i, 0.8) for i in intervals] + [(1.5, 0.2, 40, 0.3), (3.5, 0.2, 40, 0.3)]
+    audio = render_notes(notes, seed=7, tail=1.0)
+    if driven:
+        audio = SimAmp(Type=2, Gain=0.5).process(audio)
+    events = [NoteEvent(start=t, duration=d, midi=float(m), velocity=v) for t, d, m, v in notes]
+    kept, _ = _collapse_single_notes(audio, 48000, events)
+    assert sorted(round(e.midi) for e in kept if abs(e.start - 0.5) < 0.01) == sorted(40 + i for i in intervals)
+
+
 def test_the_voice_network_reads_frets_from_the_guitars_own_tuning():
     """It assumed standard tuning, so a drop-D low string was two frets out."""
     from rigsmith.learn import neural

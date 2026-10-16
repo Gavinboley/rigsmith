@@ -359,6 +359,14 @@ def _notes_from_frames(frames, onsets_s, sample_rate, energies) -> list[NoteEven
 FIFTH_FLOOR = 0.05
 FIFTH_CONTRAST = 3.0
 
+#: Chord tones above a bass that no harmonic of the bass note is near, as
+#: (ratio, left shoulder, right shoulder): the fifth, the major and minor
+#: third, the fourth, the major sixth, and the thirds an octave up.
+CHORD_TONES = (
+    (1.5, 1.36, 1.64), (1.26, 1.12, 1.40), (1.19, 1.12, 1.33), (1.335, 1.22, 1.45), (1.68, 1.56, 1.80),
+    (2.52, 2.24, 2.80), (2.38, 2.24, 2.67),
+)
+
 
 def _collapse_single_notes(audio, sample_rate, events: list[NoteEvent]) -> tuple[list[NoteEvent], int]:
     """Attacks that are one note with harmonics on it, as that one note.
@@ -404,26 +412,29 @@ def _collapse_single_notes(audio, sample_rate, events: list[NoteEvent]) -> tuple
         f0 = 440.0 * 2 ** ((pitch - 69) / 12)
 
         def peak(hz: float) -> float:
-            near = (freqs >= hz * 0.975) & (freqs <= hz * 1.025)
-            return float(spectrum[near].max()) if near.any() else 0.0
+            band = (freqs >= hz * 0.975) & (freqs <= hz * 1.025)
+            return float(spectrum[band].max()) if band.any() else 0.0
 
         root = peak(f0)
 
         def stands_out(ratio: float, left: float, right: float) -> bool:
-            # A chord tone that is there stands well above the spectrum beside
-            # it; a short, driven note smears energy between its harmonics,
-            # level across the gap. (Measured at the fifth: single notes
-            # 0.3-1.0, power chords 10-300.)
+            # A chord tone that is there is a peak of its own: louder than the
+            # spectrum a step and a half either side, and well above the
+            # quieter of the two. A short, driven note smears energy level
+            # across the gap between its harmonics (measured at the fifth:
+            # 0.3-1.0x, against 10-300x for a power chord) and up the slope of
+            # each harmonic's peak, where the side nearer the harmonic is
+            # louder. Against the quieter side, so a chord tone next door - a
+            # sus4's fourth beside its fifth - does not hide it.
             tone = peak(f0 * ratio)
-            return tone >= FIFTH_FLOOR * root and tone >= FIFTH_CONTRAST * 0.5 * (peak(f0 * left) + peak(f0 * right))
+            low, high = peak(f0 * left), peak(f0 * right)
+            return tone >= FIFTH_FLOOR * root and tone >= max(low, high) and tone >= FIFTH_CONTRAST * min(low, high)
 
-        # The fifth (3:2) of a power chord, a triad's third (5:4, 6:5) - and
-        # that third an octave up (5:2, 12:5), for a driven triad whose
-        # difference tones put a bass an octave under its root. None of
-        # those is a harmonic of one note.
-        if root <= 0 or any(stands_out(*tone) for tone in (
-            (1.5, 1.36, 1.64), (1.26, 1.12, 1.40), (1.19, 1.12, 1.33), (2.52, 2.24, 2.80), (2.38, 2.24, 2.67),
-        )):
+        # A chord tone above the bass where no harmonic of one note is: the
+        # fifth, the thirds, a sus4's or an inversion's fourth and sixth - and
+        # the thirds an octave up, for a driven triad whose difference tones
+        # put a bass an octave under its root.
+        if root <= 0 or any(stands_out(*tone) for tone in CHORD_TONES):
             kept.extend(group)
             continue
         kept.append(NoteEvent(
