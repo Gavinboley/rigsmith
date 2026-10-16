@@ -484,11 +484,14 @@ def transcribe(
     notes = None
     if mode == "auto":
         chosen = "mono" if result.polyphony <= 1.35 else "poly"
-        if chosen == "poly" and result.polyphony <= 2.5:
-            # Distortion adds intermodulation the salience counts as a second
-            # pitch, but it does not make a single note less periodic. When
+        if chosen == "poly":
+            # Distortion adds intermodulation the salience counts as extra
+            # pitches, but it does not make a single note less periodic. When
             # nearly every note the autocorrelator hears is cleanly periodic,
-            # it is one note at a time with distortion on it.
+            # it is one note at a time with distortion on it - however many
+            # pitches the salience counts: a high-gain eighth-note riff read
+            # as polyphony 4 and was transcribed as chords (F1 0.39, against
+            # 0.99 as single notes).
             notes = segment(audio, sample_rate)
             if notes:
                 # Measured: distorted single notes sit at 0.73-0.87 clarity,

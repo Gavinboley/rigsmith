@@ -429,3 +429,18 @@ def test_a_note_that_starts_a_hair_before_zero_is_trimmed_not_a_crash():
     audio = render_notes([(-0.005, 0.3, 40, 0.8), (0.5, 0.3, 45, 0.8)], sample_rate=44100)
     assert np.abs(audio[:2000]).max() > 0, "the first note is heard from the start"
     assert len(audio) > int(0.8 * 44100)
+
+
+def test_a_high_gain_riff_is_transcribed_as_single_notes():
+    """Heavy distortion read as polyphony 4, and the riff came out as chords."""
+    from rigsmith.learn.pluck import render_notes
+    from rigsmith.learn.transcribe import transcribe
+    from rigsmith.loop.virtual import SimAmp
+
+    beat = 60 / 110
+    truth = [(b * beat + k * beat / 2, beat / 2 * 0.85, [40, 40, 43, 45, 47, 45, 43, 40][(2 * b + k) % 8], 0.8) for b in range(24) for k in range(2)]
+    audio = SimAmp(Type=3, Gain=0.85).process(render_notes(truth, seed=5))
+    result = transcribe(audio, 48000, method="builtin", match_record_pitch=False)
+    assert result.mode == "monophonic", result.polyphony
+    hits = sum(any(abs(e.start - t) < 0.05 and abs(e.midi - m) < 0.5 for e in result.events) for t, _, m, _ in truth)
+    assert hits >= 0.95 * len(truth)
