@@ -4,6 +4,14 @@
 
 ## What the capture found
 
+Captured in September 2026, on the firmware that added NAM (5.1). HeadRush
+released 5.2.0 in October 2026 - two NAM blocks in one rig, NAM 2X stereo
+and switch doubling, capture level metadata ([Mixdown on 5.2](https://mixdownmag.com.au/?p=80772),
+[HeadRush's 5.2.0 update notes](https://cdn.inmusicbrands.com/Software/SGEE/52/READ%20ME%20-%20HeadRush%20Core%20Firmware%20Update%20Instructions%20v5.2.0.pdf)).
+None of that needs a change here - every block already exists twice, and
+2X doubling already covers NAM - but after updating, take a fresh device
+snapshot and catalog before the first write, in case the object tree moved.
+
 - **Pairing, not passwords.** `POST /api/auth` starts a pairing; the person at the hardware accepts it with a PIN shown on the device, and the reply sets a session cookie. rigsmith keeps that cookie so the next process is still paired. The server identifies as `AZ0X Web Server`.
 - **An object tree, not a REST API.** Everything lives under `/api/v1` as nodes rooted at `/Evil`: `GET /subtree{node}` (metadata, methods, live values), `GET /object-meta{node}` (types, ranges, option lists), `GET`/`PUT /object-properties{node}` (live values), and `POST /object-method{node}/{method}` (calls, answered in `methodReturnValue`).
 - **A rig is whatever is loaded.** There is no rig resource to post. Building one is: `Rigs/makeNewRig` (with `makeNewRigConfirm` if the loaded rig is dirty), set `Engine/Patch/Chain` `ModuleType1..14` to module-table indices, set each block's properties, then `Rigs/saveRigAs` under a name.

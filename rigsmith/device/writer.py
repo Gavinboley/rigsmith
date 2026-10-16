@@ -235,7 +235,7 @@ RIG_NODE = "Rig"
 def rig_properties(rig: Rig) -> dict[str, Any]:
     """The rig node's values for what the rig sets itself, or {} for nothing.
 
-    Read from a Core (firmware 2.x): ``Tempo`` is 0-1 on the wire across
+    Read from a Core (the September 2026 capture, firmware 5.1): ``Tempo`` is 0-1 on the wire across
     30-240 BPM (120 is 0.4286), and ``TempoFromMaster`` picks between
     ``Fixed`` (false - the rig loads with its own tempo) and ``Current``
     (true, the default - it keeps whatever tempo the device is at). A rig
