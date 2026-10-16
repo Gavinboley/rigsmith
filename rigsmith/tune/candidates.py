@@ -419,8 +419,20 @@ def surrounding_blocks(sketch: dict, *, tempo: float | None = None) -> list[dict
     elif modulation == "vibrato":
         blocks.append({"category": "effect", "model": "Vibrato", "role": "vibrato", "params": {}, "why": f"every note wobbles in pitch{rate}"})
     space = sketch.get("space") or ""
+    # The measured decay, as the reverb's own time - sent only where the
+    # catalog knows that control's curve (wire_params), since AIR Reverb's
+    # runs 0.45-144 s and a linear guess there is tens of seconds out.
+    decay = sketch.get("decay_ms")
+    rt60 = round(float(decay) * 3.0 / 1000.0, 2) if decay else None
+    reverb_time = f", about {rt60:.1f} s to die away" if rt60 else ""
     if space in ("a plate or hall", "a long wash"):
-        blocks.append({"category": "effect", "model": "AIR Reverb", "role": "reverb", "params": {"Mode": REVERB_MODES[space], "Mix": 0.25}, "why": f"{space} on the part"})
+        blocks.append({
+            "category": "effect", "model": "AIR Reverb", "role": "reverb", "params": {"Mode": REVERB_MODES[space], "Mix": 0.25},
+            "readings": {"Time": rt60} if rt60 else {}, "why": f"{space} on the part{reverb_time}",
+        })
     elif space == "a room":
-        blocks.append({"category": "effect", "model": "Spring Reverb", "role": "reverb", "params": {"Mix": 0.2}, "why": "a short room"})
+        blocks.append({
+            "category": "effect", "model": "Spring Reverb", "role": "reverb", "params": {"Mix": 0.2},
+            "readings": {"Decay": rt60} if rt60 else {}, "why": f"a short room{reverb_time}",
+        })
     return blocks

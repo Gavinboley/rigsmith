@@ -545,3 +545,18 @@ def test_the_divisions_are_the_cores_own_lists():
     cat.models["Tremolo"] = ModelSpec(id="Tremolo", name="Tremolo", category=BlockCategory.EFFECT, verified=True,
                                      params=[ParamSpec(name="Rate_Synced", kind="int", minimum=0, maximum=2, choices=["1/4", "1/8", "1/16"])])
     assert candidates.wire_params(tremolo, cat)["Rate_Synced"] == 2
+
+
+def test_a_measured_room_sets_the_reverb_time_once_its_curve_is_known():
+    from rigsmith.rig.catalog import Catalog, ModelSpec, ParamSpec
+    from rigsmith.rig.model import BlockCategory
+
+    hall = candidates.surrounding_blocks({"space": "a plate or hall", "decay_ms": 600.0})[0]
+    assert hall["readings"] == {"Time": 1.8} and "1.8 s" in hall["why"]
+    cat = Catalog(source="test")
+    cat.models["AIR Reverb"] = ModelSpec(id="AIR Reverb", name="AIR Reverb", category=BlockCategory.EFFECT, verified=True, params=[
+        ParamSpec(name="Time", kind="float", minimum=0.0, maximum=1.0, display_min=0.45, display_max=144.0, unit="sec")])
+    assert "Time" not in candidates.wire_params(hall, cat), "unmeasured: left at the block's default"
+    cat.models["AIR Reverb"].params[0].taper = "log"
+    sent = candidates.wire_params(hall, cat)["Time"]
+    assert abs(0.45 * (144 / 0.45) ** sent - 1.8) < 0.01
