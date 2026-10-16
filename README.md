@@ -11,7 +11,7 @@ pip install -e ".[all]"
 rigsmith ui
 ```
 
-> **Status: everything runs today.** Rig authoring, validation, NAM analysis, tone matching, catalog extraction, USB backup, MIDI, guitar learning, song maps, the hardware loop, the tuner, autopilot, the chat and the web UI are covered by 1005 tests. The Remote Editor protocol has been captured against a real Core and a rig written to it and read back exactly - see [docs/PROTOCOL.md](docs/PROTOCOL.md). What still wants hardware is *measuring*: the loop and the blind A/B need the Core and an interface plugged in - [docs/FIRST_SESSION.md](docs/FIRST_SESSION.md) walks through that first session.
+> **Status: everything runs today.** Rig authoring, validation, NAM analysis, tone matching, catalog extraction, USB backup, MIDI, guitar learning, song maps, the hardware loop, the tuner, autopilot, the chat and the web UI are covered by 1006 tests. The Remote Editor protocol has been captured against a real Core and a rig written to it and read back exactly - see [docs/PROTOCOL.md](docs/PROTOCOL.md). What still wants hardware is *measuring*: the loop and the blind A/B need the Core and an interface plugged in - [docs/FIRST_SESSION.md](docs/FIRST_SESSION.md) walks through that first session.
 
 ---
 
@@ -498,6 +498,12 @@ whatever OpenAI-compatible server is on this machine - LM Studio, Ollama,
 llama.cpp - with Qwen's tool-call formats handled, including the ones it
 writes into its text instead of the proper field. See
 [docs/LOCAL_MODELS.md](docs/LOCAL_MODELS.md) for which models to load.
+
+With no model answering - nothing loaded yet, or Claude Code signed out -
+the chat says so, and then offers what needs no model: "a bit darker"
+becomes a button that turns the rig, "undo that" one that steps it back,
+and "where do I measure the knob curves?" the pages and controls whose
+names match. Each is a click you make.
 
 ### Use it from Claude Code
 

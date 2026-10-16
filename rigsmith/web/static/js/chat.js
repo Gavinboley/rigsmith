@@ -8,11 +8,13 @@
  */
 
 import { api } from "./api.js";
+import { helpWithout } from "./offline.js";
 import { $, attempt, clear, el, toast } from "./ui.js";
 
 let chatId = null;
 let roles = [];
 let busy = false;
+let lastSent = "";
 const pendingCards = new Map();
 
 const SUGGESTIONS = [
@@ -253,6 +255,7 @@ export async function send(text) {
     const id = await ensureChat();
     if (log().querySelector(".chat-empty")) clear(log());
     addMessage("user", text);
+    lastSent = text;
     $("#chat-text").value = "";
     setBusy(true);
     await api.post(`/api/chat/${id}/messages`, { text });
@@ -373,7 +376,11 @@ export function onEvent(message) {
   }
   if (message.kind === "error") settleLive();
   renderEntry(message);
-  if (message.kind === "error") setBusy(false);
+  if (message.kind === "error") {
+    setBusy(false);
+    // What was asked may need no model at all.
+    if (lastSent) helpWithout(lastSent).then((card) => card && (log().append(card), scrollDown())).catch(() => {});
+  }
 }
 
 export async function init() {

@@ -618,6 +618,9 @@ export function init() {
 
 export const onShow = () => refreshDrafts(current?.draft_id ?? null);
 
+/** The draft open on the Rig page, if any: ``{draft_id, name}``. */
+export const currentDraft = () => (current ? { draft_id: current.draft_id, name: current.rig.name } : null);
+
 // Arriving from a compiled recipe: open the rig it just produced, rather
 // than whatever was last selected.
 onArrive("rig", ({ draftId, focus }) => {

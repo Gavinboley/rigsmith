@@ -585,6 +585,15 @@ def nudge_draft(draft_id: str, body: NudgeBody) -> dict:
     return {**_draft_payload(result.draft), "message": result.summary}
 
 
+@router.get("/nudge/parse")
+def parse_nudge(text: str) -> dict:
+    """What a by-ear sentence would move, without moving anything."""
+    from ..tune import nudge as words
+
+    heard = words.parse(text)
+    return {"moves": heard.moves, "understood": heard.understood, "unknown": heard.unknown}
+
+
 @router.post("/drafts/{draft_id}/undo")
 def undo_draft(draft_id: str, redo: bool = False) -> dict:
     result = rigs.undo(draft_id, redo=redo)

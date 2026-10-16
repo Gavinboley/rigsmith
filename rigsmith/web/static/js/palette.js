@@ -112,6 +112,36 @@ async function gather() {
   ];
 }
 
+// Words that say nothing about which page: the glue of a sentence, and the
+// ones every page shares (rig) or a nudge is made of (bit, less, too).
+const STOP = new Set(
+  ("the and for how can you make get set what where which is are a an to do i it me my with this that of on in at be " +
+    "please want would like could should rig bit lot less more too much way").split(" ")
+);
+
+/**
+ * Pages and things to do that share the most words with ``text`` - for a
+ * sentence rather than a search, so any word counts, not every word.
+ */
+export function suggest(text, count = 3) {
+  const words = text.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 2 && !STOP.has(w));
+  if (!words.length) return [];
+  const pool = [...PANELS.map(([panel, title, hint]) => ({ kind: "panel", title, hint, go: () => goTo(panel) })), ...actionItems()];
+  return pool
+    .map((item) => {
+      // A word in the name counts for more than one in the description,
+      // and a thing to do edges out a page.
+      const title = item.title.toLowerCase();
+      const hint = item.hint.toLowerCase();
+      const score = words.reduce((sum, w) => sum + (title.includes(w) ? 1 : hint.includes(w) ? 0.5 : 0), 0);
+      return [score && score + (item.kind === "do" ? 0.25 : 0), item];
+    })
+    .filter(([score]) => score >= 0.75)
+    .sort((a, b) => b[0] - a[0])
+    .slice(0, count)
+    .map(([, item]) => item);
+}
+
 /** Every word typed appears somewhere in the title (or the hint), in any order. */
 function matches(item, text) {
   const haystack = `${item.title} ${item.hint} ${item.kind}`.toLowerCase();

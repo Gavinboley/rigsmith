@@ -1234,3 +1234,34 @@ def test_an_edit_on_the_board_can_be_undone_from_the_keyboard(browser, server):
         while rigs.get(draft_id).rig.blocks[0].params.get("Treble") != 0.58 and time.monotonic() < deadline + 5:
             time.sleep(0.1)
         assert rigs.get(draft_id).rig.blocks[0].params["Treble"] == 0.58
+
+
+def test_with_no_model_the_chat_still_offers_what_needs_none(browser, server):
+    import urllib.request
+
+    from rigsmith.core import rigs
+
+    draft_id = rigs.create("No Model").draft.draft_id
+    rigs.add_block(draft_id, "amp", "Some Amp", params={"Treble": 0.5})
+    # Local mode, pointed at a port nothing listens on.
+    request = urllib.request.Request(
+        f"{server}/api/settings", method="PATCH",
+        data=b'{"mode": "local", "local_llm": {"base_url": "http://127.0.0.1:9/v1"}}',
+        headers={"content-type": "application/json"},
+    )
+    urllib.request.urlopen(request).read()
+    with page_at(browser, server) as page:
+        page.keyboard.press("Control+j")
+        page.locator("#chat-text").fill("a bit darker please")
+        page.locator("#chat-text").press("Enter")
+        offer = page.locator("#chat-log .offline button:has-text('No Model')")
+        offer.wait_for(timeout=15000)
+        offer.click()
+        deadline = time.monotonic() + 5
+        while rigs.get(draft_id).rig.blocks[0].params.get("Treble") != 0.46 and time.monotonic() < deadline:
+            time.sleep(0.1)
+        assert rigs.get(draft_id).rig.blocks[0].params["Treble"] == 0.46
+        page.locator("#chat-text").fill("where do I measure the knob curves?")
+        page.locator("#chat-text").press("Enter")
+        page.locator("#chat-log .offline button:has-text('Measure knob curves')").click(timeout=15000)
+        page.wait_for_selector("#catalog-calibrate.spotlight")
