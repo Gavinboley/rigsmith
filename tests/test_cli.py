@@ -330,6 +330,8 @@ def test_doctor_reports_what_is_in_the_workspace(tmp_path, monkeypatch):
         assert "1 still only reasoned about" in result.output
         # An unverified catalog is a real limitation and has to be said.
         assert "catalog: unverified" in result.output
+        # And who would answer the chat, with what to do about the rest.
+        assert "Who answers the chat and the agents:" in result.output and "local server" in result.output
     finally:
         config.set_settings(None)
 

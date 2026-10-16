@@ -164,21 +164,32 @@ def agent_roles() -> None:
         click.echo(f"  {role.name:<13} {count:3} tools  {role.description}")
 
 
+def who_answers(status: dict) -> list[str]:
+    """Lines saying which models can answer right now, and what to do about the rest."""
+    lines = [f"mode: {status['mode']}"]
+    if not status["claude_code"]:
+        lines.append("Claude Code: not found")
+    elif status.get("claude_code_signed_in") is False:
+        lines.append("Claude Code: installed, signed out - run `claude` in a terminal and use /login")
+    else:
+        lines.append("Claude Code: installed" + (", signed in" if status.get("claude_code_signed_in") else ""))
+    lines.append(f"Anthropic SDK: {'installed' if status['anthropic_sdk'] else 'not installed'}, key {'set' if status['anthropic_key'] else 'not set'}")
+    local = status["local"]
+    if local.get("reachable"):
+        lines.append(f"local server {local['base_url']}: " + (", ".join(local["models"][:8]) or "answering, no model loaded"))
+    else:
+        lines.append(f"local server {local['base_url']}: not answering - start LM Studio's server, Ollama or llama-server, or set its URL in Settings")
+    return lines
+
+
 @group.command("status")
 @handled
 def agent_status() -> None:
     """Which models are available right now."""
     from ..agent import providers
 
-    status = providers.status()
-    click.echo(f"mode: {status['mode']}")
-    click.echo(f"Claude Code: {'installed' if status['claude_code'] else 'not found'}")
-    click.echo(f"Anthropic SDK: {'installed' if status['anthropic_sdk'] else 'not installed'}, key {'set' if status['anthropic_key'] else 'not set'}")
-    local = status["local"]
-    if local.get("reachable"):
-        click.echo(f"local server {local['base_url']}: " + ", ".join(local["models"][:8]))
-    else:
-        click.echo(f"local server {local['base_url']}: not answering")
+    for line in who_answers(providers.status()):
+        click.echo(line)
 
 
 @group.command("runs")

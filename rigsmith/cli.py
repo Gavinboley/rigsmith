@@ -129,6 +129,17 @@ def doctor() -> None:
             click.echo(f"        {why}")
 
     click.echo("")
+    click.echo("Who answers the chat and the agents:")
+    try:
+        from .agent import providers
+        from .commands.agent import who_answers
+
+        for line in who_answers(providers.status()):
+            click.echo(f"  {line}")
+    except Exception as exc:  # a broken provider check must not stop the rest of the report
+        click.echo(f"  could not check: {exc}")
+
+    click.echo("")
     click.echo(captures.auth_status().render())
 
     click.echo("")
