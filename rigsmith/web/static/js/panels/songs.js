@@ -153,7 +153,7 @@ function render() {
   if (song.stale) {
     host.lastChild.append(
       el("div", { class: "notice warn" },
-        "This map was made by an older analyser - re-map it for what the newer one hears: the reverb on each part, deep tremolo and how deep it is, chorus and vibrato, a fairer gain reading on leads and chords. Your chosen parts are kept. ",
+        "This map was made by an older analyser - re-map it for what the newer one hears: the reverb on each part, deep tremolo and how deep it is, chorus and vibrato, a fairer gain reading on leads and chords, and sections that do not cut a chorus in two. Your chosen parts are kept - where a section moved, by the part that covers it now. ",
         el("button", { class: "btn small", text: "Re-map now", onclick: analyse }))
     );
   }

@@ -480,3 +480,26 @@ def test_a_short_double_tracked_section_is_still_heard_as_one_part_twice():
     right = render_notes(human(notes, 2), seed=2)
     n = min(len(left), len(right))
     assert layers._plays_together(left[:n], right[:n], RATE) >= 0.6
+
+
+def test_a_choice_follows_its_part_when_a_re_map_merges_its_section():
+    from rigsmith.core.songs import Part, carry_over
+
+    before = {
+        "chorus-3-left": Part("chorus-3-left", 2, "chorus", "left", 60.0, 72.0, chosen=True, note="the big one", di_take="t1"),
+        "chorus-4-left": Part("chorus-4-left", 3, "chorus", "left", 72.0, 84.0),
+        "verse-2-right": Part("verse-2-right", 1, "verse", "right", 30.0, 60.0, chosen=True, di_take="t2"),
+    }
+    after = [
+        Part("chorus-3-left", 2, "chorus", "left", 60.0, 84.0),
+        Part("verse-2-left", 1, "verse", "left", 30.0, 60.0),
+        Part("verse-2-right", 1, "verse", "right", 30.0, 60.0),
+    ]
+    # Same id: analyse keeps it itself; here only the merged and moved ones.
+    carry_over({k: v for k, v in before.items() if k != "chorus-3-left"}, after)
+    assert not after[0].chosen, "nothing chosen came from the second half"
+    renamed = [Part("refrain-3-left", 2, "refrain", "left", 59.8, 84.0)]
+    carry_over(before, renamed)
+    assert renamed[0].chosen and renamed[0].note == "the big one", "the choice follows the part that covers it"
+    assert renamed[0].di_take is None, "a DI made for 60-72 s does not fit 60-84 s"
+    assert not after[1].chosen, "only on its own layer"

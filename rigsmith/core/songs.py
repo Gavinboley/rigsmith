@@ -161,7 +161,7 @@ class Song:
             lines.extend("  " + p.describe() for p in self.parts)
         lines.extend(f"  note: {n}" for n in self.notes)
         if self.stale:
-            lines.append(f"  note: mapped by an older analyser - run 'rigsmith song analyse {self.song_id}' again for what the newer one hears - the room's reverb, deep tremolo and its depth, chorus, vibrato, a fairer gain reading")
+            lines.append(f"  note: mapped by an older analyser - run 'rigsmith song analyse {self.song_id}' again for what the newer one hears - the room's reverb, deep tremolo and its depth, chorus, vibrato, a fairer gain reading, and sections that do not cut a chorus in two")
         return "\n".join(lines)
 
     @property
@@ -479,10 +479,42 @@ def analyse(song_id: str, *, progress: Progress | None = None, min_presence: flo
                 part.di_take, part.best, part.history = old.di_take, old.best, old.history
             parts.append(part)
             step(0.6 + 0.35 * done / max(1, total), f"described {part.label}")
+    carry_over(previous, parts)
     song.parts = parts
     song.save()
     step(1.0, f"{len(parts)} part(s) mapped")
     return song
+
+
+def carry_over(previous: dict[str, Part], parts: list[Part]) -> None:
+    """What was decided about parts a re-map moved or renamed.
+
+    Parts keep their choices by id (in :func:`analyse`). One whose id is
+    gone - its section merged with a neighbour, or named differently - hands
+    its choice, note and recipe to the new part on the same layer that
+    covers most of it. Its DI take and best result only follow when the new
+    part spans the same stretch, since both were made for that stretch.
+    """
+    kept = {p.part_id for p in parts}
+    for old in previous.values():
+        if old.part_id in kept or not (old.chosen or old.note or old.recipe_id or old.di_take or old.best or old.history):
+            continue
+        span = max(old.end - old.start, 1e-9)
+        heir, cover = None, 0.0
+        for new in parts:
+            if new.layer == old.layer:
+                overlap = (min(new.end, old.end) - max(new.start, old.start)) / span
+                if overlap > cover:
+                    heir, cover = new, overlap
+        if heir is None or cover < 0.5:
+            continue
+        heir.chosen = heir.chosen or old.chosen
+        heir.note = heir.note or old.note
+        heir.recipe_id = heir.recipe_id or old.recipe_id
+        heir.history = heir.history or old.history
+        if abs(heir.start - old.start) < 0.5 and abs(heir.end - old.end) < 0.5:
+            heir.di_take = heir.di_take or old.di_take
+            heir.best = heir.best or old.best
 
 
 def choose(song_id: str, part_ids: list[str], *, chosen: bool = True, only: bool = False) -> Song:
