@@ -490,6 +490,25 @@ def test_a_driven_power_chord_is_read_from_its_root_not_its_fifth():
     assert right >= 0.85 * 32, right
 
 
+def test_palm_muted_chugs_are_single_notes_not_chords():
+    """Sixteenth-note chugs on the low E came back as a chord at every
+    attack - the note's harmonics read as its fifth and octave."""
+    from rigsmith.learn.pluck import render_notes
+    from rigsmith.learn.transcribe import transcribe
+    from rigsmith.loop.virtual import SimAmp
+
+    beat = 60 / 110
+    truth = [(b * beat + k * beat / 4, beat / 8, 40 if b % 8 < 6 else 43, 0.85) for b in range(32) for k in range(4)]
+    audio = SimAmp(Type=0, Gain=0.1).process(render_notes(truth, seed=5))
+    result = transcribe(audio, 48000, method="builtin", match_record_pitch=False)
+    single = 0
+    for start, _, midi, _ in truth:
+        heard = [e for e in result.events if abs(e.start - start) < 0.05]
+        single += len(heard) == 1 and round(heard[0].midi) == midi
+    assert single >= 0.85 * len(truth), single
+    assert len(result.events) <= 1.15 * len(truth), "no chord stacked on each chug"
+
+
 def test_the_voice_network_reads_frets_from_the_guitars_own_tuning():
     """It assumed standard tuning, so a drop-D low string was two frets out."""
     from rigsmith.learn import neural

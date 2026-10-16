@@ -353,6 +353,92 @@ def _notes_from_frames(frames, onsets_s, sample_rate, energies) -> list[NoteEven
     return sorted(events, key=lambda e: (e.start, e.midi))
 
 
+#: Against the lowest strong pitch, how loud a fifth's own fundamental -
+#: 1.5x above it, or 2/3 of it below - must be for an attack to be a chord.
+FIFTH_FLOOR = 0.15
+
+
+def _collapse_single_notes(audio, sample_rate, events: list[NoteEvent]) -> tuple[list[NoteEvent], int]:
+    """Attacks that are one note with harmonics on it, as that one note.
+
+    Chroma cannot tell a palm-muted low E from an E5: a driven note's third
+    harmonic is the fifth's pitch class. The spectrum can - a power chord's
+    fifth sounds its own fundamental at 1.5 times the root's frequency,
+    which no harmonic of the root ever does - so an attack whose lowest
+    pitch has nothing at 1.5x above it, nor at 2/3 below it (a quiet root
+    under its fifth), is one note, and the chord's other notes were that
+    note's harmonics.
+    """
+    starts = sorted({round(e.start, 3) for e in events})
+    if not starts:
+        return events, 0
+    ends = starts[1:] + [len(audio) / sample_rate]
+    kept: list[NoteEvent] = []
+    collapsed = 0
+    for start, end in zip(starts, ends):
+        group = [e for e in events if round(e.start, 3) == start]
+        if len(group) < 2:
+            kept.extend(group)
+            continue
+        # From the bass that actually sounds, not the lowest note reported:
+        # the salience also credits a pitch 2/3 below a single note, whose
+        # harmonics fit it too, though nothing plays there.
+        basses = _bass_notes(audio, sample_rate, start, end)
+        if len(basses) != 1:
+            kept.extend(group)  # no bass to go on, or a quiet root under a fifth
+            continue
+        settle = 0.02 if end - start >= 0.2 else 0.008
+        a, b = int((start + settle) * sample_rate), int(min(end, start + 0.3) * sample_rate)
+        piece = audio[a:b]
+        size = 1 << int(np.ceil(np.log2(max(len(piece), 16384))))
+        spectrum = np.abs(np.fft.rfft(piece * np.hanning(len(piece)), size))
+        freqs = np.fft.rfftfreq(size, 1 / sample_rate)
+        f0 = 440.0 * 2 ** ((basses[0] - 69) / 12)
+
+        def peak(hz: float) -> float:
+            near = (freqs >= hz * 0.975) & (freqs <= hz * 1.025)
+            return float(spectrum[near].max()) if near.any() else 0.0
+
+        root = peak(f0)
+        if root <= 0 or peak(f0 * 1.5) >= FIFTH_FLOOR * root:
+            kept.extend(group)
+            continue
+        # The note itself from the transcription's own estimate nearest that
+        # bass - a short note's spectrum places the pitch less finely.
+        near = min(group, key=lambda e: abs(e.midi - basses[0]))
+        pitch = near.midi if abs(near.midi - basses[0]) <= 1.5 else float(round(basses[0]))
+        kept.append(NoteEvent(
+            start=float(start), duration=max(e.duration for e in group),
+            midi=float(pitch), velocity=max(e.velocity for e in group),
+        ))
+        collapsed += 1
+    return kept, collapsed
+
+
+def _single_notes(notes, min_midi: int) -> list[NoteEvent]:
+    """Measured notes as events, one at a time - the pitched ones."""
+    median_peak = float(np.median([n.peak_db for n in notes])) if notes else -12.0
+    events = []
+    for n in notes:
+        if not n.pitched:
+            continue
+        pitch = n.nearest
+        # A power chord's root and fifth share a period an octave below
+        # the root; an autocorrelator reports that. Below the lowest
+        # string it cannot be the note, so it is taken up an octave.
+        while pitch < min_midi and pitch + 12 <= 96:
+            pitch += 12
+        events.append(
+            NoteEvent(
+                start=n.start,
+                duration=max(0.05, n.end - n.start),
+                midi=float(pitch),
+                velocity=float(np.clip(0.75 + (n.peak_db - median_peak) / 24, 0.1, 1.0)),
+            )
+        )
+    return events
+
+
 def _chroma_similarity(audio, sample_rate, events) -> float:
     """How well the notes explain the stem's pitched energy, 0-1.
 
@@ -502,25 +588,7 @@ def transcribe(
 
     if chosen == "mono":
         notes = notes if notes is not None else segment(audio, sample_rate)
-        median_peak = float(np.median([n.peak_db for n in notes])) if notes else -12.0
-        result.events = []
-        for n in notes:
-            if not n.pitched:
-                continue
-            pitch = n.nearest
-            # A power chord's root and fifth share a period an octave below
-            # the root; an autocorrelator reports that. Below the lowest
-            # string it cannot be the note, so it is taken up an octave.
-            while pitch < min_midi and pitch + 12 <= 96:
-                pitch += 12
-            result.events.append(
-                NoteEvent(
-                    start=n.start,
-                    duration=max(0.05, n.end - n.start),
-                    midi=float(pitch),
-                    velocity=float(np.clip(0.75 + (n.peak_db - median_peak) / 24, 0.1, 1.0)),
-                )
-            )
+        result.events = _single_notes(notes, min_midi)
         result.mode = "monophonic"
     else:
         result.events = _notes_from_frames(frames, onsets, sample_rate, energies)
@@ -533,6 +601,9 @@ def transcribe(
         if chords and _chroma_similarity(audio, sample_rate, chords) > _chroma_similarity(audio, sample_rate, result.events):
             result.events = chords
             result.notes_text.append("chords read from their pitch classes and voiced as a guitarist would")
+        result.events, collapsed = _collapse_single_notes(audio, sample_rate, result.events)
+        if collapsed:
+            result.notes_text.append(f"{collapsed} attack(s) were one note with distortion's harmonics on it, not a chord")
 
     result.method = "builtin"
     result.confidence = _chroma_similarity(audio, sample_rate, result.events)
@@ -610,7 +681,10 @@ def _bass_notes(audio: np.ndarray, sample_rate: int, start: float, end: float) -
     amp's intermodulation, so this only offers it: the chord shapes decide
     which root explains the notes (:func:`_chords_from_chroma`).
     """
-    a, b = int((start + 0.04) * sample_rate), int(min(end, start + 0.5) * sample_rate)
+    # Past the pick's click - but a palm-muted note is over in 70 ms, and
+    # waiting 40 ms for it to settle measured mostly its tail.
+    settle = 0.04 if end - start >= 0.2 else 0.008
+    a, b = int((start + settle) * sample_rate), int(min(end, start + 0.5) * sample_rate)
     piece = audio[a:b]
     if len(piece) < 2048:
         return []
