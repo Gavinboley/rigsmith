@@ -385,3 +385,16 @@ def test_what_cannot_be_made_again_is_never_pruned_even_by_name(runner, tmp_path
     (tmp_path / "backups" / "b1").mkdir(parents=True)
     named = workspace.prune(["backups"], dry_run=True, root=tmp_path)
     assert named.removed, "backups can still be pruned when named, as documented"
+
+
+def test_the_terminal_chat_offers_a_turn_by_ear_when_no_model_answers(runner):
+    from rigsmith.core import appsettings, rigs
+
+    draft_id = rigs.create("Terminal").draft.draft_id
+    rigs.add_block(draft_id, "amp", "Some Amp", params={"Treble": 0.5})
+    appsettings.update(mode="local", local_llm={"base_url": "http://127.0.0.1:9/v1"})
+    result = runner.invoke(main, ["chat"], input="a bit darker\ny\nundo that\ny\nexit\n", catch_exceptions=False)
+    assert "no model server answering" in result.output
+    assert "turn 'Terminal' that way (a bit darker)?" in result.output
+    assert "undid: slot 1 (Some Amp)" in result.output, "and straight away - the chat was free again"
+    assert rigs.get(draft_id).rig.blocks[0].params["Treble"] == 0.5

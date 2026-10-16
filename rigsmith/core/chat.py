@@ -283,6 +283,10 @@ def send(chat_id: str, text: str) -> dict:
 
     def work(progress):
         cancelled = lambda: progress.cancelled  # noqa: E731
+        # The turn's last word is said only once the chat is free again:
+        # whoever hears "done" may answer at once, and must not be told the
+        # assistant is still busy.
+        last: list[dict] = []
         try:
             if isinstance(provider, ClaudeCode):
                 current = get(chat_id)
@@ -313,11 +317,11 @@ def send(chat_id: str, text: str) -> dict:
 
                 _edit(chat_id, record)
             if result.stopped == "error":
-                publish({"kind": "error", "text": result.text or "the model failed"})
-            publish({"kind": "done", "text": result.text, "stopped": result.stopped, "cost": result.cost})
+                last.append({"kind": "error", "text": result.text or "the model failed"})
+            last.append({"kind": "done", "text": result.text, "stopped": result.stopped, "cost": result.cost})
             return result.to_dict()
         except Exception as exc:
-            publish({"kind": "error", "text": f"{type(exc).__name__}: {exc}"})
+            last.append({"kind": "error", "text": f"{type(exc).__name__}: {exc}"})
             raise
         finally:
             def settle(current):
@@ -325,6 +329,8 @@ def send(chat_id: str, text: str) -> dict:
                 current.job_id = None
 
             _edit(chat_id, settle)
+            for entry in last:
+                publish(entry)
 
     job = get_manager().submit(f"chat: {text[:40]}", work)
     _edit(chat_id, lambda current: setattr(current, "job_id", job.id) if current.busy else None)

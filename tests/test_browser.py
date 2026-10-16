@@ -964,6 +964,12 @@ def test_ctrl_k_points_at_a_control_by_what_it_does(browser, server):
         # It points at the button and leaves pressing it to you.
         page.wait_for_selector("#catalog-calibrate.spotlight")
         assert page.evaluate("document.activeElement.id") == "catalog-calibrate"
+        # A whole sentence finds it too, by any of its words.
+        page.keyboard.press("Control+k")
+        page.wait_for_selector(".palette input")
+        page.keyboard.type("how do I test my local model?")
+        assert "Test the local model" in page.locator(".palette-item").first.inner_text()
+        assert "Ask" in page.locator(".palette-item").last.inner_text()
 
 
 def test_every_loop_route_draws_its_wiring(browser, server):

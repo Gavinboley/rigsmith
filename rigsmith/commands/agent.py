@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import threading
 import time
 
@@ -29,6 +30,37 @@ def _render(event: dict) -> str | None:
     return None
 
 
+#: "undo that", "go back" - an undo needs no model.
+UNDO = re.compile(r"^\s*(undo|undo (that|it|the last (edit|change))|go back|put it back|revert( that)?)\s*[.!]*\s*$", re.I)
+
+
+def _without_a_model(text: str) -> None:
+    """After a turn failed: what the words can still do, asked first.
+
+    The terminal's version of the chat page's buttons - a turn by ear or an
+    undo, on the draft edited last, each only on a yes.
+    """
+    from ..core import rigs
+    from ..tune import nudge as words
+
+    drafts = sorted(rigs.list_drafts(), key=lambda d: d.updated_at, reverse=True)
+    if not drafts:
+        return
+    latest = drafts[0]
+    try:
+        if UNDO.match(text):
+            if click.confirm(f"  without a model: undo the last edit to '{latest.rig.name}'?", default=False):
+                click.echo("  " + rigs.undo(latest.draft_id).summary)
+            return
+        heard = words.parse(text)
+        if heard.understood and click.confirm(f"  without a model: turn '{latest.rig.name}' that way ({', '.join(heard.understood)})?", default=False):
+            click.echo("  " + rigs.nudge(latest.draft_id, ", ".join(heard.understood)).summary)
+    except click.Abort:
+        return
+    except Exception as exc:
+        click.echo(click.style(f"  {exc}", fg="red"))
+
+
 @click.command("chat")
 @click.option("--role", default="assistant", show_default=True, help="assistant, researcher, song-mapper, luthier, tone-matcher, rig-builder.")
 @click.option("--allow-writes", is_flag=True, help="Let this chat change the device without asking each time.")
@@ -39,6 +71,7 @@ def chat_command(role: str, allow_writes: bool) -> None:
 
     session = chat.create(role=role, allow_writes=allow_writes)
     done = threading.Event()
+    failed = threading.Event()
 
     def listen(event: dict) -> None:
         if event.get("type") != "chat" or event.get("chat_id") != session.chat_id:
@@ -49,6 +82,7 @@ def chat_command(role: str, allow_writes: bool) -> None:
         if event.get("kind") in ("done", "error"):
             if event.get("kind") == "error":
                 click.echo(_render(event))
+                failed.set()
             done.set()
             return
         line = _render(event)
@@ -69,6 +103,7 @@ def chat_command(role: str, allow_writes: bool) -> None:
             if not text.strip():
                 continue
             done.clear()
+            failed.clear()
             chat.send(session.chat_id, text)
             while not done.wait(0.2):
                 while done_ask:
@@ -80,6 +115,8 @@ def chat_command(role: str, allow_writes: bool) -> None:
                         default=False,
                     )
                     chat.decide(ask["approval_id"], allow)
+            if failed.is_set():
+                _without_a_model(text)
     finally:
         unsubscribe()
 

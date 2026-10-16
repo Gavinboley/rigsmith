@@ -158,7 +158,10 @@ function rank(item, text) {
 
 function render(list, input) {
   const text = input.value.trim();
-  const found = text ? items.filter((item) => matches(item, text)).map((item, i) => [rank(item, text), i, item]).sort((a, b) => a[0] - b[0] || a[1] - b[1]).map(([, , item]) => item) : items.filter((i) => i.kind === "panel");
+  let found = text ? items.filter((item) => matches(item, text)).map((item, i) => [rank(item, text), i, item]).sort((a, b) => a[0] - b[0] || a[1] - b[1]).map(([, , item]) => item) : items.filter((i) => i.kind === "panel");
+  // A sentence ("how do I measure the knob curves") rarely has every word
+  // in one name; then the closest by any word, above the question.
+  if (text && !found.length) found = suggest(text, 5);
   const shown = found.slice(0, 9);
   if (text) shown.push({ kind: "ask", title: `Ask: "${text}"`, hint: "the assistant, in the chat", go: () => ask(text, { send: true }) });
   index = Math.min(index, shown.length - 1);
