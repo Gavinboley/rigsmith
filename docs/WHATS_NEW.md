@@ -27,7 +27,10 @@ the parts that need the Core, your guitar or your copy of a song say so.
   guessed from how songs go; pick the part you are chasing.
 - Measured from the record: gain, chorus, vibrato, tremolo and its depth,
   the delay and the room's reverb, tempo (correctable - halve, double, tap),
-  chords and riffs transcribed for the DI.
+  and the notes transcribed for the DI: single notes, riffs, palm-muted
+  chugs, strummed and power chords read right through gain; arpeggios and
+  ringing chord parts want basic-pitch (`pip install 'rigsmith[transcribe]'`),
+  which is used automatically once installed.
 - A re-map keeps your choices, even where sections moved.
 
 ## Your guitar and the loop
