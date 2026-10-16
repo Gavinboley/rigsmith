@@ -192,7 +192,11 @@ function stageNode(name, stage) {
 
 function audioLink(label, url) {
   if (!url) return null;
-  const player = new Audio(url);
+  // Fetched when played, not when drawn: a run page has a clip per finalist,
+  // and loading them all up front held the page's network for a second.
+  const player = new Audio();
+  player.preload = "none";
+  player.src = url;
   const button = el("button", { class: "btn small", text: `play ${label}` });
   button.onclick = () => {
     if (player.paused) {
