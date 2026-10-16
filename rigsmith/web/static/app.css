@@ -16,7 +16,7 @@
 
   --text:      #e6e9ee;
   --text-dim:  #9aa4b2;
-  --text-faint:#6b7583;
+  --text-faint:#7d8796; /* 4.7:1 on the panels - hints are text people read */
 
   --amber:     #f0a020;
   --amber-dim: #8a5e14;
