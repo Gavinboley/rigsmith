@@ -468,6 +468,28 @@ def test_strummed_triads_are_read_as_their_chords_not_a_fundamental_below():
     assert any("pitch classes" in note for note in result.notes_text)
 
 
+def test_a_driven_power_chord_is_read_from_its_root_not_its_fifth():
+    """Through a crunchy amp the root rang quieter than the fifth, and half
+    the chords came back a fifth up - a D5 as an A5."""
+    from rigsmith.learn.pluck import render_notes
+    from rigsmith.learn.transcribe import transcribe
+    from rigsmith.loop.virtual import SimAmp
+
+    beat = 60 / 110
+    truth = []
+    for b in range(32):
+        root = [40, 43, 45, 38][(b // 2) % 4]
+        truth += [(b * beat, beat * 0.9, m, 0.8) for m in (root, root + 7)]
+    audio = SimAmp(Type=2, Gain=0.5).process(render_notes(truth, seed=5))
+    result = transcribe(audio, 48000, method="builtin", match_record_pitch=False)
+    right = 0
+    for start in sorted({t for t, _, _, _ in truth}):
+        root = min(m for t, _, m, _ in truth if t == start) % 12
+        got = [e.midi for e in result.events if abs(e.start - start) < 0.06]
+        right += bool(got) and round(min(got)) % 12 == root
+    assert right >= 0.85 * 32, right
+
+
 def test_the_voice_network_reads_frets_from_the_guitars_own_tuning():
     """It assumed standard tuning, so a drop-D low string was two frets out."""
     from rigsmith.learn import neural

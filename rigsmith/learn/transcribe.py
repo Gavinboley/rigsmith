@@ -589,36 +589,64 @@ def _chord_template(voicing, *, partials: int = 8, decay: float = 0.75) -> np.nd
     return template / np.linalg.norm(template)
 
 
-def _bass_note(audio: np.ndarray, sample_rate: int, start: float, end: float) -> float | None:
-    """The lowest strong pitch in 70-350 Hz just after an attack: a chord's root as played."""
+#: How strong, against the loudest bass peak, a pitch a fifth below the
+#: lowest strong one must be to be offered as a power chord's root.
+POWER_ROOT_FLOOR = 0.08
+
+#: How much better the higher candidate root must fit the notes to beat the
+#: lower one. Tuned on synthetic parts (two render seeds): 0.02 gives back
+#: most of the power chords' gain, 0.05 starts costing sevenths, 0.1 triads.
+LOWER_ROOT_MARGIN = 0.04
+
+
+def _bass_notes(audio: np.ndarray, sample_rate: int, start: float, end: float) -> list[float]:
+    """Candidates for a chord's root as played: the lowest strong pitch in
+    70-350 Hz just after an attack, and the pitch a fifth below it when one
+    rings there.
+
+    Driven, a power chord's root can ring quieter than its fifth - the amp's
+    low end rolls off - and the fifth is then the lowest strong pitch. A
+    distorted triad can show a peak a fifth below its root too, from the
+    amp's intermodulation, so this only offers it: the chord shapes decide
+    which root explains the notes (:func:`_chords_from_chroma`).
+    """
     a, b = int((start + 0.04) * sample_rate), int(min(end, start + 0.5) * sample_rate)
     piece = audio[a:b]
     if len(piece) < 2048:
-        return None
+        return []
     size = 1 << int(np.ceil(np.log2(max(len(piece), 8192))))
     spectrum = np.abs(np.fft.rfft(piece * np.hanning(len(piece)), size))
     freqs = np.fft.rfftfreq(size, 1 / sample_rate)
     band = (freqs >= 70.0) & (freqs <= 350.0)
     level, where = spectrum[band], freqs[band]
     if not len(level) or level.max() <= 0:
-        return None
+        return []
+    midi = lambda hz: float(69 + 12 * np.log2(hz / 440.0))  # noqa: E731
     for i in range(1, len(level) - 1):
         if level[i] >= level[i - 1] and level[i] >= level[i + 1] and level[i] >= 0.3 * level.max():
-            return float(69 + 12 * np.log2(where[i] / 440.0))
-    return None
+            found = [midi(where[i])]
+            below = (freqs >= where[i] * 2 / 3 * 0.975) & (freqs <= where[i] * 2 / 3 * 1.025)
+            if below.any() and spectrum[below].max() >= POWER_ROOT_FLOOR * level.max():
+                found.append(midi(freqs[below][int(np.argmax(spectrum[below]))]))
+            return found
+    return []
 
 
 def _chords_from_chroma(audio: np.ndarray, sample_rate: int, onsets, min_midi: int, *, hop_s: float = 0.02) -> list[NoteEvent]:
     """A chord at each attack, from the pitch classes that ring after it.
 
     The root is the lowest strong pitch in the bass - what a guitarist's
-    root is - and the shape the one whose pitch classes, harmonics included,
-    best match the chroma once each tone beyond a power chord has paid
-    :data:`CHORD_TONE_COST`. Voiced as a barre shape from that root.
+    root is, or the pitch a fifth below it when a driven power chord's root
+    rings quieter than its fifth (:func:`_bass_notes`) - and the shape the
+    one whose pitch classes, harmonics included, best match the chroma once
+    each tone beyond a power chord has paid :data:`CHORD_TONE_COST`. Voiced
+    as a barre shape from that root.
 
     On synthetic parts this reads triads' pitch classes right at 94% of
     attacks clean, crunchy or driven (the note-by-note estimate: 19-56%),
-    and power chords at 59-94% (41-91%).
+    sevenths at 81-94%, and power chords' roots at 84-97% (59-94% before
+    the fifth below was offered; driven, the root was the fifth half the
+    time).
     """
     from .align import audio_chroma
 
@@ -636,14 +664,24 @@ def _chords_from_chroma(audio: np.ndarray, sample_rate: int, onsets, min_midi: i
         if profile.sum() <= 0:
             continue
         profile = profile / np.linalg.norm(profile)
-        bass = _bass_note(audio, sample_rate, start, end)
-        roots = [int(round(bass)) % 12] if bass is not None else range(12)
-        _, root, name = max(
+        basses = _bass_notes(audio, sample_rate, start, end)
+        roots = sorted({int(round(bass)) % 12 for bass in basses}) or range(12)
+        fits = [
             (float(np.dot(profile, np.roll(template, r))) - CHORD_TONE_COST * (len(CHORD_SHAPES[shape]) - 2), r, shape)
             for shape, template in templates.items()
             for r in roots
-        )
-        base = int(round(bass)) if bass is not None else min_midi + ((root - min_midi) % 12)
+        ]
+        score, root, name = max(fits)
+        if len(basses) > 1:
+            # The lower candidate is the root a guitarist plays unless the
+            # other explains the notes clearly better: root and fifth alone
+            # fit a sus4 on the fifth almost as well as a power chord.
+            lower = int(round(basses[1])) % 12
+            best_lower = max(f for f in fits if f[1] == lower)
+            if best_lower[0] >= score - LOWER_ROOT_MARGIN:
+                score, root, name = best_lower
+        played = [bass for bass in basses if int(round(bass)) % 12 == root]
+        base = int(round(played[0])) if played else min_midi + ((root - min_midi) % 12)
         while base < min_midi:
             base += 12
         for tone in CHORD_VOICINGS[name]:
