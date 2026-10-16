@@ -91,6 +91,10 @@ def catalog() -> Catalog:
             device_index=index, selector="Amp.Type",
             params=cat.models["Amp"].params,
         )
+    cat.models["Spring Reverb"] = ModelSpec(
+        id="Spring Reverb", name="Spring Reverb", category=BlockCategory.EFFECT, verified=True,
+        device_index=7, params=[percent("Mix"), ParamSpec(name="On", kind="bool")],
+    )
     return cat
 
 
@@ -500,4 +504,9 @@ def test_a_live_nudge_only_moves_knobs_on_the_rig_it_belongs_to(patched_catalog,
     core.loaded_name = rig.name
     sent = asyncio.run(devices.send_live(rig, 3, {"Bass": 0.7}, host="fake"))
     assert sent["node"] == "Amp" and core.blocks["Amp"]["Bass"] == 0.7 and not sent["refused"]
+    # "Too much reverb" turns the reverb's own node, not the amp's.
+    rig.blocks.append(Block(slot=5, category=BlockCategory.EFFECT, model_id="Spring Reverb", params={"Mix": 0.3}))
+    sent = asyncio.run(devices.send_live(rig, 5, {"Mix": 0.22}, host="fake"))
+    assert sent["node"] == "Spring_Reverb" and core.blocks["Spring_Reverb"]["Mix"] == 0.22 and not sent["refused"]
+    assert "Mix" not in core.blocks["Amp"]
     config.set_settings(None)
