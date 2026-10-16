@@ -54,6 +54,12 @@ AREAS: dict[str, tuple[str, bool]] = {
 }
 
 
+#: Areas no prune touches, named or not: what is in them cannot be made
+#: again (your playing, your guitars, the songs you mapped, pairings). They
+#: are deleted one item at a time - a take, a song - never swept.
+KEPT = frozenset({"nam", "takes", "profiles", "songs", "uploads", "loop", "sessions", "agents"})
+
+
 def _format_bytes(count: int) -> str:
     size = float(count)
     for unit in ("B", "KB", "MB", "GB"):
@@ -238,7 +244,8 @@ def prune(
         areas: Which areas to prune. Defaults to every area marked prunable —
             which excludes ``backups`` and ``drafts``, since those are the
             safety net and the work in progress respectively. Name them
-            explicitly to prune them anyway.
+            explicitly to prune them anyway. The areas in :data:`KEPT` are
+            refused even when named.
         older_than_days: Only remove entries last modified before this.
         dry_run: Report without deleting. **Default true.**
         root: Override the workspace location.
@@ -257,6 +264,13 @@ def prune(
             raise Invalid(
                 f"unknown workspace area(s): {', '.join(unknown)}",
                 hint=f"Known areas: {', '.join(AREAS)}",
+            )
+        kept = [a for a in areas if a in KEPT]
+        if kept:
+            raise Invalid(
+                f"{', '.join(kept)} {'is' if len(kept) == 1 else 'are'} never pruned - "
+                + "; ".join(AREAS[a][0] for a in kept),
+                hint="Delete single items instead (a take, a song, a guitar), so nothing irreplaceable goes in a sweep.",
             )
         targets = list(areas)
 

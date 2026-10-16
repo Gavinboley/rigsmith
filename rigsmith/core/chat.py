@@ -169,9 +169,13 @@ def pending_approvals(chat_id: str | None = None) -> list[dict]:
 def decide(approval_id: str, allow: bool) -> dict:
     with _lock:
         entry = _approvals.get(approval_id)
-    if entry is None:
-        raise NotFound(f"no pending approval '{approval_id}'", hint="It may already have been answered or timed out.")
-    entry["decision"] = bool(allow)
+        if entry is None:
+            raise NotFound(f"no pending approval '{approval_id}'", hint="It may already have been answered or timed out.")
+        if entry.get("decision") is not None:
+            # A double click, or the page and the chat both answering: the
+            # first answer stands, and a second cannot overturn it.
+            return {k: v for k, v in entry.items() if k != "event"}
+        entry["decision"] = bool(allow)
     entry["event"].set()
     events.publish({"type": "chat", "chat_id": entry["chat_id"], "kind": "approval_decided", "approval_id": approval_id, "allow": bool(allow)})
     return {k: v for k, v in entry.items() if k != "event"}

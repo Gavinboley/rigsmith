@@ -315,3 +315,19 @@ def test_exchange_serialises_without_empty_fields():
     assert "request_body" not in data
     assert "direction" not in data
     assert data["method"] == "GET"
+
+
+def test_local_mode_keeps_demucs_off_the_network(tmp_path, monkeypatch):
+    """Demucs downloads its model on first use; local mode promises nothing leaves."""
+    from rigsmith import config
+    from rigsmith.core import appsettings
+    from rigsmith.match import separate
+
+    monkeypatch.setenv("RIGSMITH_WORKSPACE", str(tmp_path))
+    config.set_settings(config.Settings())
+    appsettings.update(mode="local")
+    env, offline = separate._environment()
+    assert offline and env["HTTPS_PROXY"] == separate.NOWHERE and "NO_PROXY" not in env
+    appsettings.update(mode="accuracy")
+    assert separate._environment() == (None, False)
+    config.set_settings(None)

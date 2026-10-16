@@ -31,6 +31,12 @@ NEEDS_APPROVAL = {
     "workspace_prune",
     "midi_select_rig",
     "midi_set_block",
+    # These act on the hardware too: a footswitch press changes the sound
+    # mid-song, a tap changes the tempo, and verify loads a rig and toggles
+    # every block in it.
+    "midi_press_footswitch",
+    "midi_tap_tempo",
+    "midi_verify_rig",
     "adopt_loop_route",
     "apply_tuning",
 }

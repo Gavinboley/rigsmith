@@ -369,3 +369,19 @@ def test_the_cli_names_its_own_flag_for_waiving_the_backup(tmp_path, monkeypatch
     finally:
         config.set_settings(None)
         drafts.set_store(None)
+
+
+def test_what_cannot_be_made_again_is_never_pruned_even_by_name(runner, tmp_path):
+    """Named explicitly, a guitar's samples used to go in the sweep."""
+    from rigsmith.core import workspace
+    from rigsmith.core.errors import Invalid
+
+    (tmp_path / "profiles" / "lp").mkdir(parents=True)
+    (tmp_path / "profiles" / "lp" / "sample.wav").write_bytes(b"x" * 100)
+    for kept in sorted(workspace.KEPT):
+        with pytest.raises(Invalid):
+            workspace.prune([kept], dry_run=False, root=tmp_path)
+    assert (tmp_path / "profiles" / "lp" / "sample.wav").exists()
+    (tmp_path / "backups" / "b1").mkdir(parents=True)
+    named = workspace.prune(["backups"], dry_run=True, root=tmp_path)
+    assert named.removed, "backups can still be pruned when named, as documented"

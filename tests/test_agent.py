@@ -332,3 +332,27 @@ def test_a_signed_out_claude_code_is_seen_and_passed_over(tmp_path, monkeypatch)
     assert not isinstance(providers.from_settings(), providers.ClaudeCode), "signed out: the next in line answers"
     step = next(s for s in setup.checklist() if s.step_id == "brains")
     assert "not signed in" in step.detail and "/login" in step.detail
+
+
+def test_every_tool_that_acts_on_the_hardware_or_deletes_work_waits_for_a_person():
+    """Approval is a list, so a new tool is ungated until it is added - this
+    makes adding one that acts on the Core, or deletes work, fail here first."""
+    acts = ("midi_", "write_", "install_")
+    reads = {"midi_ports"}
+    deletes = {"delete_draft", "delete_take", "delete_recipe", "workspace_prune"}
+    ungated = [
+        name for name, spec in tools.registry().items()
+        if (name.startswith(acts) and name not in reads or name in deletes) and not spec.needs_approval
+    ]
+    assert not ungated, f"these act on the device or delete work without asking: {ungated}"
+
+
+def test_a_second_answer_to_an_approval_does_not_overturn_the_first():
+    import threading
+
+    chat._approvals["twice"] = {"approval_id": "twice", "chat_id": "c", "tool": "write_rig", "decision": None, "event": threading.Event()}
+    try:
+        chat.decide("twice", False)
+        assert chat.decide("twice", True)["decision"] is False
+    finally:
+        chat._approvals.pop("twice", None)

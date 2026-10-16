@@ -110,6 +110,7 @@ def separate(
         command += ["--two-stems", stems[0]]
     command.append(str(audio_path))
 
+    env, offline = _environment()
     try:
         completed = subprocess.run(
             command,
@@ -117,6 +118,7 @@ def separate(
             text=True,
             timeout=timeout_s,
             check=False,
+            env=env,
         )
     except subprocess.TimeoutExpired as exc:
         raise SeparationUnavailable(
@@ -126,6 +128,13 @@ def separate(
     if completed.returncode != 0:
         tail = (completed.stderr or completed.stdout or "").strip().splitlines()
         detail = "\n".join(tail[-6:]) if tail else "no output"
+        if offline and any(sign in detail.lower() for sign in ("download", "urlopen", "urlerror", "proxy", "connection")):
+            raise SeparationUnavailable(
+                f"Demucs needs its {model} model, which is not on this machine yet, and "
+                "local mode does not let it download one.",
+                hint="Isolate one song in accuracy mode to fetch it (about 80 MB, once), "
+                "then local mode can isolate offline.",
+            )
         raise SeparationUnavailable(
             f"Demucs exited {completed.returncode}:\n{detail}"
         )
@@ -150,3 +159,34 @@ def separate(
         "reference for ranking, not as ground truth."
     )
     return result
+
+
+#: Where a local-mode Demucs is sent if it tries to reach the network: a
+#: port nothing listens on, so a download fails at once instead of leaving.
+NOWHERE = "http://127.0.0.1:9"
+
+
+def _environment() -> tuple[dict | None, bool]:
+    """The environment Demucs runs in, and whether it is kept offline.
+
+    Demucs fetches its model weights the first time it is used. In local
+    mode nothing may leave the machine, so the run gets a proxy that goes
+    nowhere: a model already cached loads as usual, and a download fails
+    straight away - and says what to do - rather than quietly happening.
+    """
+    import os
+
+    try:
+        from ..core import appsettings
+
+        local = appsettings.load().local
+    except Exception:
+        local = False
+    if not local:
+        return None, False
+    env = dict(os.environ)
+    for name in ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy", "ALL_PROXY", "all_proxy"):
+        env[name] = NOWHERE
+    env.pop("NO_PROXY", None)
+    env.pop("no_proxy", None)
+    return env, True
