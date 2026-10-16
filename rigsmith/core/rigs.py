@@ -406,7 +406,7 @@ def nudge(draft_id: str, text: str, *, slot: int | None = None, live: bool = Fal
     if not asked.moves:
         raise Invalid(
             f"nothing in '{text}' says which way to move",
-            hint="Try: brighter, darker, more or less gain, more or less bass, tighter, more or less mids, more bite, smoother, louder - with 'a bit' or 'a lot'.",
+            hint="Try: brighter, darker, more or less gain, more or less bass, tighter, more or less mids, more bite, smoother, louder - with 'a bit' or 'a lot'; or what is wrong: too boomy, too much gain, not enough bite.",
         )
     spec = get_catalog().get(block.model_id)
     current = dict(block.params)

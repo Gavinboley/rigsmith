@@ -223,6 +223,17 @@ def test_words_become_knob_moves():
     assert nudge.apply({"Treble": 0.98}, {"Treble": 0.08}) == {"Treble": (0.98, 1.0)}, "kept inside the knob's travel"
 
 
+def test_a_complaint_is_read_as_its_cure():
+    from rigsmith.tune import nudge
+
+    asked = nudge.parse("a bit too bright, way too much bass and not enough gain")
+    assert asked.moves == {"Treble": -0.04, "Presence": -0.04, "Bass": -0.16, "GainA": 0.08}
+    assert asked.understood == ["a bit too bright", "way too much bass", "not enough gain"], "said back as it was said"
+    assert nudge.parse("too dark").moves == {"Treble": 0.08, "Presence": 0.08}, "not read as 'darker'"
+    assert nudge.parse("too muddy").moves == {"Bass": -0.08, "Mid": -0.04}
+    assert nudge.parse("too purple").unknown == ["too purple"]
+
+
 def test_a_draft_is_nudged_on_its_amp(workspace):
     from rigsmith.core import rigs
 

@@ -46,7 +46,7 @@ const ACTIONS = [
   ["Compare guitars", "takes", "#guitar-compare", "yours against the record's"],
   ["Search TONE3000", "captures", "#t3k-search", "NAM captures online"],
   ["Scan for captures", "captures", "#scan-btn", "NAM files already on disk"],
-  ["Nudge the tone by ear", "rig", "#nudge-text", "a bit brighter, a lot tighter"],
+  ["Nudge the tone by ear", "rig", "#nudge-text", "a bit brighter, too boomy"],
   ["Tone sheet", "rig", "#sheet-btn", "the rig as you would dial it by hand"],
   ["Write the rig to the Core", "rig", "#write-btn", "save it to the HeadRush"],
   ["Score against the record", "match", "#score-btn", "how close is it"],
