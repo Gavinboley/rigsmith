@@ -205,7 +205,7 @@ def serve() -> None:
 
 @main.command()
 @click.option("--host", default="127.0.0.1", show_default=True, help="Bind address. Loopback only by default.")
-@click.option("--port", default=0, show_default=True, help="0 picks a free port automatically.")
+@click.option("--port", type=int, default=None, help="Default 8765 (or a free one if something else has it, or this workspace's UI if it is already running there); 0 picks a free port.")
 @click.option("--no-browser", is_flag=True, help="Do not open a browser tab.")
 @handled
 def ui(host: str, port: int, no_browser: bool) -> None:

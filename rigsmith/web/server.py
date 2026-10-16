@@ -87,6 +87,31 @@ def build_app(*, hosts=None):
     return app
 
 
+#: The UI's usual port, so its address can be bookmarked. When something
+#: else holds it, a free one is used instead.
+DEFAULT_PORT = 8765
+
+
+def already_running(host: str, port: int, workspace) -> bool:
+    """A rigsmith UI on this same workspace is answering at ``host:port``."""
+    import httpx
+
+    try:
+        data = httpx.get(f"http://{host}:{port}/api/health", timeout=1.0).json()
+    except Exception:
+        return False
+    return isinstance(data, dict) and data.get("workspace") == str(workspace)
+
+
+def _port_free(host: str, port: int) -> bool:
+    with socket.socket() as probe:
+        try:
+            probe.bind((host, port))
+        except OSError:
+            return False
+    return True
+
+
 def _free_port(host: str) -> int:
     with socket.socket() as probe:
         probe.bind((host, 0))
@@ -96,7 +121,7 @@ def _free_port(host: str) -> int:
 def run_ui(
     *,
     host: str = "127.0.0.1",
-    port: int = 0,
+    port: int | None = None,
     open_browser: bool = True,
 ) -> None:
     """Serve the UI until interrupted.
@@ -113,7 +138,19 @@ def run_ui(
             hint="Install it with:  pip install 'rigsmith[ui]'",
         ) from exc
 
-    if port == 0:
+    if port is None:
+        # The usual port - or, when this workspace's UI already has it, that
+        # one: a second launch opens the first rather than starting another.
+        from ..config import get_settings
+
+        if already_running(host, DEFAULT_PORT, get_settings().workspace):
+            url = f"http://{host}:{DEFAULT_PORT}"
+            print(f"rigsmith ui is already running  ->  {url}")
+            if open_browser:
+                webbrowser.open(url)
+            return
+        port = DEFAULT_PORT if _port_free(host, DEFAULT_PORT) else _free_port(host)
+    elif port == 0:
         port = _free_port(host)
 
     url = f"http://{host}:{port}"

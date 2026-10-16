@@ -1297,3 +1297,15 @@ def test_a_rig_can_be_compared_with_another(browser, server):
         page.select_option("#compare-with", second)
         page.wait_for_selector("#findings .finding:has-text('Treble')")
         assert f"First ({first}) -> Second ({second})" in page.inner_text("#findings")
+
+
+def test_a_second_launch_finds_the_ui_already_running(server, tmp_path):
+    """So 'rigsmith ui' twice opens the one already there instead of a second server."""
+    from urllib.parse import urlsplit
+
+    from rigsmith.web.server import _port_free, already_running
+
+    address = urlsplit(server)
+    assert already_running(address.hostname, address.port, tmp_path)
+    assert not already_running(address.hostname, address.port, tmp_path / "another-workspace"), "not someone else's"
+    assert not _port_free(address.hostname, address.port)
