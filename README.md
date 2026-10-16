@@ -36,19 +36,38 @@ This project does **not** modify, patch, or reflash device firmware, and it neve
 ## Quickstart
 
 ```bash
-rigsmith doctor        # what this install can and cannot do, and how to fix it
-rigsmith ui            # the web interface
+rigsmith doctor        # what this install can and cannot do, who answers the chat, and how to fix each
+rigsmith ui            # the web interface - start on the Autopilot page
 ```
 
-Put the Core on the same Wi-Fi network, enable **Global Settings → Wi-Fi → HeadRush Remote**, then:
+The Autopilot page's **Getting set up** card lists what to do and links to
+each step; autopilot works before any of it is done, on a synthetic guitar
+and the simulated bench, and says so on every result. To bring in the Core,
+put it on the same Wi-Fi network, enable **Global Settings → Wi-Fi →
+HeadRush Remote**, then:
 
 ```bash
 rigsmith discover              # find it
+rigsmith device pair           # accept the PIN on the Core's screen
+rigsmith autopilot run "Going Under" --artist Evanescence --mix going-under.flac --bench virtual
+```
+
+[docs/FIRST_SESSION.md](docs/FIRST_SESSION.md) is the first session with the
+hardware, step by step: your guitar, the loop, a run on the device, the
+blind test, the write, and finishing it by ear.
+
+### Working on the protocol
+
+The Remote Editor protocol is captured and verified (a rig written to a
+Core and read back exactly); these are the tools that did it, for a new
+firmware or another device:
+
+```bash
 rigsmith probe --dump-app      # map the editor's API surface
 rigsmith protocol record       # watch the real editor work, and log every call
 ```
 
-### No hardware yet?
+### A simulated Core, for the protocol tools
 
 ```bash
 rigsmith protocol simulate --port 8100
