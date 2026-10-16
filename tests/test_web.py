@@ -1018,3 +1018,17 @@ def test_the_api_describes_itself(client):
     assert schema.status_code == 200
     paths = schema.json()["paths"]
     assert "/api/drafts" in paths and "/" not in paths
+
+
+def test_the_page_can_learn_the_scene_numbers(client, monkeypatch):
+    from rigsmith.core import appsettings, devices
+    from rigsmith.core.jobs import get_manager
+
+    async def scene_set_by_hand(host=None):
+        return devices.parse_scenes({"ModeNew1": 2, "Scene1_1_Effect": "Amp", "Scene1_1_Mode": 1, "Scene1_2_Effect": "Cab", "Scene1_2_Mode": 2})
+
+    monkeypatch.setattr(devices, "read_scenes", scene_set_by_hand)
+    job = client.post("/api/device/scenes", json={"learn": True}).json()
+    running = get_manager().get(job["job_id"])
+    assert running.wait(10) and "Learned: on is 1, off is 2" in running.result["render"], running.error
+    assert appsettings.load().scene_modes == {"on": 1, "off": 2, "no_change": 0}

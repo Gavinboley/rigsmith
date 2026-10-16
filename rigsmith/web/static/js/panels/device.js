@@ -284,6 +284,7 @@ export function init() {
       return result.lines.join("\n") + (result.saved ? `\n\nsaved to ${result.saved}` : "\n\nnothing measured, nothing saved");
     });
   $("#device-scenes").onclick = () => deviceJob("/api/device/scenes", {}, (result) => result.render);
+  $("#device-scenes-learn").onclick = () => deviceJob("/api/device/scenes", { learn: true }, (result) => result.render);
 
   renderFootswitches();
   renderPairing();

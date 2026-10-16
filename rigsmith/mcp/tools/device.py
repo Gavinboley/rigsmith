@@ -61,14 +61,23 @@ async def device_snapshot(host: str | None = None) -> str:
 
 
 @tool
-async def device_scenes(host: str | None = None) -> str:
+async def device_scenes(host: str | None = None, learn: bool = False) -> str:
     """Read the loaded rig's scene table from the Core, raw - read only.
 
     Footswitch modes and labels, and per block the raw scene mode number.
-    Used to learn which number means on and which off before scenes are
-    written over the network.
+    With learn=True, footswitch 1's scene (the user set it to turn the
+    first block on and the second off) teaches which number is which, and
+    rigs written afterwards carry their scenes.
     """
-    return devices.render_scenes(await devices.read_scenes(host))
+    from ...core import appsettings
+
+    rows = await devices.read_scenes(host)
+    text = devices.render_scenes(rows)
+    if learn:
+        modes = devices.learn_scene_modes(rows)
+        appsettings.update(scene_modes=modes)
+        text += f"\nLearned: on is {modes['on']}, off is {modes['off']}."
+    return text
 
 
 @tool

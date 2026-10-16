@@ -67,14 +67,27 @@ def snapshot(body: HostBody) -> dict:
     return {"job_id": job.id, "name": job.name}
 
 
+class ScenesBody(BaseModel):
+    host: str | None = None
+    learn: bool = False
+
+
 @router.post("/scenes")
-def scenes(body: HostBody) -> dict:
-    """The loaded rig's scene table, raw - read only."""
+def scenes(body: ScenesBody) -> dict:
+    """The loaded rig's scene table, raw - read only on the device. With
+    ``learn``, footswitch 1's scene teaches the on and off numbers."""
 
     def run(progress):
+        from ...core import appsettings
+
         progress.update(0.1, "reading the scenes")
         rows = asyncio.run(devices.read_scenes(body.host))
-        return {"rows": rows, "render": devices.render_scenes(rows)}
+        render = devices.render_scenes(rows)
+        if body.learn:
+            modes = devices.learn_scene_modes(rows)
+            appsettings.update(scene_modes=modes)
+            render += f"\n\nLearned: on is {modes['on']}, off is {modes['off']}. Rigs written from now on carry their scenes."
+        return {"rows": rows, "render": render}
 
     job = get_manager().submit("read the device's scenes", run)
     return {"job_id": job.id, "name": job.name}
