@@ -116,3 +116,10 @@ you press Enter, so you hear it at once. The draft keeps every move; write it
 again when it sounds right, since the Core's own copy is only saved by a
 write. The same works from the chat ("it's too fizzy") and from
 `rigsmith rig nudge`.
+
+A step that made it worse is one **Undo** (Ctrl+Z) away, and **History**
+under the board goes back to before any edit. If you then let the blind
+test's winner rebuild the draft, the one you finished by ear is kept
+beside it - **Compare with...** shows what differs. After a few songs,
+the knobs you keep turning the same way show up on the Autopilot form as
+your **ear habits**, for the next run to start from if you tick it.
