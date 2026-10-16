@@ -37,6 +37,9 @@ codecs = ["av>=12"]
 browser = ["playwright>=1.40"]
 claude = ["anthropic>=1.0"]
 tune = ["optuna>=4.0"]
+# Spotify's polyphonic transcriber - large (a neural network runtime), so
+# not in "all"; used automatically when installed.
+transcribe = ["basic-pitch>=0.3"]
 dev = ["pytest>=7", "pytest-asyncio>=0.23", "httpx>=0.27"]
 all = [
   "mcp>=2.0", "fastapi>=0.115", "uvicorn>=0.30",
