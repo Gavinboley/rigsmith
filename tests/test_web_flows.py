@@ -219,6 +219,7 @@ def test_the_setup_checklist_says_what_is_missing(client):
     steps = {s["step_id"]: s for s in client.get("/api/settings/setup").json()["steps"]}
     assert not steps["guitar"]["done"]
     assert steps["loop"]["optional"] and steps["brains"]["optional"]
+    assert steps["midi"]["optional"] and steps["midi"]["panel"] == "device" and steps["midi"]["detail"]
     client.patch("/api/settings", json={"onboarding_done": True})
     assert client.get("/api/settings/setup").json()["dismissed"] is True
 

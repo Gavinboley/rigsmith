@@ -52,6 +52,26 @@ def _core() -> Step:
     )
 
 
+def _midi() -> Step:
+    """MIDI over the Core's USB cable: loading a rig to reamp through, and
+    checking a write on a channel independent of the one that made it."""
+    try:
+        from ..device.midi import find_headrush_port, list_ports
+
+        outputs, _ = list_ports()
+    except Exception as exc:
+        missing = "pip install" in str(exc)
+        detail = (
+            "Install MIDI support (pip install 'rigsmith[midi]') to load rigs and verify writes over the Core's USB cable."
+            if missing else f"MIDI is installed but could not list ports: {str(exc).splitlines()[0]}"
+        )
+        return Step("midi", "MIDI over USB", False, detail, "device", optional=True)
+    port = find_headrush_port(outputs)
+    if port:
+        return Step("midi", "MIDI over USB", True, f"the Core is on {port}", "device", optional=True)
+    return Step("midi", "MIDI over USB", False, "MIDI is ready; plug the Core in over USB and it shows up here.", "device", optional=True)
+
+
 def _loop() -> Step:
     from . import loop
 
@@ -107,7 +127,7 @@ def _brains() -> Step:
 
 
 def checklist() -> list[Step]:
-    return [_guitar(), _song(), _core(), _loop(), _brains()]
+    return [_guitar(), _song(), _core(), _midi(), _loop(), _brains()]
 
 
 def render(steps: list[Step]) -> str:
