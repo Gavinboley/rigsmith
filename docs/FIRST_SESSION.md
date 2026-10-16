@@ -101,6 +101,18 @@ every block's settings the way the Core's screen reads them.
 A song rig's **scenes need one thing learned first**: which number this
 Core uses for on and which for off. Two minutes, once: on the Core, make
 footswitch 1 a scene that turns the **first** block in the chain on and the
-**second** off, save, and run `rigsmith device scenes --learn` with that rig
-loaded. Every rig written after that carries its scenes, read back to
-check; until then the write report lists what each footswitch should do.
+**second** off, save, and press **Device -> Learn on/off from FS1** (or run
+`rigsmith device scenes --learn`) with that rig loaded. Every rig written
+after that carries its scenes, read back to check; until then the write
+report lists what each footswitch should do.
+
+## 9. Finish it by ear
+
+With the rig written and loaded, play along with the record and say what
+is off. **Rig -> By ear** takes the words - *too boomy*, *a bit brighter*,
+*way too much reverb*, *fewer repeats* - and moves the amp, reverb or delay
+a step that way; tick **on the Core too** and the loaded patch changes as
+you press Enter, so you hear it at once. The draft keeps every move; write it
+again when it sounds right, since the Core's own copy is only saved by a
+write. The same works from the chat ("it's too fizzy") and from
+`rigsmith rig nudge`.
