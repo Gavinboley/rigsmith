@@ -148,6 +148,25 @@ def test_the_page_boots_without_a_console_error(browser, server):
         page.wait_for_selector("#tabs .tab[aria-selected='true']")
 
 
+UNNAMED = """
+() => [...document.querySelectorAll('section.panel:not([hidden]) :is(button, input, select, textarea)')]
+  .filter((e) => e.offsetParent !== null && e.type !== 'hidden')
+  .filter((e) => !(e.getAttribute('aria-label') || e.getAttribute('aria-labelledby') || e.getAttribute('title')
+    || (e.labels && e.labels.length) || (e.tagName === 'BUTTON' && e.textContent.trim()) || e.getAttribute('placeholder')))
+  .map((e) => e.outerHTML.slice(0, 120))
+"""
+
+
+def test_every_control_has_a_name_a_screen_reader_can_say(browser, server):
+    with page_at(browser, server) as page:
+        for tab in page.locator("#tabs .tab").all():
+            panel = tab.get_attribute("data-panel")
+            tab.click()
+            page.wait_for_selector(f"section.panel[data-panel='{panel}']:not([hidden])")
+            page.wait_for_load_state("networkidle")
+            assert page.evaluate(UNNAMED) == [], panel
+
+
 def test_every_tab_opens_its_panel(browser, server):
     """Each tab is wired to a module; a broken one leaves the panel blank."""
     with page_at(browser, server) as page:

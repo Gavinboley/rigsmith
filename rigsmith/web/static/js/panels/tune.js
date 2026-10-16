@@ -66,8 +66,8 @@ function renderForm() {
   form.renderer = el("select", {}, el("option", { value: "virtual", text: "simulated amp (offline)" }), el("option", { value: "loop", text: "the Core, through the loop" }));
   form.route = el("select");
   form.draft = el("select");
-  form.budget = el("input", { type: "number", value: 30, min: 4, max: 400, class: "narrow" });
-  form.method = el("select", {}, ...["auto", "pattern", "optuna", "random"].map((m) => el("option", { value: m, text: m })));
+  form.budget = el("input", { type: "number", value: 30, min: 4, max: 400, class: "narrow", "aria-label": "Budget: how many settings to hear" });
+  form.method = el("select", { "aria-label": "Search method" }, ...["auto", "pattern", "optuna", "random"].map((m) => el("option", { value: m, text: m })));
   form.knobs = KNOBS.map((name) => el("input", { type: "checkbox", value: name, checked: name !== "Master" }));
   form.part.onchange = () => {
     const option = form.part.selectedOptions[0];
@@ -154,7 +154,7 @@ function show(run) {
   for (const [label, url] of [["the target", run.target_url], ["the best", run.best_url]]) {
     if (url) buttons.append(el("button", { class: "btn small", text: `play ${label}`, onclick: () => { document.querySelectorAll("audio").forEach((a) => a.pause()); player.src = url; player.play(); } }));
   }
-  const draft = el("select");
+  const draft = el("select", { "aria-label": "Draft to apply it to" });
   fillDrafts(draft);
   const withEq = el("input", { type: "checkbox" });
   buttons.append(

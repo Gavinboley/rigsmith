@@ -62,7 +62,7 @@ function renderForm() {
   );
   const route = el("select");
   const research = el("input", { type: "checkbox", checked: true });
-  const budget = el("input", { type: "number", value: 24, min: 6, max: 200, class: "narrow" });
+  const budget = el("input", { type: "number", value: 24, min: 6, max: 200, class: "narrow", "aria-label": "Tuning budget" });
   // The record's guitar: by default whatever the research names, so a Strat
   // record is chased with a single-coil DI even when you play a humbucker.
   const like = likeControls({ none: "keep my pickup", extra: [["auto", "what the research says"]] });

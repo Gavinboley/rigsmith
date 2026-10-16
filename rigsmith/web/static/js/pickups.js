@@ -28,7 +28,7 @@ export function refreshPickups() {
  * @param {Array<[string, string]>} [opts.extra] options before the types
  */
 export function likeControls({ except = null, none = "as played", extra = [] } = {}) {
-  const select = el("select", { title: "Move the DI toward another pickup" }, el("option", { value: "", text: none }), ...extra.map(([value, text]) => el("option", { value, text })));
+  const select = el("select", { title: "Move the DI toward another pickup", "aria-label": "Sound like" }, el("option", { value: "", text: none }), ...extra.map(([value, text]) => el("option", { value, text })));
   const amount = el("input", { type: "range", min: 0, max: 100, value: 100, step: 5, style: "width:110px", title: "How far toward it" });
   const shown = el("span", { class: "hint mono", text: "100%" });
   amount.oninput = () => (shown.textContent = `${amount.value}%`);

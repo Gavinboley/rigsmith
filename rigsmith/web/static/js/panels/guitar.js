@@ -115,7 +115,7 @@ function render() {
 
 function sessionCard() {
   const box = el("div", { class: "card", id: "guide-card" }, el("h3", { text: "Teach it" }));
-  const protocol = el("select");
+  const protocol = el("select", { "aria-label": "What to play" });
   for (const [value, label] of [["quick", "Quick - four notes a string (1 min)"], ["chromatic", "Every note on every string (most accurate)"], ["dynamics", "Dynamics - soft, medium, hard"], ["techniques", "Techniques - mutes and chords"], ["free", "Anything - play freely"]]) {
     protocol.append(el("option", { value, text: label }));
   }
@@ -279,7 +279,7 @@ function fretboardCard() {
 }
 
 function tryCard() {
-  const text = el("textarea", { rows: 4, class: "grow", style: "width:100%;font-family:var(--mono)", text: "# notes in order: :4 quarter, :16, :8. dotted, + chord, - rest, x2 repeat, ! accent\n@120  E2 G2 A2:4  (E2+B2+E3):2  -  (A2 A#2)x2 A2!" });
+  const text = el("textarea", { rows: 4, class: "grow", style: "width:100%;font-family:var(--mono)", "aria-label": "Riff, as notes", text: "# notes in order: :4 quarter, :16, :8. dotted, + chord, - rest, x2 repeat, ! accent\n@120  E2 G2 A2:4  (E2+B2+E3):2  -  (A2 A#2)x2 A2!" });
   const noise = el("input", { type: "checkbox" });
   const like = likeControls({ except: profileId });
   const out = el("div", { class: "hint", style: "white-space:pre-wrap" });

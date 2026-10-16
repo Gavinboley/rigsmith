@@ -163,12 +163,12 @@ function manualRoute(devices) {
   const names = (want) => [...new Set(devices.filter((d) => d[want] > 0 && !generic.test(d.name)).map((d) => d.name))];
   const fields = {
     id: el("input", { type: "text", placeholder: "my-loop" }),
-    kind: el("select", {}, ...["analog", "usb-reamp", "hybrid", "custom"].map((k) => el("option", { value: k, text: k }))),
-    out: el("select", {}, ...names("outputs").map((n) => el("option", { value: n, text: n }))),
-    outCh: el("input", { type: "text", value: "1", class: "narrow" }),
-    inp: el("select", {}, ...names("inputs").map((n) => el("option", { value: n, text: n }))),
-    inCh: el("input", { type: "text", value: "1", class: "narrow" }),
-    ref: el("input", { type: "number", class: "narrow", placeholder: "ref ch" }),
+    kind: el("select", { "aria-label": "Kind of route" }, ...["analog", "usb-reamp", "hybrid", "custom"].map((k) => el("option", { value: k, text: k }))),
+    out: el("select", { "aria-label": "Output device" }, ...names("outputs").map((n) => el("option", { value: n, text: n }))),
+    outCh: el("input", { type: "text", value: "1", class: "narrow", "aria-label": "Output channels", title: "Output channels, e.g. 3 or 1,2" }),
+    inp: el("select", { "aria-label": "Input device" }, ...names("inputs").map((n) => el("option", { value: n, text: n }))),
+    inCh: el("input", { type: "text", value: "1", class: "narrow", "aria-label": "Input channels", title: "Input channels, e.g. 1 or 1,2" }),
+    ref: el("input", { type: "number", class: "narrow", placeholder: "ref ch", "aria-label": "Reference channel", title: "An input that hears the send directly, to measure latency against (optional)" }),
   };
   const channels = (text) => text.split(/[ ,]+/).map(Number).filter((n) => n > 0);
   return el(

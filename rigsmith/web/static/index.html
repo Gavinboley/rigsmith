@@ -363,7 +363,7 @@
         <div id="t3k-status" class="notice"></div>
         <div class="row">
           <input type="text" id="t3k-query" placeholder="e.g. JCM800 hot" class="grow">
-          <select id="t3k-arch" class="inline-select">
+          <select id="t3k-arch" class="inline-select" aria-label="Capture size" title="NAM architecture: A2 captures, A1, or either">
             <option value="2">A2</option>
             <option value="1">A1</option>
             <option value="any">Any</option>
@@ -465,7 +465,7 @@
         decoded up front so switching is instant rather than a reload.
       </p>
       <div class="row">
-        <select id="ab-session" class="grow"></select>
+        <select id="ab-session" class="grow" aria-label="Blind test"></select>
         <button class="btn" id="ab-refresh">Refresh</button>
       </div>
       <div id="ab-trial" class="ab-trial"></div>
