@@ -277,6 +277,41 @@ def learn_scene_modes(rows: list[dict]) -> dict:
     return {"on": on, "off": off, "no_change": 0}
 
 
+async def send_live(rig, slot: int, values: dict, *, host: str | None = None) -> dict:
+    """Set a few of one block's values on the rig the Core has loaded.
+
+    Only when that rig is this one - the loaded rig's name is the draft's -
+    since otherwise the knobs would move on whatever else was loaded. The
+    values are read back, and any the device kept its own way are listed.
+    Nothing is saved on the device: it is the loaded patch, as when tuning.
+    """
+    from ..device.client import DeviceClient
+    from ..device.writer import plan_rig
+    from ..protocol.map import get as get_map
+    from ..rig.catalog import get_catalog
+
+    require_writable("turn knobs on the Core")
+    placement = next((p for p in plan_rig(rig, get_catalog()) if p.slot == slot), None)
+    if placement is None:
+        raise NotFound(f"slot {slot} is empty in '{rig.name}'")
+    if not host:
+        host = (await find()).host
+    protocol = get_map("headrush-core")
+    async with DeviceClient(f"http://{host}", protocol) as client:
+        loaded = await client.call("loaded_rig")
+        name = loaded.get(protocol.field("rig_name")) if isinstance(loaded, dict) else None
+        if (name or "").strip().lower() != rig.name.strip().lower():
+            raise Conflict(
+                f"the Core has '{name or 'another rig'}' loaded, not '{rig.name}'",
+                hint="Write the draft to the device, or load it there, then nudge live.",
+            )
+        await client.call("set_block", block=placement.node, properties=values)
+        back = await client.call("get_block", block=placement.node)
+    back = back if isinstance(back, dict) else {}
+    kept = [n for n, v in values.items() if not DeviceClient._same(v, back.get(n))]
+    return {"node": placement.node, "sent": values, "refused": kept}
+
+
 async def read_scenes(host: str | None = None) -> list[dict]:
     """Read the loaded rig's scene table - read only."""
     from ..device.client import DeviceClient

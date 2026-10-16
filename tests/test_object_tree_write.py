@@ -471,3 +471,33 @@ async def test_a_scene_value_the_device_drops_is_reported(patched_catalog, monke
     async with DeviceClient("http://fake", _with_properties(), transport=httpx.MockTransport(drops_labels)) as client:
         report = await client.write_rig(scene_rig())
     assert report.ok and not report.exact and "FootSwitch.UserFootSwitchText1" in report.refused
+
+
+def test_a_live_nudge_only_moves_knobs_on_the_rig_it_belongs_to(patched_catalog, monkeypatch, tmp_path):
+    """Sent to whatever rig was loaded, a nudge would retune somebody else's sound."""
+    import asyncio
+
+    from rigsmith import config
+    from rigsmith.core import devices
+    from rigsmith.core.errors import Conflict
+    from rigsmith.device import client as client_module
+
+    monkeypatch.setenv("RIGSMITH_WORKSPACE", str(tmp_path / "ws"))
+    monkeypatch.delenv("RIGSMITH_READONLY", raising=False)
+    config.set_settings(config.Settings())
+    core = FakeCore()
+    real = client_module.DeviceClient
+
+    class Faked(real):
+        def __init__(self, base_url, protocol, **kwargs):
+            super().__init__(base_url, MAP, transport=httpx.MockTransport(core.handle), **kwargs)
+
+    monkeypatch.setattr(client_module, "DeviceClient", Faked)
+    rig = rig_with_a_doubled_amp()
+    with pytest.raises(Conflict):
+        asyncio.run(devices.send_live(rig, 3, {"Treble": 0.6}, host="fake"))
+    assert "Amp" not in core.blocks, "nothing was sent to the wrong rig"
+    core.loaded_name = rig.name
+    sent = asyncio.run(devices.send_live(rig, 3, {"Bass": 0.7}, host="fake"))
+    assert sent["node"] == "Amp" and core.blocks["Amp"]["Bass"] == 0.7 and not sent["refused"]
+    config.set_settings(None)

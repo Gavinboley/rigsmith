@@ -384,11 +384,13 @@ def set_param(draft_id: str, slot: int, name: str, value: Any) -> EditResult:
     return _finish(draft, f"slot {slot} ({block.model_id}): {name} = {value}")
 
 
-def nudge(draft_id: str, text: str, *, slot: int | None = None) -> EditResult:
+def nudge(draft_id: str, text: str, *, slot: int | None = None, live: bool = False) -> EditResult:
     """Move the amp's knobs the way the words say: "a bit brighter, tighter".
 
     The amp is the first amp block unless ``slot`` names one. A control the
-    draft has not set starts from the catalog's default for it.
+    draft has not set starts from the catalog's default for it. ``live``
+    also sends the moves to the Core, when the rig it has loaded is this one
+    (:func:`rigsmith.core.devices.send_live`), so the change is heard at once.
     """
     from ..rig.catalog import get_catalog
     from ..tune import nudge as words
@@ -418,6 +420,13 @@ def nudge(draft_id: str, text: str, *, slot: int | None = None) -> EditResult:
         block.params[control] = after
     summary = ", ".join(f"{control} {before:.0%} -> {after:.0%}" for control, (before, after) in changed.items()) or "already at the end of their travel"
     message = f"slot {block.slot} ({block.model_id}): {summary}"
+    if live and changed:
+        import asyncio
+
+        from . import devices
+
+        sent = asyncio.run(devices.send_live(draft.rig, block.slot, {c: after for c, (_, after) in changed.items()}))
+        message += " - and on the Core" + (f", which kept its own {', '.join(sent['refused'])}" if sent["refused"] else "")
     if asked.unknown:
         message += f" (not understood: {', '.join(asked.unknown)})"
     return _finish(draft, message)

@@ -546,7 +546,7 @@ export function init() {
   const nudge = (how) =>
     current &&
     attempt(async () => {
-      const result = await api.post(`/api/drafts/${encodeURIComponent(current.draft_id)}/nudge`, { how });
+      const result = await api.post(`/api/drafts/${encodeURIComponent(current.draft_id)}/nudge`, { how, live: $("#nudge-live").checked });
       apply(result);
       toast(result.message, { kind: "ok", timeout: 6000 });
     });

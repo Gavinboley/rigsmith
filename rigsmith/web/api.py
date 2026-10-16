@@ -571,11 +571,12 @@ def draft_sheet_page(draft_id: str) -> HTMLResponse:
 class NudgeBody(BaseModel):
     how: str
     slot: int | None = None
+    live: bool = False
 
 
 @router.post("/drafts/{draft_id}/nudge")
 def nudge_draft(draft_id: str, body: NudgeBody) -> dict:
-    result = rigs.nudge(draft_id, body.how, slot=body.slot)
+    result = rigs.nudge(draft_id, body.how, slot=body.slot, live=body.live)
     return {**_draft_payload(result.draft), "message": result.summary}
 
 
