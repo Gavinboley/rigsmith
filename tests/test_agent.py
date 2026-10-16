@@ -356,3 +356,18 @@ def test_a_second_answer_to_an_approval_does_not_overturn_the_first():
         assert chat.decide("twice", True)["decision"] is False
     finally:
         chat._approvals.pop("twice", None)
+
+
+def test_a_local_model_gets_a_set_it_can_choose_from():
+    """Small models choose less reliably past twenty or so tools."""
+    from rigsmith.agent import modelcheck
+
+    registry = tools.registry()
+    for role in roles.ROLES.values():
+        local = runner.toolset(role, allow_writes=False, local=True)
+        assert len(local) <= 22, (role.name, len(local))
+        assert all(name in registry for name in role.local_tools or []), role.name
+    assistant = {t.name for t in runner.toolset(roles.get("assistant"), allow_writes=False, local=True)}
+    assert {q.expect for q in modelcheck.QUESTIONS} <= assistant, "the model check asks for what a local model is given"
+    builder = {t.name: t for t in runner.toolset(roles.get("rig-builder"), allow_writes=False, local=True)}
+    assert builder["write_rig"].needs_approval, "a smaller set is not a looser one"

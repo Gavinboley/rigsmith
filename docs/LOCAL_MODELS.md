@@ -26,8 +26,11 @@ the best chat model it recognises (embedding models are skipped).
 
 ## Which model
 
-Agents call tools - 14 to 26 of them, depending on the role - so what matters
-is reliable function calling over several rounds, not raw chat quality.
+Agents call tools, so what matters is reliable function calling over
+several rounds, not raw chat quality. Small models choose less reliably as
+the list grows, so a local model is handed 18-22 tools per role - the
+everyday ones - where Claude gets every one (up to 32); the rest stay
+reachable through the specialists the assistant dispatches.
 
 | VRAM | Load | Why |
 |---|---|---|

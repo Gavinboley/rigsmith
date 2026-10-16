@@ -108,7 +108,7 @@ def run(provider=None, *, questions=QUESTIONS, progress=None) -> ModelCheck:
         provider = OpenAICompatible(llm.base_url, model=llm.model, temperature=llm.temperature, thinking=llm.thinking)
     model = provider.pick_model()
     role = roles.get("assistant")
-    tools = runner.toolset(role, allow_writes=False)
+    tools = runner.toolset(role, allow_writes=False, local=True)
     check = ModelCheck(model=model, server=getattr(provider, "base_url", provider.describe()))
     for index, question in enumerate(questions):
         if progress:

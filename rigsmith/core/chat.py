@@ -253,7 +253,7 @@ def _context_note() -> str:
 
 def send(chat_id: str, text: str) -> dict:
     """Post a message; the reply streams as events from a background job."""
-    from ..agent import roles, runner
+    from ..agent import providers, roles, runner
     from ..agent.providers import ClaudeCode
 
     require_writable("send a chat message")
@@ -298,7 +298,7 @@ def send(chat_id: str, text: str) -> dict:
                     lambda r, t: dispatch(r, t, parent=chat_id),
                     lambda run_id: agent_result(run_id),
                 ) if role.name == "assistant" else []
-                tools = runner.toolset(role, allow_writes=chat.allow_writes, extra=extra)
+                tools = runner.toolset(role, allow_writes=chat.allow_writes, extra=extra, local=isinstance(provider, providers.OpenAICompatible))
                 conversation = _conversation(chat, provider, role, tools)
                 conversation.add_user(text)
                 result = runner.step_loop(
@@ -406,7 +406,7 @@ def dispatch(role_name: str, task: str, *, parent: str | None = None, allow_writ
                     allow_writes=allow_writes, local=local, cancelled=cancelled, extra_system=_context_note(),
                 )
             else:
-                tools = runner.toolset(role, allow_writes=allow_writes)
+                tools = runner.toolset(role, allow_writes=allow_writes, local=isinstance(provider, providers.OpenAICompatible))
                 conversation = provider.start(role.system_prompt(_context_note()), tools)
                 conversation.add_user(task)
                 approver = (lambda call: _wait_for_approval(parent, call, cancelled=cancelled)) if parent else (lambda call: allow_writes)

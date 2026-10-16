@@ -93,9 +93,16 @@ class RunResult:
         }
 
 
-def toolset(role, *, allow_writes: bool, extra: list[VirtualTool] | None = None):
-    """The tools a role is handed: its own, minus gated ones unless allowed."""
-    selected = tool_registry.select(role.tools, groups_wanted=role.groups)
+def toolset(role, *, allow_writes: bool, extra: list[VirtualTool] | None = None, local: bool = False):
+    """The tools a role is handed: its own, minus gated ones unless allowed.
+
+    ``local`` hands a local model the role's shorter ``local_tools`` list
+    where it has one.
+    """
+    if local and getattr(role, "local_tools", None):
+        selected = tool_registry.select(role.local_tools)
+    else:
+        selected = tool_registry.select(role.tools, groups_wanted=role.groups)
     if not allow_writes:
         # Gated tools stay visible - the agent can still propose them - and
         # every call waits for approval. Hiding them would make the agent

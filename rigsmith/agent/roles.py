@@ -39,6 +39,10 @@ class Role:
     tools: list[str] = field(default_factory=list)
     """Individual tools on top of the groups."""
     max_rounds: int = 24
+    local_tools: list[str] | None = None
+    """The tools a local model gets instead, when the full set is too many:
+    small models choose less reliably past twenty or so. What is left out
+    stays reachable through the specialists."""
 
     def system_prompt(self, extra: str = "") -> str:
         return f"{SHARED_RULES}\nYour role: {self.title}.\n{self.prompt}\n{extra}".strip()
@@ -50,6 +54,7 @@ class Role:
             "description": self.description,
             "groups": self.groups,
             "tools": self.tools,
+            "local_tools": self.local_tools,
         }
 
 
@@ -149,6 +154,29 @@ ROLES: dict[str, Role] = {
         tools=["show_recipe", "compile_recipe", "apply_tuning", "tuning_runs", "search_models", "describe_model", "job_status"],
     ),
 }
+
+
+# What a local model is handed in the roles whose full set runs past twenty
+# tools: the everyday ones. The rest stay with the specialists the assistant
+# can dispatch, and with Claude, which is given everything.
+ROLES["assistant"].local_tools = [
+    "app_mode", "list_songs", "show_song", "choose_parts", "song_brief",
+    "list_drafts", "explain_rig", "tone_sheet", "nudge_tone", "search_models",
+    "run_autopilot", "autopilot_status", "autopilot_listen_back", "resume_autopilot",
+    "setup_status", "workspace_status", "list_jobs", "job_status",
+]
+ROLES["tone-matcher"].local_tools = [
+    "show_song", "part_target", "render_song_part_di", "list_takes", "score_candidates",
+    "search_offline", "rank_captures", "explain_difference", "start_ab_test", "tune_rig",
+    "tuning_runs", "apply_tuning", "loop_status", "suggest_loop_routes", "loop_reamp",
+    "calibrate_loop", "check_bench_rig", "check_input_level", "show_recipe", "job_status",
+]
+ROLES["rig-builder"].local_tools = [
+    "create_rig", "list_drafts", "explain_rig", "add_block", "remove_block", "move_block",
+    "set_param", "toggle_block", "configure_scene", "set_signal_path", "set_rig_tempo",
+    "nudge_tone", "search_models", "describe_model", "compile_recipe", "show_recipe",
+    "validate_rig", "preview_changes", "write_rig", "tone_sheet",
+]
 
 
 def get(name: str) -> Role:
