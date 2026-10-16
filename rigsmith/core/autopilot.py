@@ -979,6 +979,11 @@ def _stage_rig(run: Run, *, from_ears: bool = False) -> str:
     for block in after:
         add(block["category"], block["model"], wire_params(block))
     _carry_tempo(run, run.draft_id, after, tempo, structure=song.structure)
+    if part.layer in ("left", "right") and _double_tracked(song, part.layer):
+        run.note(
+            f"the record plays this part twice, one take each side - this draft is the {part.layer} take's sound. "
+            "For that width on the Core, set the amp to 2X stereo (its second model the same, or the other side's amp)"
+        )
     for text in notes:
         run.note(text)
     if run.request.bench == "virtual":
@@ -1252,6 +1257,14 @@ def _effect_label(block: dict) -> str:
     if block.get("delay_ms"):
         return f"{block['delay_ms']:.0f} ms"
     return block["model"]
+
+
+def _double_tracked(song, layer: str) -> bool:
+    """Whether the song's map calls this side one take of a double-tracked part."""
+    for entry in (song.layers or {}).get("layers", []):
+        if entry.get("layer_id") == layer and "double-tracked" in (entry.get("role") or ""):
+            return True
+    return False
 
 
 def render_song_rig(result: dict) -> str:

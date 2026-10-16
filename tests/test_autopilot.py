@@ -573,3 +573,12 @@ def test_tuning_starts_from_the_researched_settings(workspace):
     assert said["controls"] == {"GainA": 0.8, "Bass": 0.3, "Mid": 0.5}, "the one amp with settings, though named otherwise"
     assert "JCM800" in said["source"]
     assert autopilot._researched_settings(autopilot.Run(run_id="none", request=autopilot.Request(title="x")), "any") is None
+
+
+def test_one_side_of_a_double_is_known_as_one_side():
+    import types
+
+    song = types.SimpleNamespace(layers={"layers": [{"layer_id": "left", "role": "double-tracked part"}, {"layer_id": "centre", "role": "a lead"}]})
+    assert autopilot._double_tracked(song, "left")
+    assert not autopilot._double_tracked(song, "centre")
+    assert not autopilot._double_tracked(types.SimpleNamespace(layers=None), "left")
