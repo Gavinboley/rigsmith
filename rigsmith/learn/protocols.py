@@ -281,7 +281,8 @@ def align(protocol: Protocol, notes: list[Note]) -> Alignment:
     result = Alignment(protocol.protocol_id)
     steps = protocol.steps
     if not steps:
-        result.extra = []
+        # Nothing was asked for, so everything played is unasked-for.
+        result.extra = list(range(len(notes)))
         return result
 
     skip_step, skip_note = 2.2, 1.6

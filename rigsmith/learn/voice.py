@@ -243,7 +243,7 @@ class VoiceModel:
         nearest = min(pool, key=lambda n: abs(n.midi - midi))
         return [(nearest, 1.0)]
 
-    def parameters(self, midi: float, string: int | None = None) -> tuple[np.ndarray, np.ndarray, float, np.ndarray]:
+    def parameters(self, midi: float, string: int | None = None, sample_rate: int = 48000) -> tuple[np.ndarray, np.ndarray, float, np.ndarray]:
         """Interpolated (levels, decays, inharmonicity, noise) for a pitch.
 
         Harmonic *k* of the target is interpolated against harmonic *k* of the
@@ -253,7 +253,7 @@ class VoiceModel:
         neighbours = self._neighbours(midi, string)
         if not neighbours:
             raise ValueError("the voice model has no notes")
-        count = harmonic_count(midi_to_hz(midi))
+        count = harmonic_count(midi_to_hz(midi), sample_rate)
         levels = np.zeros(count)
         decays = np.zeros(count)
         inharm = 0.0
@@ -298,7 +298,7 @@ class VoiceModel:
         sample_rate: int = 48000,
         seed: int | None = None,
     ) -> np.ndarray:
-        levels, decays, inharm, noise = self.parameters(midi, string)
+        levels, decays, inharm, noise = self.parameters(midi, string, sample_rate)
         f0 = midi_to_hz(midi)
         length = max(1, int(duration * sample_rate))
         t = np.arange(length) / sample_rate
@@ -363,8 +363,12 @@ def _shaped_noise(bands_db, sample_rate, length, rng) -> np.ndarray:
     return shaped / peak
 
 
-def fit(samples: list[tuple[np.ndarray, float, int | None]], sample_rate: int) -> VoiceModel:
-    """Analyse ``(audio, midi, string)`` samples into a voice model."""
+def fit(samples: list[tuple[np.ndarray, float, int | None]], sample_rate: int, *, open_midi: dict | None = None) -> VoiceModel:
+    """Analyse ``(audio, midi, string)`` samples into a voice model.
+
+    ``open_midi`` is the guitar's open strings by number; the network reads
+    a note's fret from it, so a drop-D low string is not taken for E.
+    """
     model = VoiceModel()
     ratios = []
     for audio, midi, string in samples:
@@ -377,7 +381,7 @@ def fit(samples: list[tuple[np.ndarray, float, int | None]], sample_rate: int) -
     model.notes.sort(key=lambda n: (n.string or 0, n.midi))
     from .neural import train
 
-    trained = train(model.notes)
+    trained = train(model.notes, open_midi=open_midi)
     model.net = trained.to_dict() if trained is not None else None
     return model
 

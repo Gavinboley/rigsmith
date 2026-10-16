@@ -204,3 +204,10 @@ def test_settings_as_people_write_them_become_knob_positions():
     assert position("a bit") is None and position(-3) is None
     controls = amp_controls({"Gain": "7", "Mids": "noon", "treble": "2 o'clock", "reverb": 3, "bass": "lots"})
     assert controls == {"GainA": 0.7, "Mid": 0.5, "Treble": 0.7}, "unknown names and unreadable values are left out"
+
+
+def test_a_silent_candidate_gets_a_flat_eq_not_a_nan_one():
+    target, _ = target_and_di()
+    plan = eq.match(target, np.zeros_like(target), RATE)
+    assert all(np.isfinite(v) and v == 0.0 for v in plan.graphic_db.values())
+    assert np.isfinite(plan.before_db) and np.isfinite(plan.after_db)

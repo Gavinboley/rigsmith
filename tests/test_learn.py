@@ -466,3 +466,40 @@ def test_strummed_triads_are_read_as_their_chords_not_a_fundamental_below():
         right += bool(got) and len(want & got) / len(want | got) >= 0.66
     assert right >= 0.8 * 16, right
     assert any("pitch classes" in note for note in result.notes_text)
+
+
+def test_the_voice_network_reads_frets_from_the_guitars_own_tuning():
+    """It assumed standard tuning, so a drop-D low string was two frets out."""
+    from rigsmith.learn import neural
+
+    drop_d = {1: 64, 2: 59, 3: 55, 4: 50, 5: 45, 6: 38}
+    assert neural.features(38, 6, drop_d)[6] == 0.0, "open low D is fret 0 in drop D"
+    assert neural.features(38, 6)[6] < 0, "and below the nut in standard"
+
+
+def test_synthesis_sizes_its_harmonics_for_the_real_sample_rate():
+    from rigsmith.learn import voice
+
+    assert voice.harmonic_count(82.4, 44100) <= voice.harmonic_count(82.4, 48000)
+    # parameters() takes the rate synthesize() is given, not 48 kHz regardless.
+    import inspect
+
+    assert "sample_rate" in inspect.signature(voice.VoiceModel.parameters).parameters
+
+
+def test_a_drop_d_profile_trains_its_network_on_drop_d():
+    import types
+
+    from rigsmith.core.profiles import _open_strings
+
+    opens = _open_strings(types.SimpleNamespace(tuning="drop D"))
+    assert opens[6] == 38 and opens[1] == 64
+    assert _open_strings(types.SimpleNamespace(tuning="no such tuning")) is None
+
+
+def test_free_play_counts_every_note_as_unasked_for():
+    from rigsmith.learn import protocols
+    from rigsmith.learn.segment import Note
+
+    notes = [Note(start=0.5 * i, end=0.5 * i + 0.4, hz=110.0, midi=45.0, clarity=0.9, peak_db=-12.0) for i in range(3)]
+    assert protocols.align(protocols.get("free"), notes).extra == [0, 1, 2]

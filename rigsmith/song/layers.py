@@ -179,6 +179,10 @@ def _plays_together(a: np.ndarray, b: np.ndarray, sample_rate: int, *, window_s:
     n = min(len(ea), len(eb))
     if n < 50:
         return 0.0
+    # A window as long as half the audio at most, so a section under 16 s
+    # is still judged on two windows rather than on none - which read every
+    # short double-tracked section as two different parts.
+    window_s = max(1.0, min(window_s, n * hop_s / 2))
     span = max(50, int(window_s / hop_s))
     level_a = _window_levels(a, sample_rate, window_s)
     level_b = _window_levels(b, sample_rate, window_s)

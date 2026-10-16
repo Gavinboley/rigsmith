@@ -484,7 +484,18 @@ def fit_voice_model(profile):
         material.append((audio, sample.midi, sample.string))
     if not material:
         return None
-    return voice.fit(material, profile.sample_rate)
+    return voice.fit(material, profile.sample_rate, open_midi=_open_strings(profile))
+
+
+def _open_strings(profile) -> dict | None:
+    """The profile's open strings by number (1 is the highest), or None for standard."""
+    from ..learn.instrument import tuning
+
+    try:
+        strings = tuning(profile.tuning)
+    except Exception:
+        return None
+    return {number: strings.open_midi(number) for number in range(1, strings.string_count + 1)}
 
 
 def refit_voice(profile_id: str):

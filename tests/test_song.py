@@ -466,3 +466,13 @@ def test_the_room_is_read_where_the_playing_stops():
     assert describe.sketch(dry, RATE, from_stem=False).space == "dry"
     read = describe.sketch(hall, RATE, from_stem=False)
     assert read.space == "a plate or hall", (read.decay_ms, read.space)
+
+
+def test_a_short_double_tracked_section_is_still_heard_as_one_part_twice():
+    """Under ~4 s there was no 8 s window to judge, and the answer was 'different parts'."""
+    beat = 0.5
+    notes = [(i * beat / 2, beat / 2 * 0.85, [40, 43, 45, 47][i % 4], 0.8) for i in range(12)]
+    left = render_notes(human(notes, 1), seed=1)
+    right = render_notes(human(notes, 2), seed=2)
+    n = min(len(left), len(right))
+    assert layers._plays_together(left[:n], right[:n], RATE) >= 0.6

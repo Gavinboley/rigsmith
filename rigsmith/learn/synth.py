@@ -103,6 +103,10 @@ class Rendered:
         }
 
 
+
+#: The most a recorded note is raised to meet a louder target, in dB.
+MAX_SAMPLE_BOOST_DB = 24.0
+
 def shift(audio: np.ndarray, semitones: float) -> np.ndarray:
     """Pitch-shift by resampling, which also scales the length.
 
@@ -221,8 +225,15 @@ def render(
                 note = shift(raw, needed)
                 rendered.max_shift = max(rendered.max_shift, abs(needed))
                 # Level relative to the sample's own peak, so a soft sample
-                # asked to play loud is raised rather than replaced.
-                note = note * 10 ** ((target_db - sample.peak_db) / 20)
+                # asked to play loud is raised rather than replaced - but by
+                # no more than MAX_SAMPLE_BOOST_DB: a near-silent sample
+                # raised 70 dB is its noise floor played loud.
+                boost = target_db - sample.peak_db
+                if boost > MAX_SAMPLE_BOOST_DB:
+                    boost = MAX_SAMPLE_BOOST_DB
+                    if "a soft sample was raised as far as it sensibly goes" not in rendered.warnings:
+                        rendered.warnings.append("a soft sample was raised as far as it sensibly goes")
+                note = note * 10 ** (boost / 20)
                 source = "sample"
 
         if note is None and voice is not None:

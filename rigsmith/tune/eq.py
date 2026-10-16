@@ -42,6 +42,10 @@ def _long_term_db(audio, sample_rate: int) -> np.ndarray:
     if not len(magnitude):
         return np.full(len(GRID), -120.0)
     energy = (magnitude ** 2).sum(axis=1)
+    if energy.max() <= 0:
+        # Digital silence: no frame is loud, and an empty mean is NaN - which
+        # became a NaN EQ "suggestion" for a candidate that rendered silent.
+        return np.full(len(GRID), -120.0)
     loud = energy > energy.max() * 10 ** (-35 / 10)
     power = (magnitude[loud] ** 2).mean(axis=0)
     freqs = np.fft.rfftfreq(n_fft, 1 / sample_rate)
@@ -165,7 +169,14 @@ class EQPlan:
 
 
 def match(target, candidate, sample_rate: int) -> EQPlan:
-    """What EQ would close the gap between a candidate and the target."""
+    """What EQ would close the gap between a candidate and the target.
+
+    When either is silent there is no gap an EQ could close, and the plan
+    is flat rather than a fit to 100 dB of nothing.
+    """
+    if not np.any(np.asarray(target)) or not np.any(np.asarray(candidate)):
+        flat = {name: 0.0 for name in GEQ_NAMES}
+        return EQPlan(graphic_db=flat, graphic_wire={name: 0.5 for name in GEQ_NAMES}, grid=[float(f) for f in GRID])
     diff = difference(target, candidate, sample_rate)
     weights = _weights()
     gains = fit_graphic(diff)
