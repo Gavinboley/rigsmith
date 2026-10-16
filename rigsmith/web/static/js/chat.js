@@ -22,6 +22,7 @@ const SUGGESTIONS = [
   ["Map a song", "I want to chase a song's guitar tone. Help me add it and map its parts."],
   ["Teach it my guitar", "Walk me through teaching rigsmith my guitar."],
   ["Set up the loop", "Help me set up the hardware loop between my interface and the Core."],
+  ["Finish a rig by ear", "Help me finish my latest rig by ear: ask me what sounds off, turn it, and step back if I say it got worse."],
   ["What next?", "Look at what is in my workspace and tell me the most useful next step."],
 ];
 
