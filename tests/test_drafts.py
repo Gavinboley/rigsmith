@@ -66,3 +66,21 @@ def test_history_is_kept_beside_the_draft_and_bounded(workspace):
     assert store.steps(draft_id) == (drafts.HISTORY, 0)
     rigs.delete(draft_id)
     assert not list(store.directory.glob(f"{draft_id}*")), "deleting a draft takes its history"
+
+
+def test_the_history_names_each_edit_and_undo_can_go_back_several(workspace):
+    from rigsmith.core import rigs
+
+    draft_id = rigs.create("Several").draft.draft_id
+    rigs.add_block(draft_id, "amp", "Some Amp", params={"Treble": 0.5})
+    rigs.add_block(draft_id, "effect", "Spring Reverb", params={"Mix": 0.3})
+    rigs.nudge(draft_id, "brighter")
+    past = rigs.history(draft_id)["past"]
+    assert len(past) == 3 and past[0].startswith("slot 1 (Some Amp): Treble 50% -> 58%"), "newest first"
+    assert "Spring Reverb" in past[1]
+    back = rigs.undo(draft_id, steps=2)
+    assert back.summary.startswith("undid 2 edits: slot 1 (Some Amp): Treble")
+    assert [b.model_id for b in back.draft.rig.blocks] == ["Some Amp"] and back.draft.rig.blocks[0].params["Treble"] == 0.5
+    assert rigs.history(draft_id)["future"][0].startswith("slot 2 (Spring Reverb)") or "Spring Reverb" in rigs.history(draft_id)["future"][0], "next redo first"
+    with pytest.raises(Invalid, match="only 1 edit"):
+        rigs.undo(draft_id, steps=2)

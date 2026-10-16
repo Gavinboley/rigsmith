@@ -11,7 +11,7 @@ pip install -e ".[all]"
 rigsmith ui
 ```
 
-> **Status: everything runs today.** Rig authoring, validation, NAM analysis, tone matching, catalog extraction, USB backup, MIDI, guitar learning, song maps, the hardware loop, the tuner, autopilot, the chat and the web UI are covered by 1007 tests. The Remote Editor protocol has been captured against a real Core and a rig written to it and read back exactly - see [docs/PROTOCOL.md](docs/PROTOCOL.md). What still wants hardware is *measuring*: the loop and the blind A/B need the Core and an interface plugged in - [docs/FIRST_SESSION.md](docs/FIRST_SESSION.md) walks through that first session.
+> **Status: everything runs today.** Rig authoring, validation, NAM analysis, tone matching, catalog extraction, USB backup, MIDI, guitar learning, song maps, the hardware loop, the tuner, autopilot, the chat and the web UI are covered by 1008 tests. The Remote Editor protocol has been captured against a real Core and a rig written to it and read back exactly - see [docs/PROTOCOL.md](docs/PROTOCOL.md). What still wants hardware is *measuring*: the loop and the blind A/B need the Core and an interface plugged in - [docs/FIRST_SESSION.md](docs/FIRST_SESSION.md) walks through that first session.
 
 ---
 
@@ -143,7 +143,9 @@ beside the Core.
 
 Every edit to a draft can be stepped back through - the last 30, from the
 Rig page's *Undo* (Ctrl+Z), the command line, or by asking - so trying a
-nudge costs nothing.
+nudge costs nothing. *History* under the board names each edit, newest
+first, and goes back to before any of them in one click
+(`rigsmith rig history`, then `rig undo --steps N`).
 
 ### Use your own guitar
 

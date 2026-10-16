@@ -243,6 +243,35 @@ function renderFindings() {
   }
 }
 
+/** Every edit undo can step back through, newest first - any one a click back. */
+function renderHistory(history) {
+  const list = clear($("#rig-history-list"));
+  $("#rig-history").hidden = !history.past.length && !history.future.length;
+  $("#rig-history-head").textContent = `History - ${history.past.length} edit${history.past.length === 1 ? "" : "s"} to step back through` + (history.future.length ? `, ${history.future.length} to redo` : "");
+  history.past.forEach((change, index) => {
+    list.append(
+      el(
+        "li",
+        { class: "item" },
+        el("span", { class: "mono hint", text: String(index + 1) }),
+        el("span", { class: "title", text: change }),
+        el("span", { class: "spacer" }),
+        el("button", {
+          class: "btn small ghost",
+          text: index === 0 ? "undo this" : "back to before this",
+          title: index === 0 ? "Undo the last edit" : `Undo the last ${index + 1} edits`,
+          onclick: () =>
+            attempt(async () => {
+              const result = await api.post(`/api/drafts/${encodeURIComponent(current.draft_id)}/undo`, {}, { steps: index + 1 });
+              apply(result);
+              toast(result.message, { kind: "ok", timeout: 5000 });
+            }),
+        })
+      )
+    );
+  });
+}
+
 function apply(payload) {
   current = payload;
   $("#rig-empty").hidden = true;
@@ -256,6 +285,7 @@ function apply(payload) {
   $("#undo-draft").disabled = !payload.undo;
   $("#undo-draft").title = payload.undo ? `Step back before the last edit (Ctrl+Z) - ${payload.undo} to go` : "Nothing to undo";
   $("#redo-draft").disabled = !payload.redo;
+  renderHistory(payload.history || { past: [], future: [] });
   renderMeter(payload.validation);
   renderBoard();
   renderScenes();

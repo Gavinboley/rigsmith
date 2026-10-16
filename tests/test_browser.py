@@ -1240,6 +1240,12 @@ def test_an_edit_on_the_board_can_be_undone_from_the_keyboard(browser, server):
         while rigs.get(draft_id).rig.blocks[0].params.get("Treble") != 0.58 and time.monotonic() < deadline + 5:
             time.sleep(0.1)
         assert rigs.get(draft_id).rig.blocks[0].params["Treble"] == 0.58
+        # Or back to before any edit in the history.
+        page.click("#rig-history summary")
+        page.locator("#rig-history-list .item").nth(1).locator("button").click()
+        while rigs.get(draft_id).rig.blocks and time.monotonic() < deadline + 10:
+            time.sleep(0.1)
+        assert rigs.get(draft_id).rig.blocks == [], "back to before the amp was added"
 
 
 def test_with_no_model_the_chat_still_offers_what_needs_none(browser, server):

@@ -48,6 +48,7 @@ const ACTIONS = [
   ["Scan for captures", "captures", "#scan-btn", "NAM files already on disk"],
   ["Nudge the tone by ear", "rig", "#nudge-text", "a bit brighter, too boomy"],
   ["Undo the last rig edit", "rig", "#undo-draft", "Ctrl+Z on the Rig page"],
+  ["Rig edit history", "rig", "#rig-history summary", "back to before any edit", "Pick a rig and change something - its history starts there."],
   ["Tone sheet", "rig", "#sheet-btn", "the rig as you would dial it by hand"],
   ["Write the rig to the Core", "rig", "#write-btn", "save it to the HeadRush"],
   ["Score against the record", "match", "#score-btn", "how close is it"],

@@ -481,18 +481,36 @@ def nudge(draft_id: str, text: str, *, slot: int | None = None, live: bool = Fal
     return _finish(draft, message)
 
 
-def undo(draft_id: str, *, redo: bool = False) -> EditResult:
+def undo(draft_id: str, *, redo: bool = False, steps: int = 1) -> EditResult:
     """Step the draft back to before its last edit - or, ``redo``, forward again.
 
-    Up to :data:`rigsmith.core.drafts.HISTORY` edits back; a new edit after
-    an undo drops what could have been redone, as in any editor.
+    ``steps`` goes back (or forward) that many edits at once - to before a
+    particular one in :func:`history`. Up to
+    :data:`rigsmith.core.drafts.HISTORY` edits back; a new edit after an
+    undo drops what could have been redone, as in any editor.
     """
     _get(draft_id)
+    if steps < 1:
+        raise Invalid("steps must be 1 or more")
+    available = len(get_store().changes(draft_id)["future" if redo else "past"])
+    if steps > available and available:
+        raise Invalid(f"only {available} edit(s) to {'redo' if redo else 'undo'} on '{draft_id}', not {steps}")
+    changes = []
     try:
-        draft, change = get_store().undo(draft_id, redo=redo)
+        for _ in range(steps):
+            draft, change = get_store().undo(draft_id, redo=redo)
+            changes.append(change)
     except LookupError as exc:
         raise Invalid(f"{exc} on '{draft_id}'", hint="Up to the last 30 edits to a draft can be stepped back through.") from exc
-    return EditResult(draft=draft, summary=f"{'redid' if redo else 'undid'}: {change}", validation=_validate_rig(draft.rig))
+    verb = "redid" if redo else "undid"
+    summary = f"{verb}: {changes[0]}" if len(changes) == 1 else f"{verb} {len(changes)} edits: " + "; ".join(changes)
+    return EditResult(draft=draft, summary=summary, validation=_validate_rig(draft.rig))
+
+
+def history(draft_id: str) -> dict[str, list[str]]:
+    """``{"past": [...], "future": [...]}``: each edit undo would step back, newest first, and each redo would replay."""
+    _get(draft_id)
+    return get_store().changes(draft_id)
 
 
 def toggle_block(draft_id: str, slot: int, enabled: bool) -> EditResult:

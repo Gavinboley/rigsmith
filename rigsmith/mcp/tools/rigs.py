@@ -212,11 +212,16 @@ def set_signal_path(draft_id: str, signal_path: SignalPathName) -> str:
 
 
 @tool
-def undo_rig_edit(draft_id: str, redo: bool = False) -> str:
+def undo_rig_edit(draft_id: str, redo: bool = False, steps: int = 1) -> str:
     """Step the draft back to before its last edit - a nudge the user did
     not like, a block removed by mistake - and say which edit that was.
-    redo=True steps forward again. Up to 30 edits back."""
-    return rigs.undo(draft_id, redo=redo).summary
+    redo=True steps forward again; steps goes several edits at once ("back
+    to before the reverb"); steps=0 only lists the edits, newest first.
+    Up to 30 edits back."""
+    if steps == 0:
+        found = rigs.history(draft_id)
+        return "\n".join(f"{n}. {c}" for n, c in enumerate(found["past"], 1)) or "no edits kept yet"
+    return rigs.undo(draft_id, redo=redo, steps=steps).summary
 
 
 @tool

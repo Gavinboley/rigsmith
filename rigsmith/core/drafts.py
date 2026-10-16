@@ -98,6 +98,12 @@ class DraftStore:
         history = self._history(draft_id)
         return len(history["past"]), len(history["future"])
 
+    def changes(self, draft_id: str) -> dict[str, list[str]]:
+        """What each step would undo, newest first, and what each would redo, next first."""
+        history = self._history(draft_id)
+        said = lambda entry: (entry.get("change") if isinstance(entry, dict) else None) or "an edit"  # noqa: E731
+        return {"past": [said(e) for e in reversed(history["past"])], "future": [said(e) for e in reversed(history["future"])]}
+
     def undo(self, draft_id: str, *, redo: bool = False) -> tuple[Draft, str]:
         """Put back the version before the last edit (or, ``redo``, after the
         last undo) and say which change that was. LookupError if there is none."""

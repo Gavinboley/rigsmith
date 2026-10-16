@@ -368,12 +368,31 @@ def rig_nudge(draft_id: str, how: str, slot: int | None, live: bool) -> None:
 @rig.command("undo")
 @click.argument("draft_id")
 @click.option("--redo", is_flag=True, help="Step forward again, after an undo.")
+@click.option("--steps", type=int, default=1, show_default=True, help="How many edits at once - 'rig history' numbers them.")
 @handled
-def rig_undo(draft_id: str, redo: bool) -> None:
+def rig_undo(draft_id: str, redo: bool, steps: int) -> None:
     """Step a draft back to before its last edit."""
     from .core import rigs
 
-    click.echo(rigs.undo(draft_id, redo=redo).summary)
+    click.echo(rigs.undo(draft_id, redo=redo, steps=steps).summary)
+
+
+@rig.command("history")
+@click.argument("draft_id")
+@handled
+def rig_history(draft_id: str) -> None:
+    """The edits a draft can be stepped back through, newest first."""
+    from .core import rigs
+
+    found = rigs.history(draft_id)
+    if not found["past"] and not found["future"]:
+        click.echo("No edits kept yet.")
+    for number, change in enumerate(found["past"], 1):
+        click.echo(f"  {number:>2}  {change}")
+    if found["past"]:
+        click.echo("'rig undo --steps N' goes back to before edit N.")
+    if found["future"]:
+        click.echo(f"{len(found['future'])} undone edit(s) can be redone, next: {found['future'][0]}")
 
 
 @rig.command("tempo")

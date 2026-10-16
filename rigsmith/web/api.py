@@ -502,12 +502,13 @@ def _draft_payload(draft) -> dict:
     from ..core.drafts import get_store
 
     result = rigs.validate(draft.draft_id)
-    undo, redo = get_store().steps(draft.draft_id)
+    changes = get_store().changes(draft.draft_id)
     return {
         "draft_id": draft.draft_id,
         "updated_at": draft.updated_at,
-        "undo": undo,
-        "redo": redo,
+        "undo": len(changes["past"]),
+        "redo": len(changes["future"]),
+        "history": changes,
         "rig": rig_to_dict(draft.rig),
         "chain": draft.rig.signal_chain(),
         "stereo": draft.rig.is_stereo,
@@ -595,8 +596,8 @@ def parse_nudge(text: str) -> dict:
 
 
 @router.post("/drafts/{draft_id}/undo")
-def undo_draft(draft_id: str, redo: bool = False) -> dict:
-    result = rigs.undo(draft_id, redo=redo)
+def undo_draft(draft_id: str, redo: bool = False, steps: int = 1) -> dict:
+    result = rigs.undo(draft_id, redo=redo, steps=steps)
     return {**_draft_payload(result.draft), "message": result.summary}
 
 
