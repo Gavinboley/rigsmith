@@ -96,6 +96,7 @@ function pointAt(panel, find, first) {
 
 /* The guides in docs/, opened as their own pages. */
 const GUIDES = [
+  ["What's new", "whats-new", "everything this version does, and what still needs you"],
   ["First session with the Core", "first-session", "step by step: guitar, loop, a run, the write, by ear"],
   ["Which local model", "local-models", "servers, models and what to expect"],
   ["What the match numbers mean", "tone-matching", "scores, modes, and what they cannot tell you"],

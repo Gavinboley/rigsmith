@@ -582,6 +582,10 @@ Extras: `ui`, `mcp`, `midi`, `audio`, `match`, `separation`, `browser`, `claude`
 
 ## Documentation
 
+The guides open in the app too (Ctrl+K, or `/docs/<name>`).
+
+- [docs/WHATS_NEW.md](docs/WHATS_NEW.md) — everything this version does, by what you would do with it, and what still needs you
+- [docs/LOCAL_MODELS.md](docs/LOCAL_MODELS.md) — which local server and model to run the agents on, and what to expect
 - [docs/FIRST_SESSION.md](docs/FIRST_SESSION.md) — the order that works the first time the Core and an interface are plugged in, from teaching it your guitar to writing the rig
 - [docs/PROTOCOL.md](docs/PROTOCOL.md) — what is known about the Remote Editor protocol, what is not, and how it gets captured
 - [docs/TONE_MATCHING.md](docs/TONE_MATCHING.md) — how tone comparison works and where the numbers stop being trustworthy
