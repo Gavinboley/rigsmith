@@ -157,6 +157,18 @@ def _energy_frames(audio: np.ndarray, sample_rate: int, hop_s: float) -> np.ndar
     return 10 * np.log10(np.mean(blocks * blocks, axis=1) + 1e-12)
 
 
+def _level(frames_db: np.ndarray) -> float:
+    """A stretch's loudness: its average power, in dB.
+
+    Not the average of its dB readings - one second of silence before the
+    record ends drags that down by three dB and makes a final chorus look
+    like a quiet outro.
+    """
+    if not len(frames_db):
+        return -120.0
+    return float(10 * np.log10(np.mean(10 ** (np.asarray(frames_db) / 10)) + 1e-12))
+
+
 def novelty(features: np.ndarray, kernel_s: float = 8.0, hop_s: float = HOP_S) -> np.ndarray:
     """Foote's checkerboard novelty along a self-similarity matrix."""
     n = len(features)
@@ -271,7 +283,7 @@ def analyse(audio: np.ndarray, sample_rate: int, *, min_section_s: float | None 
     energy = _energy_frames(audio, sample_rate, HOP_S)
     n = min(len(chroma), len(timbre), len(energy))
     if n < int(2 * min_section_s / HOP_S):
-        result.sections = [Section(0.0, round(duration, 2), "A", "whole", float(np.mean(energy)) if len(energy) else 0.0)]
+        result.sections = [Section(0.0, round(duration, 2), "A", "whole", _level(energy) if len(energy) else 0.0)]
         return result
 
     chroma, timbre, energy = chroma[:n], timbre[:n], energy[:n]
@@ -312,7 +324,7 @@ def analyse(audio: np.ndarray, sample_rate: int, *, min_section_s: float | None 
 
     segments = []
     for a, b in zip(edges[:-1], edges[1:]):
-        segments.append((a, b, features[a:b].mean(axis=0), float(np.mean(energy[a:b]))))
+        segments.append((a, b, features[a:b].mean(axis=0), _level(energy[a:b])))
 
     # Standardise each dimension across the segments before comparing them,
     # so the dimensions that actually vary between sections decide - raw,
@@ -382,7 +394,9 @@ def _name(sections: list[Section]) -> None:
     the intro or outro, whatever it shares a letter with - otherwise a quiet
     intro and outro that match each other are the only "repeating" pair and
     get called the verse. Then, among what is left, the loudest repeating
-    letter is the chorus and the next most repeated is the verse.
+    letter is the chorus and the next most repeated is the verse; music
+    heard once is the intro when it opens the song, the outro when it ends
+    it, and otherwise a solo (loud, past the first stretch) or a bridge.
     """
     if not sections:
         return
@@ -415,6 +429,12 @@ def _name(sections: list[Section]) -> None:
             section.name = "chorus"
         elif section.label == verse:
             section.name = "verse"
+        elif counts.get(section.label, 0) == 1 and index == 0:
+            # Music that opens the song and never comes back.
+            section.name = "intro"
+        elif counts.get(section.label, 0) == 1 and index == len(sections) - 1:
+            # ...or that ends it: a solo is seldom the last thing played.
+            section.name = "outro"
         elif counts.get(section.label, 0) == 1 and section.start > end * 0.4 and section.energy_db >= typical:
             section.name = "solo"
         elif counts.get(section.label, 0) == 1:
