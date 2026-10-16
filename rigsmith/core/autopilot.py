@@ -138,6 +138,9 @@ class Run:
     built_amp: dict | None = None
     """The amp as the measurement left it - ``{model, params}`` - so what
     you turned afterwards can be told apart (:mod:`rigsmith.core.habits`)."""
+    built_at: str | None = None
+    """The draft's ``updated_at`` when the build finished: a draft saved
+    since then has your edits in it, and a rebuild keeps it."""
     notes: list[str] = field(default_factory=list)
     created_at: str = field(default_factory=_now)
     finished_at: str | None = None
@@ -973,11 +976,18 @@ def _stage_rig(run: Run, *, from_ears: bool = False) -> str:
     part = song.part(run.part_ids[0])
     name = f"{song.title} - {part.section_name}"[:40]
     if run.draft_id:
-        # A re-run replaces this run's draft rather than adding another.
+        # A re-run replaces this run's draft rather than adding another -
+        # unless it was edited since it was built (finished by ear, say):
+        # then that work, and its undo history, stay, and the rebuild is a
+        # new draft beside it.
         try:
-            rigs.delete(run.draft_id)
+            old = rigs.get(run.draft_id)
         except Exception:
-            pass
+            old = None
+        if old is not None and run.built_at and old.updated_at == run.built_at:
+            rigs.delete(run.draft_id)
+        elif old is not None:
+            run.note(f"kept '{old.rig.name}' ({old.draft_id}) as you left it - it was edited after it was built; the rebuild is a new draft")
     draft = rigs.create(name, notes=f"autopilot {run.run_id}: {part.label}, {part.sketch.get('summary', '')}").draft
     run.draft_id = draft.draft_id
 
@@ -1020,6 +1030,7 @@ def _stage_rig(run: Run, *, from_ears: bool = False) -> str:
         run.note(text)
     if run.request.ear_habits:
         _start_from_habits(run, best["model"])
+    run.built_at = rigs.get(run.draft_id).updated_at
     if run.request.bench == "virtual":
         run.note(
             "the amp knob values came from the simulated amp - a rehearsal of the search. "

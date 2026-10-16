@@ -398,3 +398,30 @@ def test_the_terminal_chat_offers_a_turn_by_ear_when_no_model_answers(runner):
     assert "turn 'Terminal' that way (a bit darker)?" in result.output
     assert "undid: slot 1 (Some Amp)" in result.output, "and straight away - the chat was free again"
     assert rigs.get(draft_id).rig.blocks[0].params["Treble"] == 0.5
+
+
+def test_each_turns_last_word_names_its_turn(runner):
+    """A page that has sent the next message can tell a late "done" from its own."""
+    import threading
+
+    from rigsmith.core import appsettings, chat, events
+
+    appsettings.update(mode="local", local_llm={"base_url": "http://127.0.0.1:9/v1"})
+    session = chat.create()
+    finished = []
+    done = threading.Event()
+
+    def listen(event):
+        if event.get("chat_id") == session.chat_id and event.get("kind") in ("done", "error"):
+            finished.append((event["kind"], event.get("turn")))
+            done.set()  # a turn the provider never answered ends at its error
+
+    stop = events.subscribe(listen)
+    try:
+        for expected in (1, 2):
+            done.clear()
+            assert chat.send(session.chat_id, "hello")["turn"] == expected
+            assert done.wait(20)
+    finally:
+        stop()
+    assert finished == [("error", 1), ("error", 2)]

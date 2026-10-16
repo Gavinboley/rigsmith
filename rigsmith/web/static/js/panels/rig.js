@@ -273,6 +273,8 @@ function renderHistory(history) {
 }
 
 function apply(payload) {
+  // A reply that left the server before a newer edit arrived here is old news.
+  if (current && payload.draft_id === current.draft_id && payload.updated_at < current.updated_at) return current;
   current = payload;
   $("#rig-empty").hidden = true;
   $("#rig-body").hidden = false;
@@ -647,6 +649,13 @@ export function init() {
 }
 
 export const onShow = () => refreshDrafts(current?.draft_id ?? null);
+
+/** A draft changed somewhere else: catch up, if it is the one shown. */
+export function onEvent(message) {
+  if (message.type !== "draft" || !current || message.draft_id !== current.draft_id) return;
+  if (message.updated_at === current.updated_at) return; // this page's own edit, already shown
+  api.draft(current.draft_id).then(apply).catch(() => {});
+}
 
 /** The draft open on the Rig page, if any: ``{draft_id, name}``. */
 export const currentDraft = () => (current ? { draft_id: current.draft_id, name: current.rig.name } : null);

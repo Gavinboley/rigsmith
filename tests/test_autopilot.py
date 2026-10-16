@@ -121,7 +121,13 @@ def test_a_whole_run_ends_in_a_draft_and_a_listening_test(workspace):
     for trial in session.trials:
         verdict = "left" if trial.left == favoured else "right" if trial.right == favoured else "tie"
         matching.answer_ab(rerun.ab_session, trial.trial_id, verdict)
+    # Finished by ear meanwhile: that work is not the rebuild's to throw away.
+    edited = rerun.draft_id
+    rigs.nudge(edited, "a bit brighter")
     after = autopilot.listen_back("t1")
+    assert after.draft_id != edited and rigs.get(edited).rig.blocks, "the draft finished by ear is kept"
+    assert rigs.history(edited)["past"], "kept with its history"
+    assert any("as you left it" in n for n in after.notes)
     assert after.ear_pick == favourite
     picked_model = rerun.results[1]["model"]
     assert any(b.model_id == picked_model for b in rigs.get(after.draft_id).rig.blocks)

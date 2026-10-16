@@ -1246,6 +1246,9 @@ def test_an_edit_on_the_board_can_be_undone_from_the_keyboard(browser, server):
         while rigs.get(draft_id).rig.blocks and time.monotonic() < deadline + 10:
             time.sleep(0.1)
         assert rigs.get(draft_id).rig.blocks == [], "back to before the amp was added"
+        # Edited somewhere else - by an agent, say - and the page catches up.
+        rigs.add_block(draft_id, "amp", "Other Amp")
+        page.wait_for_selector("#board :text('Other Amp')", timeout=5000)
 
 
 def test_with_no_model_the_chat_still_offers_what_needs_none(browser, server):

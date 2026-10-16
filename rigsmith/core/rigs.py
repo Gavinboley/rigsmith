@@ -440,6 +440,11 @@ def nudge(draft_id: str, text: str, *, slot: int | None = None, live: bool = Fal
     missing: list[str] = []
     for control, change in asked.moves.items():
         kind, name = words.target(control)
+        if chosen is not None and kind != "amp" and not is_kind(chosen, kind):
+            # "More reverb" on a named slot that is not a reverb would turn
+            # whatever that block happens to call Mix or Level.
+            missing.append(f"slot {chosen.slot} is not a {kind}")
+            continue
         candidates = [chosen] if chosen is not None else [b for b in ordered if is_kind(b, kind)]
         found = next(((b, control_on(b, kind, name)) for b in candidates if control_on(b, kind, name)), None)
         if found is None:

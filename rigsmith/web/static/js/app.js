@@ -76,6 +76,12 @@ function connectLive() {
         return;
       }
 
+      // A draft changed - perhaps by an agent, or the chat's own buttons.
+      if (message.type === "draft") {
+        for (const panel of Object.values(PANELS)) panel.onEvent?.(message);
+        return;
+      }
+
       if (message.type === "jobs") {
         for (const job of message.jobs) jobNames.set(job.id, job.name);
         jobsTick(message.jobs);

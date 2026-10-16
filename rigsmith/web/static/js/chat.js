@@ -15,6 +15,7 @@ let chatId = null;
 let roles = [];
 let busy = false;
 let lastSent = "";
+let turn = null; // the turn this page is waiting on
 const pendingCards = new Map();
 
 const SUGGESTIONS = [
@@ -258,7 +259,8 @@ export async function send(text) {
     lastSent = text;
     $("#chat-text").value = "";
     setBusy(true);
-    await api.post(`/api/chat/${id}/messages`, { text });
+    const sent = await api.post(`/api/chat/${id}/messages`, { text });
+    turn = sent.turn ?? null;
   });
 }
 
@@ -354,6 +356,9 @@ export function onEvent(message) {
     return;
   }
   if (message.type !== "chat" || message.chat_id !== chatId) return;
+  // The end of an earlier turn, arriving after this page sent the next one:
+  // it must not settle the turn in progress.
+  if ((message.kind === "done" || message.kind === "error") && message.turn != null && turn != null && message.turn < turn) return;
   if (message.kind === "approval_request") {
     open();
     $("#chat-approvals").append(approvalCard(message));

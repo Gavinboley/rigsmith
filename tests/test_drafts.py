@@ -84,3 +84,18 @@ def test_the_history_names_each_edit_and_undo_can_go_back_several(workspace):
     assert rigs.history(draft_id)["future"][0].startswith("slot 2 (Spring Reverb)") or "Spring Reverb" in rigs.history(draft_id)["future"][0], "next redo first"
     with pytest.raises(Invalid, match="only 1 edit"):
         rigs.undo(draft_id, steps=2)
+
+
+def test_a_changed_draft_is_announced(workspace):
+    from rigsmith.core import events, rigs
+
+    heard = []
+    stop = events.subscribe(lambda event: event.get("type") == "draft" and heard.append(event))
+    try:
+        draft_id = rigs.create("Heard").draft.draft_id
+        rigs.add_block(draft_id, "amp", "Some Amp")
+        rigs.undo(draft_id)
+    finally:
+        stop()
+    assert len(heard) >= 3 and {e["draft_id"] for e in heard} == {draft_id}, "made, edited, undone"
+    assert heard[-1]["updated_at"] == rigs.get(draft_id).updated_at, "the undo was the last word"

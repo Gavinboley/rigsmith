@@ -50,7 +50,9 @@ class Draft:
     notes: list[str] = field(default_factory=list)
 
     def touch(self) -> None:
-        self.updated_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        # To the millisecond: two edits in one second - the page's and an
+        # agent's - must not look like the same edit.
+        self.updated_at = datetime.now(timezone.utc).isoformat(timespec="milliseconds")
 
 
 class DraftStore:
@@ -110,7 +112,9 @@ class DraftStore:
         from . import storage
 
         with self._lock:
-            return self._step(draft_id, redo, storage)
+            draft, change = self._step(draft_id, redo, storage)
+        _announce(draft)
+        return draft, change
 
     def _step(self, draft_id: str, redo: bool, storage) -> tuple[Draft, str]:
         history = self._history(draft_id)
@@ -123,7 +127,7 @@ class DraftStore:
         current = json.loads(self._path(draft_id).read_text(encoding="utf-8"))
         history[target].append({"payload": current, "change": entry.get("change") or "an edit"})
         restored = entry["payload"]
-        restored.setdefault("_draft", {})["updated_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        restored.setdefault("_draft", {})["updated_at"] = datetime.now(timezone.utc).isoformat(timespec="milliseconds")
         storage.write_json(self._history_path(draft_id), history)
         storage.write_json(self._path(draft_id), restored)
         self._cache.pop(draft_id, None)
@@ -168,7 +172,9 @@ class DraftStore:
         from . import storage
 
         with self._lock:
-            return self._write(draft, payload, change, storage)
+            self._write(draft, payload, change, storage)
+        _announce(draft)
+        return draft
 
     def _write(self, draft: Draft, payload: dict, change: str | None, storage) -> Draft:
         path = self._path(draft.draft_id)
@@ -243,6 +249,17 @@ class DraftStore:
             except (KeyError, ValueError, OSError):
                 continue
         return drafts
+
+
+def _announce(draft: Draft) -> None:
+    """Tell open pages a draft changed - the chat's agents and buttons edit
+    drafts too, and a Rig page showing one should not go stale."""
+    try:
+        from . import events
+
+        events.publish({"type": "draft", "draft_id": draft.draft_id, "updated_at": draft.updated_at})
+    except Exception:
+        pass
 
 
 _store: DraftStore | None = None

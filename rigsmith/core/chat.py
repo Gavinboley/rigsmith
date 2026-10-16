@@ -274,6 +274,9 @@ def send(chat_id: str, text: str) -> dict:
     chat.transcript.append({"role": "user", "text": text, "at": _now()})
     chat.busy = True
     chat.save()
+    # Which message this is: the turn's last events carry it, so a page that
+    # has moved on to the next turn can tell a late "done" from its own.
+    turn = sum(1 for entry in chat.transcript if entry.get("role") == "user")
 
     def publish(entry: dict) -> None:
         entry = {"at": _now(), **entry}
@@ -317,24 +320,27 @@ def send(chat_id: str, text: str) -> dict:
 
                 _edit(chat_id, record)
             if result.stopped == "error":
-                last.append({"kind": "error", "text": result.text or "the model failed"})
-            last.append({"kind": "done", "text": result.text, "stopped": result.stopped, "cost": result.cost})
+                last.append({"kind": "error", "text": result.text or "the model failed", "turn": turn})
+            last.append({"kind": "done", "text": result.text, "stopped": result.stopped, "cost": result.cost, "turn": turn})
             return result.to_dict()
         except Exception as exc:
-            last.append({"kind": "error", "text": f"{type(exc).__name__}: {exc}"})
+            last.append({"kind": "error", "text": f"{type(exc).__name__}: {exc}", "turn": turn})
             raise
         finally:
             def settle(current):
                 current.busy = False
                 current.job_id = None
 
-            _edit(chat_id, settle)
-            for entry in last:
-                publish(entry)
+            try:
+                _edit(chat_id, settle)
+            finally:
+                # Said even if settling failed, so the error is never lost.
+                for entry in last:
+                    publish(entry)
 
     job = get_manager().submit(f"chat: {text[:40]}", work)
     _edit(chat_id, lambda current: setattr(current, "job_id", job.id) if current.busy else None)
-    return {"chat_id": chat_id, "job_id": job.id, "provider": chat.provider}
+    return {"chat_id": chat_id, "job_id": job.id, "provider": chat.provider, "turn": turn}
 
 
 def stop(chat_id: str) -> dict:
