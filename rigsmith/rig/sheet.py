@@ -223,7 +223,7 @@ ul { padding-left: 20px; }
 """
 
 
-def build(rig: Rig, catalog: Catalog, *, origin: dict | None = None) -> Sheet:
+def build(rig: Rig, catalog: Catalog, *, origin: dict | None = None, scenes_written: bool = False) -> Sheet:
     """The sheet for a rig; ``origin`` adds where it came from (see :mod:`rigsmith.core.sheets`)."""
     sheet = Sheet(title=rig.name)
     sheet.facts.append(("Tempo", f"{rig.tempo:g} BPM, fixed" if rig.tempo else "the device's"))
@@ -247,8 +247,11 @@ def build(rig: Rig, catalog: Catalog, *, origin: dict | None = None) -> Sheet:
         off = [names.get(s, str(s)) for s, st in sorted(scene.states.items()) if st is SceneBlockState.OFF]
         where = f"FS{scene.footswitch}" if scene.footswitch else "no footswitch"
         sheet.scenes.append(f"{where} '{scene.name}': on {', '.join(on) or '-'}; off {', '.join(off) or '-'}")
-    if rig.scenes:
-        sheet.footnotes.append("Scenes are set on the device by hand for now - the network write does not carry them yet.")
+    if rig.scenes and not scenes_written:
+        sheet.footnotes.append(
+            "Scenes are set on the device by hand until this Core's scene numbers are learned "
+            "('rigsmith device scenes --learn'); after that a write carries them."
+        )
     if assumed:
         sheet.footnotes.append(
             "~ marks a reading worked out without a measured taper - as if the control were linear, or as "

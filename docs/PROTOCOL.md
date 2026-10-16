@@ -27,7 +27,7 @@ The global tempo is
 `/Evil/Engine/Tempo` (`Tempo`, plus `TempoMaj`/`TempoSub` for the screen's
 whole and fractional parts).
 
-## Scenes: found, not yet written
+## Scenes: found, written once learned
 
 The loaded rig's scenes live on `/Evil/Engine/FootSwitch` (from the
 September capture): for each of ten footswitches a `ModeNew{N}` (0 Toggle,
@@ -38,12 +38,20 @@ September capture): for each of ten footswitches a `ModeNew{N}` (0 Toggle,
 0, so 0 is almost certainly *No Change*; which of 1 and 2 is *On* and which
 is *Off* has not been seen.
 
-Until it has, a write does not send scenes (guessing could invert every one)
-and the write report lists what to set on each footswitch instead. To settle
-it: on the device, make FS1 a scene that turns one block on and another off,
-then run `rigsmith device scenes` - it prints each slot's raw Mode number.
+So it is learned from the device rather than guessed (a guess could invert
+every scene): on the Core, make FS1 a scene that turns the first block in
+the chain on and the second off, then run `rigsmith device scenes --learn`.
+It reads those two Mode numbers, refuses anything ambiguous, and saves them.
+From then on a write sets each scene's switch to `ModeNew{N} = 2`, its label,
+and every slot's `Scene{N}_{S}_Mode`, then reads the node back and reports
+any value the device did not keep. Until they are learned the write report
+lists what to set on each footswitch instead. Still unconfirmed: that a
+scene's `{N}` is the footswitch numbered `N` beyond FS1, and that the
+`Effect` fields follow the chain on their own.
 
-, no existing documentation of this protocol anywhere — no published API, no third-party editor for the Prime/Core generation, and no reverse-engineering write-up. So this starts from zero.
+When this work started there was no documentation of the protocol anywhere -
+no published API, no third-party editor for the Prime/Core generation, and
+no reverse-engineering write-up. It started from zero.
 
 ---
 

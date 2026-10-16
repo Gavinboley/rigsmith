@@ -402,3 +402,72 @@ def test_a_guessed_second_instance_says_so():
     first, second = plan_rig(rig, catalog())
     assert not first.notes and second.module_index == 2
     assert any("taken as the one after" in note for note in second.notes)
+
+
+def _with_properties():
+    import copy
+
+    mapped = copy.deepcopy(MAP)
+    extra = ProtocolMap.from_dict({"name": "x", "base": "/api/v1", "operations": {
+        "get_properties": {"method": "GET", "path": "/object-properties{node}"},
+        "set_properties": {"method": "PUT", "path": "/object-properties{node}", "body": "{properties}"},
+    }})
+    mapped.operations.update(extra.operations)
+    return mapped
+
+
+def scene_rig():
+    from rigsmith.rig.model import Scene, SceneBlockState
+
+    rig = rig_with_a_doubled_amp()
+    rig.blocks.append(Block(slot=5, category=BlockCategory.AMP, model_id="Treadplate Modern"))
+    rig.scenes = [
+        Scene(name="verse", states={3: SceneBlockState.ON, 5: SceneBlockState.OFF}, footswitch=1),
+        Scene(name="chorus", states={3: SceneBlockState.OFF, 5: SceneBlockState.ON}, footswitch=2),
+    ]
+    return rig
+
+
+def test_the_on_and_off_numbers_are_learned_from_a_scene_set_by_hand():
+    from rigsmith.core.devices import learn_scene_modes, parse_scenes
+
+    rows = parse_scenes({"ModeNew1": 2, "Scene1_1_Effect": "Amp", "Scene1_1_Mode": 2, "Scene1_2_Effect": "Cab", "Scene1_2_Mode": 1})
+    assert learn_scene_modes(rows) == {"on": 2, "off": 1, "no_change": 0}
+    for values in (
+        {"ModeNew1": 0, "Scene1_1_Effect": "Amp", "Scene1_1_Mode": 2, "Scene1_2_Effect": "Cab", "Scene1_2_Mode": 1},
+        {"ModeNew1": 2, "Scene1_1_Effect": "Amp", "Scene1_1_Mode": 1, "Scene1_2_Effect": "Cab", "Scene1_2_Mode": 1},
+        {"ModeNew1": 2, "Scene1_1_Effect": "Amp", "Scene1_1_Mode": 1},
+    ):
+        with pytest.raises(Exception):
+            learn_scene_modes(parse_scenes(values))
+
+
+@pytest.mark.asyncio
+async def test_with_the_numbers_learned_a_write_carries_its_scenes(patched_catalog, monkeypatch):
+    monkeypatch.setattr("rigsmith.device.client._scene_modes", lambda: {"on": 1, "off": 2, "no_change": 0})
+    core = FakeCore()
+    async with DeviceClient("http://fake", _with_properties(), transport=httpx.MockTransport(core.handle)) as client:
+        report = await client.write_rig(scene_rig())
+    assert report.exact, report.render()
+    switch = core.saved["blocks"]["FootSwitch"]
+    assert switch["ModeNew1"] == 2 and switch["UserFootSwitchText1"] == "verse"
+    assert switch["Scene1_3_Mode"] == 1 and switch["Scene1_5_Mode"] == 2
+    assert switch["Scene2_3_Mode"] == 2 and switch["Scene2_5_Mode"] == 1
+    assert not any("not written over the network" in note for note in report.notes)
+
+
+@pytest.mark.asyncio
+async def test_a_scene_value_the_device_drops_is_reported(patched_catalog, monkeypatch):
+    monkeypatch.setattr("rigsmith.device.client._scene_modes", lambda: {"on": 1, "off": 2, "no_change": 0})
+    core = FakeCore()
+    original = core.handle
+
+    def drops_labels(request: httpx.Request) -> httpx.Response:
+        response = original(request)
+        if request.method == "PUT" and request.url.path.endswith("/FootSwitch"):
+            core.blocks["FootSwitch"].pop("UserFootSwitchText1", None)
+        return response
+
+    async with DeviceClient("http://fake", _with_properties(), transport=httpx.MockTransport(drops_labels)) as client:
+        report = await client.write_rig(scene_rig())
+    assert report.ok and not report.exact and "FootSwitch.UserFootSwitchText1" in report.refused

@@ -68,6 +68,10 @@ class AppSettings:
     """Where your music library lives, for finding a song's file by name.
     Empty means the home folder's Music."""
     onboarding_done: bool = False
+    scene_modes: dict = field(default_factory=dict)
+    """The numbers this Core uses for a block's state in a scene -
+    ``{"on": n, "off": n, "no_change": 0}`` - learned with 'device scenes
+    --learn'. Until they are, a write gives scene instructions instead."""
 
     @property
     def local(self) -> bool:

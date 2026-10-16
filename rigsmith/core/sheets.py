@@ -89,5 +89,7 @@ def tone_sheet(draft_id: str) -> Sheet:
     """The tone sheet for a draft."""
     from . import rigs
 
+    from ..device.client import _scene_modes
+
     draft = rigs.get(draft_id)
-    return build(draft.rig, get_catalog(), origin=origin(draft_id))
+    return build(draft.rig, get_catalog(), origin=origin(draft_id), scenes_written=_scene_modes() is not None)

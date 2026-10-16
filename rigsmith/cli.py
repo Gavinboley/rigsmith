@@ -599,19 +599,26 @@ def device_pair(host: str | None, timeout: float, forget: bool) -> None:
 
 @device.command("scenes")
 @click.option("--host", help="Device host or IP. Discovered if not given.")
+@click.option("--learn", is_flag=True, help="Learn this Core's on/off numbers from footswitch 1's scene.")
 @handled
-def device_scenes(host: str | None) -> None:
+def device_scenes(host: str | None, learn: bool) -> None:
     """Read the loaded rig's scenes, raw - read only.
 
-    Set one scene by hand on the device (say FS1 turning one block on and
-    another off), load that rig, and run this: the numbers it prints are
-    what lets rigsmith write scenes itself.
+    To let rigsmith write scenes: on the Core, make footswitch 1 a scene
+    that turns the first block in the chain on and the second off, save,
+    and run this with --learn. The two numbers it reads are saved, and every
+    rig written afterwards carries its scenes.
     """
     import asyncio
 
-    from .core import devices
+    from .core import appsettings, devices
 
-    click.echo(devices.render_scenes(asyncio.run(devices.read_scenes(host))))
+    rows = asyncio.run(devices.read_scenes(host))
+    click.echo(devices.render_scenes(rows))
+    if learn:
+        modes = devices.learn_scene_modes(rows)
+        appsettings.update(scene_modes=modes)
+        click.echo(f"\nLearned: on is {modes['on']}, off is {modes['off']}. Rigs written from now on carry their scenes.")
 
 
 @device.command("snapshot")

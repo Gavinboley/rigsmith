@@ -520,7 +520,7 @@ class DeviceClient:
         happily as the right one.
         """
         from ..rig.catalog import get_catalog
-        from .writer import RIG_NODE, Placement, chain_properties, plan_rig, rig_properties
+        from .writer import RIG_NODE, Placement, chain_properties, plan_rig, rig_properties, scene_properties
 
         report = WriteReport(
             rig_name=rig.name,
@@ -621,6 +621,10 @@ class DeviceClient:
                     )
                 record("set_rig", f"tempo {rig.tempo:g} BPM, fixed" + (" (refused)" if stubborn else ""))
 
+            modes = _scene_modes() if rig.scenes else None
+            if rig.scenes and modes:
+                await self._write_scenes(rig, scene_properties(rig, modes), modes, report, record)
+
             await self.call("save_rig_as", name=rig.name, colour=colour)
             report.rig_id = rig.name
             record("save_rig_as", f"saved as '{rig.name}'")
@@ -629,7 +633,7 @@ class DeviceClient:
             if replace_id is not None and self.protocol.supports("delete_rig"):
                 await self.call("delete_rig", rig_id=replace_id)
                 record("delete_rig", f"replaced {replace_id}")
-            if rig.scenes:
+            if rig.scenes and not modes:
                 report.notes.append(scene_instructions(rig))
 
             loaded = await self.call("loaded_rig")
@@ -648,6 +652,36 @@ class DeviceClient:
             )
 
         return report
+
+    async def _write_scenes(self, rig: Rig, values: dict, modes: dict, report: WriteReport, record) -> None:
+        """Put the scenes on the FootSwitch node, then read them back.
+
+        Secondary to the blocks, like the tempo: a refusal is reported - with
+        what to set by hand - and the rig is still saved.
+        """
+        from .writer import FOOTSWITCH_NODE
+
+        if not values:
+            report.notes.append("no scene has a footswitch, so none were written")
+            return
+        try:
+            await self.call("set_properties", node=FOOTSWITCH_NODE, properties=values)
+            back = await self.call("get_properties", node=FOOTSWITCH_NODE)
+        except (Invalid, NotFound) as exc:
+            report.refused.append("FootSwitch")
+            report.notes.append(f"the scenes did not take ({str(exc).splitlines()[0]}). " + scene_instructions(rig))
+            record("set_scenes", "refused")
+            return
+        back = back if isinstance(back, dict) else {}
+        wrong = [name for name, wanted in values.items() if not self._same(wanted, back.get(name))]
+        if wrong:
+            report.refused.extend(f"FootSwitch.{name}" for name in wrong)
+            report.notes.append(f"{len(wrong)} scene value(s) did not take - " + scene_instructions(rig))
+        report.notes.append(
+            f"scenes written with the numbers learned from this Core (on {modes['on']}, off {modes['off']}) - "
+            "press each footswitch once to check"
+        )
+        record("set_scenes", f"{len(rig.scenes)} scene(s)" + (f", {len(wrong)} refused" if wrong else ""))
 
     async def _write_rig_rest(self, rig: Rig, *, replace_id: Any = None) -> WriteReport:
         """Build a rig on the device, block by block.
@@ -726,6 +760,17 @@ class DeviceClient:
         return report
 
 
+def _scene_modes() -> dict | None:
+    """This Core's scene mode numbers, once learned - else None."""
+    try:
+        from ..core import appsettings
+
+        modes = appsettings.load().scene_modes or {}
+    except Exception:
+        return None
+    return modes if isinstance(modes.get("on"), int) and isinstance(modes.get("off"), int) else None
+
+
 def scene_instructions(rig: Rig) -> str:
     """What to set by hand for each scene - they are not written over the network.
 
@@ -735,7 +780,10 @@ def scene_instructions(rig: Rig) -> str:
     them on a guess could invert every scene, so until 'device scenes' has
     read one set by hand, the write says what to set instead.
     """
-    lines = [f"{len(rig.scenes)} scene(s) were not written over the network yet - set them on the device:"]
+    lines = [
+        f"{len(rig.scenes)} scene(s) were not written over the network - this Core's scene "
+        "numbers are not learned yet ('rigsmith device scenes --learn'). Set them on the device:"
+    ]
     names = {block.slot: block.model_id for block in rig.blocks}
     for scene in sorted(rig.scenes, key=lambda s: (s.footswitch or 99, s.name)):
         on = [f"{names.get(slot, slot)} ({slot})" for slot, state in sorted(scene.states.items()) if state is SceneBlockState.ON]

@@ -250,6 +250,39 @@ def rig_properties(rig: Rig) -> dict[str, Any]:
     return {"Tempo": round((rig.tempo - low) / (high - low), 6), "TempoFromMaster": False}
 
 
+#: Where the loaded rig's footswitches and scenes live.
+FOOTSWITCH_NODE = "/Evil/Engine/FootSwitch"
+#: ModeNew's value for a footswitch that recalls a scene (0 Toggle, 1 Hold).
+SCENE_SWITCH = 2
+
+
+def scene_properties(rig: Rig, modes: dict) -> dict[str, Any]:
+    """The FootSwitch node's values for a rig's scenes, with this Core's mode numbers.
+
+    Per scene on a footswitch: the switch made a scene switch, labelled
+    with the scene's name, and every slot holding a block given the number
+    for its state - on, off, or no change. A scene without a footswitch has
+    nowhere to go and is left out.
+    """
+    from ..rig.model import SceneBlockState
+
+    numbers = {
+        SceneBlockState.ON: modes["on"],
+        SceneBlockState.OFF: modes["off"],
+        SceneBlockState.NO_CHANGE: modes.get("no_change", 0),
+    }
+    values: dict[str, Any] = {}
+    for scene in rig.scenes:
+        if not scene.footswitch:
+            continue
+        switch = scene.footswitch
+        values[f"ModeNew{switch}"] = SCENE_SWITCH
+        values[f"UserFootSwitchText{switch}"] = scene.name[:16]
+        for block in rig.blocks:
+            values[f"Scene{switch}_{block.slot}_Mode"] = numbers[scene.state_for(block.slot)]
+    return values
+
+
 def chain_properties(placements: list[Placement], *, slots: int = 14) -> dict[str, int]:
     """The whole chain as one property object - empty slots included.
 

@@ -253,6 +253,30 @@ def render_scenes(rows: list[dict]) -> str:
     return "Scenes on the loaded rig (slot:block=raw mode; 0 is believed to be No Change):\n" + "\n".join(lines)
 
 
+def learn_scene_modes(rows: list[dict]) -> dict:
+    """Which scene mode number means on and which off, from footswitch 1.
+
+    The person sets FS1, by hand, to a scene that turns the first block in
+    the chain on and the second off; their two numbers are then the
+    answer. Anything ambiguous is refused rather than guessed - a wrong
+    mapping would invert every scene written afterwards.
+    """
+    first = next((row for row in rows if row["footswitch"] == 1), None)
+    hint = (
+        "On the Core: make footswitch 1 a scene, set the first block in the chain "
+        "to on and the second to off, save, then run this again with that rig loaded."
+    )
+    if first is None or first["mode"] != "Scene":
+        raise Invalid("footswitch 1 is not a scene on the loaded rig", hint=hint)
+    slots = sorted(first["slots"], key=lambda s: s["slot"])
+    if len(slots) < 2:
+        raise Invalid("footswitch 1's scene needs at least two blocks to read", hint=hint)
+    on, off = slots[0]["mode"], slots[1]["mode"]
+    if not isinstance(on, int) or not isinstance(off, int) or on == off or 0 in (on, off):
+        raise Invalid(f"footswitch 1 reads {on} and {off} for its first two blocks, which does not tell on from off", hint=hint)
+    return {"on": on, "off": off, "no_change": 0}
+
+
 async def read_scenes(host: str | None = None) -> list[dict]:
     """Read the loaded rig's scene table - read only."""
     from ..device.client import DeviceClient

@@ -98,7 +98,9 @@ the rig's *Fixed* tempo so it loads on the beat; tap tempo still moves it.
 Not paired yet, or would rather dial it in yourself? **Tone sheet** shows
 every block's settings the way the Core's screen reads them.
 
-A song rig's **scenes are not written over the network yet** - the write
-report lists what each footswitch should do, to set by hand. While you are
-there, two minutes settles it for next time: make FS1 a scene that turns
-one block on and one off, and run `rigsmith device scenes`.
+A song rig's **scenes need one thing learned first**: which number this
+Core uses for on and which for off. Two minutes, once: on the Core, make
+footswitch 1 a scene that turns the **first** block in the chain on and the
+**second** off, save, and run `rigsmith device scenes --learn` with that rig
+loaded. Every rig written after that carries its scenes, read back to
+check; until then the write report lists what each footswitch should do.
