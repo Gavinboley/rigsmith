@@ -91,8 +91,9 @@ class Part:
 #: a song mapped before can say so. 2: chorus and vibrato from pitch, tremolo
 #: only inside notes, gain read by how monophonic the part is. 3: deep
 #: tremolo heard at all, and every tremolo's depth. 4: the room measured
-#: where playing stops, so reverb is read rather than guessed.
-ANALYSIS_VERSION = 4
+#: where playing stops, so reverb is read rather than guessed. 5: the same
+#: music twice in a row is one section, and a last chorus is not an outro.
+ANALYSIS_VERSION = 5
 
 
 @dataclass
