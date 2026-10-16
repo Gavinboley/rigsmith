@@ -1137,3 +1137,24 @@ def test_the_device_page_says_what_it_knows_about_the_core(browser, server):
         status = page.inner_text("#catalog-status")
         assert "models" in status and "knob curves measured" in status
         assert page.is_visible("#catalog-calibrate") and page.is_visible("#device-scenes")
+
+
+def test_the_amp_can_be_turned_by_ear_from_the_board(browser, server):
+    from rigsmith.core import rigs
+
+    draft_id = rigs.create("By ear").draft.draft_id
+    rigs.add_block(draft_id, "amp", "Some Amp", params={"Treble": 0.5})
+    with page_at(browser, server) as page:
+        page.click("#tabs .tab[data-panel='rig']")
+        page.wait_for_selector("#nudge-row")
+        page.select_option("#draft-select", draft_id)
+        page.click("#nudge-row [data-nudge='brighter']")
+        deadline = time.monotonic() + 5
+        while rigs.get(draft_id).rig.blocks[0].params.get("Treble") != 0.58 and time.monotonic() < deadline:
+            time.sleep(0.1)
+        assert rigs.get(draft_id).rig.blocks[0].params["Treble"] == 0.58
+        page.fill("#nudge-text", "a lot tighter")
+        page.press("#nudge-text", "Enter")
+        while rigs.get(draft_id).rig.blocks[0].params.get("Bass") != 0.34 and time.monotonic() < deadline + 5:
+            time.sleep(0.1)
+        assert rigs.get(draft_id).rig.blocks[0].params["Bass"] == 0.34

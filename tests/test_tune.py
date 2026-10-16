@@ -211,3 +211,30 @@ def test_a_silent_candidate_gets_a_flat_eq_not_a_nan_one():
     plan = eq.match(target, np.zeros_like(target), RATE)
     assert all(np.isfinite(v) and v == 0.0 for v in plan.graphic_db.values())
     assert np.isfinite(plan.before_db) and np.isfinite(plan.after_db)
+
+
+def test_words_become_knob_moves():
+    from rigsmith.tune import nudge
+
+    asked = nudge.parse("a bit brighter, a lot tighter and purple")
+    assert asked.moves == {"Treble": 0.04, "Presence": 0.04, "Bass": -0.16}
+    assert asked.unknown == ["purple"]
+    assert nudge.parse("less gain").moves == {"GainA": -0.08}, "the longer direction wins over its tail"
+    assert nudge.apply({"Treble": 0.98}, {"Treble": 0.08}) == {"Treble": (0.98, 1.0)}, "kept inside the knob's travel"
+
+
+def test_a_draft_is_nudged_on_its_amp(workspace):
+    from rigsmith.core import rigs
+
+    draft_id = rigs.create("Nudge").draft.draft_id
+    rigs.add_block(draft_id, "effect", "Green JRC-OD")
+    rigs.add_block(draft_id, "amp", "Some Amp", params={"Treble": 0.6})
+    result = rigs.nudge(draft_id, "a lot brighter")
+    amp = next(b for b in result.draft.rig.blocks if b.category.value == "amp")
+    assert amp.params["Treble"] == 0.76 and amp.params["Presence"] == 0.66, "an unset control starts from noon"
+    assert "Treble 60% -> 76%" in result.summary
+    with pytest.raises(Invalid):
+        rigs.nudge(draft_id, "purple")
+    empty = rigs.create("No amp").draft.draft_id
+    with pytest.raises(Invalid):
+        rigs.nudge(empty, "brighter")

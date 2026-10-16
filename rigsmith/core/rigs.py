@@ -384,6 +384,45 @@ def set_param(draft_id: str, slot: int, name: str, value: Any) -> EditResult:
     return _finish(draft, f"slot {slot} ({block.model_id}): {name} = {value}")
 
 
+def nudge(draft_id: str, text: str, *, slot: int | None = None) -> EditResult:
+    """Move the amp's knobs the way the words say: "a bit brighter, tighter".
+
+    The amp is the first amp block unless ``slot`` names one. A control the
+    draft has not set starts from the catalog's default for it.
+    """
+    from ..rig.catalog import get_catalog
+    from ..tune import nudge as words
+
+    draft = _get(draft_id)
+    if slot is not None:
+        block = _block(draft, slot)
+    else:
+        block = next((b for b in sorted(draft.rig.blocks, key=lambda b: b.slot) if b.category is BlockCategory.AMP), None)
+        if block is None:
+            raise Invalid("this draft has no amp block to turn", hint="Add one, or name the slot to nudge.")
+    asked = words.parse(text)
+    if not asked.moves:
+        raise Invalid(
+            f"nothing in '{text}' says which way to move",
+            hint="Try: brighter, darker, more or less gain, more or less bass, tighter, more or less mids, more bite, smoother, louder - with 'a bit' or 'a lot'.",
+        )
+    spec = get_catalog().get(block.model_id)
+    current = dict(block.params)
+    for control in asked.moves:
+        if control not in current:
+            param = spec.param(control) if spec else None
+            default = param.default if param is not None and isinstance(param.default, (int, float)) and not isinstance(param.default, bool) else 0.5
+            current[control] = float(default) if 0.0 <= float(default) <= 1.0 else 0.5
+    changed = words.apply(current, asked.moves)
+    for control, (_, after) in changed.items():
+        block.params[control] = after
+    summary = ", ".join(f"{control} {before:.0%} -> {after:.0%}" for control, (before, after) in changed.items()) or "already at the end of their travel"
+    message = f"slot {block.slot} ({block.model_id}): {summary}"
+    if asked.unknown:
+        message += f" (not understood: {', '.join(asked.unknown)})"
+    return _finish(draft, message)
+
+
 def toggle_block(draft_id: str, slot: int, enabled: bool) -> EditResult:
     """Turn a block on or off in the rig's base state."""
     draft = _get(draft_id)

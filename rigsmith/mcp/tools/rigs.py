@@ -212,6 +212,16 @@ def set_signal_path(draft_id: str, signal_path: SignalPathName) -> str:
 
 
 @tool
+def nudge_tone(draft_id: str, how: str, slot: int | None = None) -> str:
+    """Turn the draft's amp the way the user said, in their words - "a bit
+    brighter", "tighter low end", "a lot more gain, less fizz". Knows
+    brighter/darker, more/less gain, bass, mids, treble and presence,
+    tighter, fuller, more bite, smoother, louder/quieter; "a bit" and "a
+    lot" scale it. Says what it moved and anything it did not understand."""
+    return rigs.nudge(draft_id, how, slot=slot).summary
+
+
+@tool
 def set_rig_tempo(draft_id: str, bpm: float | None = None) -> str:
     """Give the rig its own tempo (30-240 BPM), saved as Fixed so its synced
     delays and tremolos load on the song's beat. Omit bpm to follow the

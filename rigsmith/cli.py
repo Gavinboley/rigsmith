@@ -352,6 +352,18 @@ def rig_doubling(draft_id: str, slot: int, mode: str, second: str | None) -> Non
     click.echo(rigs.set_doubling(draft_id, slot, mode, second).render(chain=False))
 
 
+@rig.command("nudge")
+@click.argument("draft_id")
+@click.argument("how")
+@click.option("--slot", type=int, help="The block to turn; default the first amp.")
+@handled
+def rig_nudge(draft_id: str, how: str, slot: int | None) -> None:
+    """Turn the amp the way words say: "a bit brighter, tighter low end"."""
+    from .core import rigs
+
+    click.echo(rigs.nudge(draft_id, how, slot=slot).summary)
+
+
 @rig.command("tempo")
 @click.argument("draft_id")
 @click.argument("bpm", type=float, required=False)

@@ -568,6 +568,17 @@ def draft_sheet_page(draft_id: str) -> HTMLResponse:
     return HTMLResponse(sheets.tone_sheet(draft_id).html())
 
 
+class NudgeBody(BaseModel):
+    how: str
+    slot: int | None = None
+
+
+@router.post("/drafts/{draft_id}/nudge")
+def nudge_draft(draft_id: str, body: NudgeBody) -> dict:
+    result = rigs.nudge(draft_id, body.how, slot=body.slot)
+    return {**_draft_payload(result.draft), "message": result.summary}
+
+
 @router.post("/drafts/{draft_id}/duplicate")
 def duplicate_draft(draft_id: str) -> dict:
     return _draft_payload(rigs.duplicate(draft_id).draft)

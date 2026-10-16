@@ -11,7 +11,7 @@ pip install -e ".[all]"
 rigsmith ui
 ```
 
-> **Status: everything runs today.** Rig authoring, validation, NAM analysis, tone matching, catalog extraction, USB backup, MIDI, guitar learning, song maps, the hardware loop, the tuner, autopilot, the chat and the web UI are covered by 984 tests. The Remote Editor protocol has been captured against a real Core and a rig written to it and read back exactly - see [docs/PROTOCOL.md](docs/PROTOCOL.md). What still wants hardware is *measuring*: the loop and the blind A/B need the Core and an interface plugged in - [docs/FIRST_SESSION.md](docs/FIRST_SESSION.md) walks through that first session.
+> **Status: everything runs today.** Rig authoring, validation, NAM analysis, tone matching, catalog extraction, USB backup, MIDI, guitar learning, song maps, the hardware loop, the tuner, autopilot, the chat and the web UI are covered by 988 tests. The Remote Editor protocol has been captured against a real Core and a rig written to it and read back exactly - see [docs/PROTOCOL.md](docs/PROTOCOL.md). What still wants hardware is *measuring*: the loop and the blind A/B need the Core and an interface plugged in - [docs/FIRST_SESSION.md](docs/FIRST_SESSION.md) walks through that first session.
 
 ---
 
@@ -122,6 +122,7 @@ rigsmith rig add cherub-rock nam    "Marshall JMP"  --param size='"A2 Lite"'
 rigsmith rig add cherub-rock ir     "1960A-SM57"    --param length='"1024"'
 rigsmith rig add cherub-rock effect "Analog Delay"  --param mix=0.18
 rigsmith rig tempo cherub-rock 140     # synced delays load on the beat
+rigsmith rig nudge cherub-rock "a bit brighter, tighter"   # by ear, in words
 
 rigsmith rig scene cherub-rock "Clean verse" --off 1 --off 4 --fs 1
 rigsmith rig scene cherub-rock "Big chorus"  --on 1 --on 4 --fs 2
@@ -499,7 +500,7 @@ Ask for a tone. The agent researches the gear, finds an A2 capture, builds the r
     +---------------+---------------+
     |               |               |
   cli.py       mcp/tools/*      web/api.py
-  (click)       (128 tools)       (FastAPI)
+  (click)       (129 tools)       (FastAPI)
 ```
 
 Each surface is a thin adapter: parse input, call core, format output. That rule exists because the first version broke it — orchestration lived inside the MCP tools, so anything not reachable from a tool was reachable from nowhere, and whole subsystems ended up built and unwired.

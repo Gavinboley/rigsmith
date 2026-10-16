@@ -543,6 +543,21 @@ export function init() {
         .then(apply)
     );
 
+  const nudge = (how) =>
+    current &&
+    attempt(async () => {
+      const result = await api.post(`/api/drafts/${encodeURIComponent(current.draft_id)}/nudge`, { how });
+      apply(result);
+      toast(result.message, { kind: "ok", timeout: 6000 });
+    });
+  for (const button of document.querySelectorAll("#nudge-row [data-nudge]")) button.onclick = () => nudge(button.dataset.nudge);
+  $("#nudge-text").onkeydown = (event) => {
+    if (event.key === "Enter" && event.target.value.trim()) {
+      nudge(event.target.value.trim());
+      event.target.value = "";
+    }
+  };
+
   $("#new-scene").onclick = () => editScene(null);
 
   $("#preview-btn").onclick = () =>

@@ -1032,3 +1032,10 @@ def test_the_page_can_learn_the_scene_numbers(client, monkeypatch):
     running = get_manager().get(job["job_id"])
     assert running.wait(10) and "Learned: on is 1, off is 2" in running.result["render"], running.error
     assert appsettings.load().scene_modes == {"on": 1, "off": 2, "no_change": 0}
+
+
+def test_a_draft_is_nudged_by_ear_through_the_api(client):
+    draft = client.post("/api/drafts", json={"name": "Ears"}).json()
+    client.post(f"/api/drafts/{draft['draft_id']}/blocks", json={"category": "amp", "model_id": "Some Amp", "params": {"GainA": 0.5}})
+    nudged = client.post(f"/api/drafts/{draft['draft_id']}/nudge", json={"how": "more gain"}).json()
+    assert nudged["rig"]["blocks"][0]["params"]["GainA"] == 0.58 and "GainA 50% -> 58%" in nudged["message"]

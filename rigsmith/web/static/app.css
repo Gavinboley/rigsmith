@@ -160,6 +160,8 @@ input:focus, select:focus { outline: 1px solid var(--amber-dim); border-color: v
 .inline-select { padding: 6px 8px; }
 .tempo-field { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text-faint); }
 .tempo-field input { width: 74px; padding: 6px 8px; }
+.nudge-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 10px 0 4px; }
+.nudge-row input { flex: 1; min-width: 200px; padding: 5px 8px; }
 
 /* ------------------------------------------------------------------- rig */
 
