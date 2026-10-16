@@ -1280,3 +1280,20 @@ def test_with_no_model_the_chat_still_offers_what_needs_none(browser, server):
         page.locator("#chat-text").press("Enter")
         page.locator("#chat-log .offline button:has-text('Measure knob curves')").click(timeout=15000)
         page.wait_for_selector("#catalog-calibrate.spotlight")
+
+
+def test_a_rig_can_be_compared_with_another(browser, server):
+    from rigsmith.core import rigs
+
+    first = rigs.create("First").draft.draft_id
+    rigs.add_block(first, "amp", "Some Amp", params={"Treble": 0.5})
+    second = rigs.duplicate(first, "Second").draft.draft_id
+    rigs.nudge(second, "a lot brighter")
+    with page_at(browser, server) as page:
+        page.click("#tabs .tab[data-panel='rig']")
+        page.wait_for_selector("#nudge-row")
+        page.select_option("#draft-select", first)
+        page.wait_for_selector(f"#compare-with option[value='{second}']", state="attached")
+        page.select_option("#compare-with", second)
+        page.wait_for_selector("#findings .finding:has-text('Treble')")
+        assert f"First ({first}) -> Second ({second})" in page.inner_text("#findings")

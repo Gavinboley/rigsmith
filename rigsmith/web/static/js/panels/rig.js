@@ -288,6 +288,7 @@ function apply(payload) {
   $("#undo-draft").title = payload.undo ? `Step back before the last edit (Ctrl+Z) - ${payload.undo} to go` : "Nothing to undo";
   $("#redo-draft").disabled = !payload.redo;
   renderHistory(payload.history || { past: [], future: [] });
+  fillCompare();
   renderMeter(payload.validation);
   renderBoard();
   renderScenes();
@@ -412,11 +413,21 @@ async function editScene(scene, footswitch = null) {
  * request wins, and an older response is dropped on arrival. */
 let refreshToken = 0;
 
+let known = []; // every draft, as the picker last listed them
+
+/** The other drafts this one can be compared with. */
+function fillCompare() {
+  const select = clear($("#compare-with"));
+  select.append(el("option", { value: "", text: "Compare with..." }));
+  for (const d of known) if (d.draft_id !== current?.draft_id) select.append(el("option", { value: d.draft_id, text: `${d.name} (${d.draft_id})` }));
+}
+
 async function refreshDrafts(selectId = null) {
   const token = ++refreshToken;
   const { drafts } = await api.drafts();
   if (token !== refreshToken) return;
 
+  known = drafts;
   const select = clear($("#draft-select"));
   for (const draft of drafts) {
     select.append(
@@ -620,6 +631,17 @@ export function init() {
         el("div", { class: "finding info", text: preview.rendered })
       );
     });
+
+  $("#compare-with").onchange = (event) => {
+    const other = event.target.value;
+    event.target.value = "";
+    if (!other || !current) return;
+    attempt(async () => {
+      const result = await api.get(`/api/drafts/${encodeURIComponent(current.draft_id)}/compare/${encodeURIComponent(other)}`);
+      $("#findings").prepend(el("div", { class: "finding info mono", style: "white-space:pre-wrap", text: result.rendered }));
+      toast(`Compared: ${result.summary}`, { kind: "ok", timeout: 4000 });
+    });
+  };
 
   $("#sheet-btn").onclick = () => {
     if (current) window.open(`/api/drafts/${encodeURIComponent(current.draft_id)}/sheet.html`, "_blank");

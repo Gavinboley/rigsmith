@@ -586,6 +586,16 @@ def nudge_draft(draft_id: str, body: NudgeBody) -> dict:
     return {**_draft_payload(result.draft), "message": result.summary}
 
 
+@router.get("/drafts/{draft_id}/compare/{other_id}")
+def compare_drafts(draft_id: str, other_id: str) -> dict:
+    difference = rigs.compare(draft_id, other_id)
+    return {
+        "rendered": difference.render(),
+        "summary": difference.summary(),
+        "changes": [{"kind": c.kind, "description": c.description, "slot": c.slot} for c in difference.changes],
+    }
+
+
 @router.get("/nudge/parse")
 def parse_nudge(text: str) -> dict:
     """What a by-ear sentence would move, without moving anything."""

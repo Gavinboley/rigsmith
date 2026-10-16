@@ -313,6 +313,15 @@ def validate_rig(draft_id: str) -> str:
 
 
 @tool
+def compare_rigs(draft_id: str, other_id: str) -> str:
+    """What differs between two drafts - blocks, settings and scenes, going
+    from the first to the second. For a draft finished by ear beside its
+    rebuild, or two tries at one sound."""
+    difference = rigs.compare(draft_id, other_id)
+    return difference.render() + ("" if difference.empty else f"\n\nsummary: {difference.summary()}")
+
+
+@tool
 def preview_changes(draft_id: str) -> str:
     """Show exactly what writing this draft would change on the device."""
     difference = rigs.preview(draft_id)

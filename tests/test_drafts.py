@@ -99,3 +99,17 @@ def test_a_changed_draft_is_announced(workspace):
         stop()
     assert len(heard) >= 3 and {e["draft_id"] for e in heard} == {draft_id}, "made, edited, undone"
     assert heard[-1]["updated_at"] == rigs.get(draft_id).updated_at, "the undo was the last word"
+
+
+def test_two_drafts_can_be_compared(workspace):
+    from rigsmith.core import rigs
+
+    first = rigs.create("Mine").draft.draft_id
+    rigs.add_block(first, "amp", "Some Amp", params={"Treble": 0.5})
+    second = rigs.duplicate(first, "Rebuilt").draft.draft_id
+    rigs.nudge(second, "brighter")
+    rigs.add_block(second, "effect", "Spring Reverb")
+    shown = rigs.compare(first, second).render()
+    assert shown.splitlines()[0] == f"Mine ({first}) -> Rebuilt ({second})"
+    assert "Treble" in shown and "Spring Reverb" in shown
+    assert rigs.compare(first, first).empty

@@ -462,6 +462,20 @@ def rig_validate(draft_id: str) -> None:
         sys.exit(1)
 
 
+@rig.command("diff")
+@click.argument("draft_id")
+@click.argument("other_id")
+@handled
+def rig_diff(draft_id: str, other_id: str) -> None:
+    """What differs between two drafts, going from the first to the second."""
+    from .core import rigs
+
+    difference = rigs.compare(draft_id, other_id)
+    click.echo(difference.render())
+    if not difference.empty:
+        click.echo(f"\nsummary: {difference.summary()}")
+
+
 @rig.command("preview")
 @click.argument("draft_id")
 @handled

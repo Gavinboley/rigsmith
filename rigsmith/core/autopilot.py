@@ -987,7 +987,7 @@ def _stage_rig(run: Run, *, from_ears: bool = False) -> str:
         if old is not None and run.built_at and old.updated_at == run.built_at:
             rigs.delete(run.draft_id)
         elif old is not None:
-            run.note(f"kept '{old.rig.name}' ({old.draft_id}) as you left it - it was edited after it was built; the rebuild is a new draft")
+            run.note(f"kept '{old.rig.name}' ({old.draft_id}) as you left it - it was edited after it was built; the rebuild is a new draft (Rig page, Compare with..., shows what differs)")
     draft = rigs.create(name, notes=f"autopilot {run.run_id}: {part.label}, {part.sketch.get('summary', '')}").draft
     run.draft_id = draft.draft_id
 

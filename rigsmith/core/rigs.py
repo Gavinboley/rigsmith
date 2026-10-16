@@ -669,6 +669,18 @@ def preview(draft_id: str) -> RigDiff:
     return diff_rigs(draft.baseline, draft.rig)
 
 
+def compare(draft_id: str, other_id: str) -> RigDiff:
+    """What differs between two drafts - read as going from ``draft_id`` to ``other_id``.
+
+    For the drafts that come in pairs: one finished by ear beside its
+    rebuild, a duplicate tried another way, a run's rig against another's.
+    """
+    first, second = _get(draft_id), _get(other_id)
+    difference = diff_rigs(first.rig, second.rig)
+    difference.before_name, difference.after_name = f"{first.rig.name} ({draft_id})", f"{second.rig.name} ({other_id})"
+    return difference
+
+
 def export(draft_id: str, path: str | Path | None = None) -> Path:
     """Write a draft to a JSON file.
 
