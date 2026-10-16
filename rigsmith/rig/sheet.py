@@ -138,6 +138,8 @@ class Sheet:
     """``{slot, name, kind, bypassed, doubled, settings: [(label, reading)]}``."""
     scenes: list[str] = field(default_factory=list)
     origin: list[tuple[str, str]] = field(default_factory=list)
+    changed: list[str] = field(default_factory=list)
+    """Edits since autopilot built it, oldest first."""
     research: list[str] = field(default_factory=list)
     remaining: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
@@ -157,7 +159,7 @@ class Sheet:
             for key, value in item["settings"]:
                 out.append(f"   - {key}: {value}")
         for title, rows in (("Scenes", self.scenes), ("Where it came from", [f"**{k}:** {v}" for k, v in self.origin]),
-                            ("What the research said", self.research), ("Still different from the record", self.remaining),
+                            ("Changed since it was built", self.changed), ("What the research said", self.research), ("Still different from the record", self.remaining),
                             ("Notes", self.notes)):
             if rows:
                 out += ["", f"## {title}", ""]
@@ -182,7 +184,7 @@ class Sheet:
             )
         sections = []
         for title, rows in (("Scenes", self.scenes), ("Where it came from", [f"{k}: {v}" for k, v in self.origin]),
-                            ("What the research said", self.research), ("Still different from the record", self.remaining),
+                            ("Changed since it was built", self.changed), ("What the research said", self.research), ("Still different from the record", self.remaining),
                             ("Notes", self.notes)):
             if rows:
                 sections.append(f"<h2>{e(title)}</h2><ul>" + "".join(f"<li>{e(r)}</li>" for r in rows) + "</ul>")
@@ -260,6 +262,7 @@ def build(rig: Rig, catalog: Catalog, *, origin: dict | None = None, scenes_writ
         )
     origin = origin or {}
     sheet.origin = list(origin.get("origin", []))
+    sheet.changed = list(origin.get("changed", []))
     sheet.research = list(origin.get("research", []))
     sheet.remaining = list(origin.get("remaining", []))
     sheet.notes = list(origin.get("notes", []))

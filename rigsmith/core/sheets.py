@@ -28,7 +28,7 @@ def origin(draft_id: str) -> dict:
     run = run_for(draft_id)
     if run is None:
         return {}
-    found: dict[str, list] = {"origin": [], "research": [], "remaining": [], "notes": []}
+    found: dict[str, list] = {"origin": [], "changed": [], "research": [], "remaining": [], "notes": []}
     song = None
     if run.song_id:
         try:
@@ -57,6 +57,11 @@ def origin(draft_id: str) -> dict:
             others = [f"{r['label']} ({r['composite']:.3f})" for r in run.results if r["label"] != best["label"]][:3]
             if others:
                 found["origin"].append(("Also heard", ", ".join(others)))
+        if run.built_at and run.draft_id == draft_id:
+            # What you turned since - by ear, by hand or by asking - and kept.
+            from .drafts import get_store
+
+            found["changed"].extend(get_store().changes_since(draft_id, run.built_at))
         bench = {"device": "on the Core", "virtual": "on the simulated bench - tune it again on the Core"}.get(run.request.bench, run.request.bench)
         found["origin"].append(("Heard", bench))
         for row in sorted((r for r in run.remaining if r.get("audible")), key=lambda r: -abs(r["delta_db"])):

@@ -106,6 +106,14 @@ class DraftStore:
         said = lambda entry: (entry.get("change") if isinstance(entry, dict) else None) or "an edit"  # noqa: E731
         return {"past": [said(e) for e in reversed(history["past"])], "future": [said(e) for e in reversed(history["future"])]}
 
+    def changes_since(self, draft_id: str, when: str) -> list[str]:
+        """The edits made after ``when`` (an ``updated_at``) that still stand, oldest first."""
+        found = []
+        for entry in self._history(draft_id)["past"]:
+            if isinstance(entry, dict) and str((entry.get("payload") or {}).get("_draft", {}).get("updated_at", "")) >= when:
+                found.append(entry.get("change") or "an edit")
+        return found
+
     def undo(self, draft_id: str, *, redo: bool = False) -> tuple[Draft, str]:
         """Put back the version before the last edit (or, ``redo``, after the
         last undo) and say which change that was. LookupError if there is none."""

@@ -381,9 +381,18 @@ def test_a_drafts_tone_sheet_says_where_it_came_from(workspace):
     run.ear_pick = "92 Treadplate Modern"
     run.remaining = [{"band": "presence", "low": 2000, "high": 5000, "delta_db": -3.2, "audible": True, "meaning": "duller than the record", "try": "Presence up"}]
     run.notes = ["the rig carries the song's tempo"]
+    rigs.add_block(draft_id, "amp", "92 Treadplate Modern", params={"Treble": 0.5})
+    run.built_at = rigs.get(draft_id).updated_at
     run.save()
+    # Then finished by ear: one turn kept, one undone.
+    rigs.nudge(draft_id, "a bit darker")
+    rigs.nudge(draft_id, "more gain")
+    rigs.undo(draft_id)
 
     text = sheets.tone_sheet(draft_id).markdown()
+    changed = text.split("## Changed since it was built")[1].split("##")[0]
+    assert "Treble 50% -> 46%" in changed and "GainA" not in changed, "what was kept, not what was undone"
+    assert "Added 92 Treadplate Modern" not in changed, "the build itself is not a change"
     assert "**Song:** Fixture - Synthetic" in text
     assert "by your ears in the blind test" in text and "82 Lead 800 100W (0.250)" in text
     assert "presence -3.2 dB - duller than the record; try Presence up" in text
