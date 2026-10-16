@@ -287,6 +287,33 @@ def salience_frames(
 TUNING_BOTTOMS = (40, 39, 38, 37, 36, 35, 33)
 
 
+#: How loud, against the loudest pitch from E2 to E3, the stem must be at a
+#: string below E2 for a lower tuning to be believed.
+LOW_STRING_FLOOR = 0.2
+
+
+def _sounds_below(magnitude: np.ndarray, sample_rate: int, bottom: int) -> bool:
+    """Whether the stem really sounds between ``bottom`` and E2 - a drop
+    tuning played - rather than only the salience's echo of the notes above.
+    From the loud moments (90th percentile per bin), so a low riff that comes
+    and goes still counts."""
+    if not len(magnitude):
+        return False
+    spectrum = np.percentile(magnitude, 90, axis=0)
+    freqs = np.fft.rfftfreq(N_FFT, 1 / sample_rate)
+    hz = lambda m: 440.0 * 2 ** ((m - 69) / 12)  # noqa: E731
+    ref = (freqs >= hz(40) * 0.97) & (freqs <= hz(52) * 1.03)
+    if not ref.any():
+        return False
+    floor = LOW_STRING_FLOOR * spectrum[ref].max()
+    # A peak of its own: E2's lobe reaches down past D#2, rising all the way,
+    # so energy there is not enough - a played low note is a local maximum.
+    for i in np.nonzero((freqs >= hz(bottom) * 0.97) & (freqs <= hz(39) * 1.03))[0]:
+        if 0 < i < len(spectrum) - 1 and spectrum[i] >= floor and spectrum[i] > spectrum[i - 1] and spectrum[i] >= spectrum[i + 1]:
+            return True
+    return False
+
+
 def infer_lowest(frames) -> int:
     """The lowest string a stem implies, from where its lowest notes sit.
 
@@ -586,6 +613,11 @@ def transcribe(
     frames = salience_frames(magnitude, sample_rate, min_midi=min_midi, tuning_cents=result.tuning_cents)
     if auto_lowest:
         bottom = infer_lowest(frames)
+        if bottom < 40 and not _sounds_below(magnitude, sample_rate, bottom):
+            # The salience credits a pitch 2/3 under a note - an A1 under a
+            # low E - and a part that keeps returning to its low notes moves
+            # the percentile there. Below E2 it has to be heard, too.
+            bottom = 40
         if bottom > min_midi:
             min_midi = bottom
             frames = salience_frames(magnitude, sample_rate, min_midi=min_midi, tuning_cents=result.tuning_cents)

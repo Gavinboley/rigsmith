@@ -509,6 +509,35 @@ def test_palm_muted_chugs_are_single_notes_not_chords():
     assert len(result.events) <= 1.15 * len(truth), "no chord stacked on each chug"
 
 
+@pytest.mark.parametrize("gain", [0.5, 0.85])
+def test_driven_chugs_on_the_low_e_are_read_as_low_es(gain):
+    """The salience heard an A1 under every low E and took the guitar for a
+    seven-string; the chugs then went down the chord path and came back as
+    stacks. The low string has to be heard to be believed."""
+    from rigsmith.learn.pluck import render_notes
+    from rigsmith.learn.transcribe import transcribe
+    from rigsmith.loop.virtual import SimAmp
+
+    beat = 60 / 110
+    truth = [(b * beat + k * beat / 4, beat / 8, 40 if b % 8 < 6 else 43, 0.85) for b in range(32) for k in range(4)]
+    audio = SimAmp(Type=3, Gain=gain).process(render_notes(truth, seed=5))
+    result = transcribe(audio, 48000, method="builtin", match_record_pitch=False)
+    assert "lowest string taken as E2" in result.notes_text
+    right = sum(1 for start, _, midi, _ in truth if [round(e.midi) for e in result.events if abs(e.start - start) < 0.05] == [midi])
+    assert right >= 0.85 * len(truth), right
+
+
+def test_a_drop_d_riff_keeps_its_low_d():
+    from rigsmith.learn.pluck import render_notes
+    from rigsmith.learn.transcribe import transcribe
+
+    beat = 60 / 110
+    truth = [(b * beat + k * beat / 2, beat / 2 * 0.85, [38, 38, 41, 43][b % 4], 0.85) for b in range(32) for k in range(2)]
+    result = transcribe(render_notes(truth, seed=5), 48000, method="builtin", match_record_pitch=False)
+    lows = sum(1 for e in result.events if round(e.midi) == 38)
+    assert lows >= 0.85 * sum(1 for n in truth if n[2] == 38), "the low D is a real note, not cut off as an echo"
+
+
 @pytest.mark.parametrize("intervals, driven", [
     ((0, 5, 7), False),          # a sus4: its fourth sits beside its fifth
     ((0, 5, 7), True),

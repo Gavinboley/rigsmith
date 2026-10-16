@@ -42,6 +42,9 @@ MIN_NOTE_S = 0.08
 #: Where the pitch is read: after the pick noise, before the decay thins out.
 PITCH_FROM_S = 0.04
 PITCH_TO_S = 0.30
+#: A note shorter than this is read from nearly its attack.
+SHORT_NOTE_S = 0.2
+SHORT_PITCH_FROM_S = 0.005
 
 #: A note ends when it has fallen this far below its own peak.
 END_DROP_DB = 45.0
@@ -250,6 +253,10 @@ def _settled_pitch(segment: np.ndarray, sample_rate: int) -> tuple[float, float]
     window = int(0.046 * sample_rate)
     hop = window // 2
     first = int(PITCH_FROM_S * sample_rate)
+    # A palm-muted note is over in 70 ms: waiting 40 ms for it to settle
+    # left only its tail to read, and a stream of chugs came back unpitched.
+    if len(segment) < SHORT_NOTE_S * sample_rate:
+        first = int(SHORT_PITCH_FROM_S * sample_rate)
     last = min(len(segment), int(PITCH_TO_S * sample_rate))
     estimates, clarities = [], []
     loudest = float(np.max(np.abs(segment))) if len(segment) else 0.0
