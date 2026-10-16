@@ -157,6 +157,8 @@ input[type=text], input[type=number], select, textarea {
   font: inherit;
 }
 input:focus, select:focus { outline: 1px solid var(--amber-dim); border-color: var(--amber-dim); }
+/* keyboard focus, everywhere, in the app's own colour - the browser's ring is lost on this background */
+button:focus-visible, summary:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
 .inline-select { padding: 6px 8px; }
 .tempo-field { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text-faint); }
 .tempo-field input { width: 74px; padding: 6px 8px; }
