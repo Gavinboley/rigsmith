@@ -231,6 +231,7 @@ def test_a_complaint_is_read_as_its_cure():
     assert asked.understood == ["a bit too bright", "way too much bass", "not enough gain"], "said back as it was said"
     assert nudge.parse("too dark").moves == {"Treble": 0.08, "Presence": 0.08}, "not read as 'darker'"
     assert nudge.parse("too muddy").moves == {"Bass": -0.08, "Mid": -0.04}
+    assert nudge.parse("too little bass").moves == {"Bass": 0.08}
     assert nudge.parse("too purple").unknown == ["too purple"]
 
 

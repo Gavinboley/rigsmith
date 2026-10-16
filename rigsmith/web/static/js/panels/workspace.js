@@ -10,7 +10,7 @@ function areaItem(area) {
     el("span", { class: "title", text: area.name }),
     el("span", {
       class: "meta",
-      text: area.exists ? `${area.file_count} files` : "not created yet",
+      text: area.exists ? `${area.file_count} ${area.file_count === 1 ? "file" : "files"}` : "not created yet",
     }),
     el("span", { class: "spacer" }),
     area.prunable
@@ -54,7 +54,7 @@ async function refresh() {
   host.append(
     el("div", {
       class: "hint",
-      text: `${report.root} - ${report.file_count} files, ${report.human_size}`,
+      text: `${report.root} - ${report.file_count} ${report.file_count === 1 ? "file" : "files"}, ${report.human_size}`,
     })
   );
   for (const area of report.areas) host.append(areaItem(area));

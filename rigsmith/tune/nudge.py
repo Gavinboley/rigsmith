@@ -131,8 +131,9 @@ def parse(text: str) -> Nudge:
         if not phrase:
             continue
         said = phrase
-        # "too much bass" is "less bass", "not enough bite" is "more bite".
-        phrase = re.sub(r"\btoo much\b", "less", re.sub(r"\bnot enough\b", "more", phrase))
+        # "too much bass" is "less bass"; "not enough bite" and "too little
+        # bite" are "more bite".
+        phrase = re.sub(r"\btoo much\b", "less", re.sub(r"\b(?:not enough|too little)\b", "more", phrase))
         scale = STEP / 2 if any(word in phrase for word in GENTLE) else STEP * 2 if any(word in phrase for word in STRONG) else STEP
         complaint = re.search(r"\btoo (\w+)", phrase)
         found = COMPLAINTS.get(complaint.group(1)) if complaint else None

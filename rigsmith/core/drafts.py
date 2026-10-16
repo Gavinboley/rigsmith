@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import re
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -60,6 +61,9 @@ class DraftStore:
             directory = get_settings().workspace / "drafts"
         self.directory = Path(directory)
         self._cache: dict[str, Draft] = {}
+        # The web app saves from several threads; a save and its history step
+        # (or an undo) must not interleave with another on the same files.
+        self._lock = threading.RLock()
 
     # -- paths ------------------------------------------------------------
 
@@ -99,11 +103,17 @@ class DraftStore:
         last undo) and say which change that was. LookupError if there is none."""
         from . import storage
 
+        with self._lock:
+            return self._step(draft_id, redo, storage)
+
+    def _step(self, draft_id: str, redo: bool, storage) -> tuple[Draft, str]:
         history = self._history(draft_id)
         source, target = ("future", "past") if redo else ("past", "future")
         if not history[source]:
             raise LookupError("nothing to redo" if redo else "nothing to undo")
         entry = history[source].pop()
+        if not isinstance(entry, dict) or not isinstance(entry.get("payload"), dict):
+            raise LookupError("this draft's history cannot be read, so there is nothing to step to")
         current = json.loads(self._path(draft_id).read_text(encoding="utf-8"))
         history[target].append({"payload": current, "change": entry.get("change") or "an edit"})
         restored = entry["payload"]
@@ -151,6 +161,10 @@ class DraftStore:
         }
         from . import storage
 
+        with self._lock:
+            return self._write(draft, payload, change, storage)
+
+    def _write(self, draft: Draft, payload: dict, change: str | None, storage) -> Draft:
         path = self._path(draft.draft_id)
         try:
             before = json.loads(path.read_text(encoding="utf-8")) if path.exists() else None
