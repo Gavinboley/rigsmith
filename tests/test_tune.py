@@ -193,3 +193,14 @@ def test_the_core_is_given_time_to_settle_before_it_is_heard(monkeypatch):
     sink.apply({"Amp": {"Bass": 0.4}})
     assert sent == ["/Evil/Engine/Patch/Amp", "/Evil/Engine/Patch/Cab", "/Evil/Engine/Patch/Amp"]
     assert slept == [tuning.MODEL_SETTLE_S, tuning.KNOB_SETTLE_S]
+
+
+def test_settings_as_people_write_them_become_knob_positions():
+    from rigsmith.tune.settings import amp_controls, position
+
+    assert position(7) == 0.7 and position("7/10") == 0.7 and position("65%") == 0.65 and position(80) == 0.8
+    assert position("noon") == 0.5 and position("dimed") == 1.0 and position("off") == 0.0
+    assert position("2 o'clock") == 0.7 and position("7 o'clock") == 0.0 and position("5 oclock") == 1.0
+    assert position("a bit") is None and position(-3) is None
+    controls = amp_controls({"Gain": "7", "Mids": "noon", "treble": "2 o'clock", "reverb": 3, "bass": "lots"})
+    assert controls == {"GainA": 0.7, "Mid": 0.5, "Treble": 0.7}, "unknown names and unreadable values are left out"

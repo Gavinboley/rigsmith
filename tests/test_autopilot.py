@@ -560,3 +560,16 @@ def test_a_measured_room_sets_the_reverb_time_once_its_curve_is_known():
     cat.models["AIR Reverb"].params[0].taper = "log"
     sent = candidates.wire_params(hall, cat)["Time"]
     assert abs(0.45 * (144 / 0.45) ** sent - 1.8) < 0.01
+
+
+def test_tuning_starts_from_the_researched_settings(workspace):
+    from rigsmith.core import recipes
+
+    recipe_id, _ = recipes.create("Settings")
+    recipes.add_gear(recipe_id, "amp", "Marshall JCM800", category="amp", confidence="reported",
+                     source_title="rig rundown", settings={"gain": 8, "bass": "3", "mids": "noon"})
+    run = autopilot.Run(run_id="settings", request=autopilot.Request(title="Settings"), recipe_id=recipe_id)
+    said = autopilot._researched_settings(run, "82 Lead 800 100W")
+    assert said["controls"] == {"GainA": 0.8, "Bass": 0.3, "Mid": 0.5}, "the one amp with settings, though named otherwise"
+    assert "JCM800" in said["source"]
+    assert autopilot._researched_settings(autopilot.Run(run_id="none", request=autopilot.Request(title="x")), "any") is None

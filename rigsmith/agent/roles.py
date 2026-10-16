@@ -82,7 +82,10 @@ ROLES: dict[str, Role] = {
         "Finds out what gear made a tone and writes it into a recipe, with sources.",
         "Work out the gear behind a song's guitar parts - amp, cab, pedals, "
         "guitar, pickups, tuning - and record the chain in a recipe with "
-        "add_gear, one claim at a time, each with its confidence and source; "
+        "add_gear, one claim at a time, each with its confidence and source, "
+        "and the amp's settings when a source gives them (gain, bass, mid, "
+        "treble, presence, master - as numbers, percentages or clock "
+        "positions): autopilot's tuning starts from them; "
         "record the guitar, pickup and tuning with set_recipe_guitar (it "
         "decides what the user's DI is made to sound like). Start from "
         "song_brief: its measured sketches say what the part sounds like, so "

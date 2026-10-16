@@ -440,6 +440,35 @@ def _researched(run: Run, wanted: str) -> list[str]:
     return names
 
 
+def _researched_settings(run: Run, model: str) -> dict | None:
+    """The amp settings the research recorded, as Core controls: ``{controls, source}``.
+
+    The gear resolved to this model first; failing that, the one amp the
+    research has settings for - a player's "gain on 7" says something
+    about the sound even on a modelled amp of another name.
+    """
+    from ..tune.settings import amp_controls
+    from . import recipes
+
+    if not run.recipe_id:
+        return None
+    try:
+        recipe = recipes.get(run.recipe_id)
+    except Exception:
+        return None
+    amps = [
+        gear for gear in getattr(recipe, "gear", []) or []
+        if str(getattr(getattr(gear, "category", ""), "value", getattr(gear, "category", ""))) == "amp" and amp_controls(gear.settings)
+    ]
+    if not amps:
+        return None
+    named = [g for g in amps if model in (g.resolved_model_id, g.model, g.name)]
+    if not named and len(amps) > 1:
+        return None
+    gear = (named or amps)[0]
+    return {"controls": amp_controls(gear.settings), "source": f"the research's settings for {gear.name}"}
+
+
 def _researched_guitar(run: Run) -> str | None:
     """The record's guitar or pickup, as the research recipe names it."""
     from . import recipes
@@ -810,14 +839,23 @@ def _stage_tune(run: Run, progress) -> str:
                 audio = audio[: len(target)]
             return score_candidate(target, audio, rate, mode=comparison).composite, {}
 
-        # Start where the untuned sound says to: too much low end starts
-        # with the bass down. On the simulated amp this lowered the tuned
-        # loss by about a fifth at this budget, and was never worse.
+        # Start from what the research says the amp was set to, when it
+        # says; then where the untuned sound says to - too much low end
+        # starts with the bass down. On the simulated amp the second alone
+        # lowered the tuned loss by about a fifth at this budget.
+        said = _researched_settings(run, candidate.model)
+        current = None
+        if said:
+            current = space.start()
+            for knob in space.knobs:
+                if knob.param in said["controls"]:
+                    current[knob.key] = said["controls"][knob.param]
+            run.note(f"tuning {candidate.model} started from {said['source']}: " + ", ".join(f"{k} {v:.0%}" for k, v in said["controls"].items()))
         try:
             untuned, _ = load_audio(entry["path"])
-            start = informed_start(space, band_differences(target, untuned, rate))
+            start = informed_start(space, band_differences(target, untuned, rate), current=current)
         except Exception:
-            start = None
+            start = space.clip(current) if current else None
         result = optimise(space, evaluate, budget=budget, start=start, progress=progress)
         best = result.best
         audio = render(candidate, di, best.values)
