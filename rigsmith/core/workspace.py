@@ -107,6 +107,7 @@ class AreaReport:
             "path": str(self.path),
             "description": self.description,
             "prunable": self.prunable,
+            "kept": self.name in KEPT,
             "exists": self.exists,
             "file_count": self.file_count,
             "total_bytes": self.total_bytes,

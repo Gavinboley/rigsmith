@@ -15,11 +15,17 @@ function areaItem(area) {
     el("span", { class: "spacer" }),
     area.prunable
       ? null
-      : el("span", {
-          class: "tag warn",
-          text: "protected",
-          title: "Never pruned unless named explicitly.",
-        }),
+      : area.kept
+        ? el("span", {
+            class: "tag a2",
+            text: "never pruned",
+            title: "What is here cannot be made again - it is deleted one item at a time, never swept.",
+          })
+        : el("span", {
+            class: "tag warn",
+            text: "protected",
+            title: "Left out of a prune unless named explicitly.",
+          }),
     el("span", { class: "meta", text: area.human_size })
   );
 }

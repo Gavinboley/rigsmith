@@ -313,6 +313,7 @@ input:focus, select:focus { outline: 1px solid var(--amber-dim); border-color: v
   font-size: 10px; padding: 2px 7px; border-radius: 4px;
   background: var(--bg-sunken); border: 1px solid var(--line);
   color: var(--text-dim); font-family: var(--mono);
+  white-space: nowrap;
 }
 .tag.a2   { color: var(--green);  border-color: #23503f; }
 .tag.a1   { color: var(--blue);   border-color: #244560; }
