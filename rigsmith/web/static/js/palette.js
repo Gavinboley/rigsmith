@@ -14,7 +14,7 @@
 import { api } from "./api.js";
 import { ask } from "./chat.js";
 import { goTo } from "./nav.js";
-import { clear, el, toast, when } from "./ui.js";
+import { clear, el, spotlight, toast, when } from "./ui.js";
 
 const PANELS = [
   ["autopilot", "Autopilot", "a song in, a rig and a listening test out"],
@@ -78,17 +78,11 @@ function locate(panel, find) {
 /** Go to the page and draw the eye to the control - it may take a moment to appear. */
 function pointAt(panel, find, first) {
   goTo(panel);
-  document.querySelectorAll(".spotlight").forEach((old) => old.classList.remove("spotlight"));
   const started = performance.now();
   const look = () => {
     const target = locate(panel, find);
     if (target && target.offsetParent !== null) {
-      target.scrollIntoView({ block: "center", behavior: "smooth" });
-      target.focus({ preventScroll: true });
-      target.classList.remove("spotlight");
-      void target.offsetWidth;
-      target.classList.add("spotlight");
-      setTimeout(() => target.classList.remove("spotlight"), 2000);
+      spotlight(target);
     } else if (performance.now() - started < 2500) {
       setTimeout(look, 100);
     } else if (first) {

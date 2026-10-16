@@ -31,6 +31,16 @@ export function clear(node) {
   return node;
 }
 
+/** Scroll ``target`` into view, focus it and ring it for a moment. */
+export function spotlight(target) {
+  document.querySelectorAll(".spotlight").forEach((old) => old.classList.remove("spotlight"));
+  target.scrollIntoView({ block: "center", behavior: "smooth" });
+  target.focus({ preventScroll: true });
+  void target.offsetWidth;
+  target.classList.add("spotlight");
+  setTimeout(() => target.classList.remove("spotlight"), 2000);
+}
+
 /* ------------------------------------------------------------------ toasts */
 
 export function toast(message, { kind = "", hint = null, timeout = 6000 } = {}) {

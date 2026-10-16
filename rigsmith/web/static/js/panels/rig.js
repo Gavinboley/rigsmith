@@ -7,7 +7,7 @@
  */
 
 import { api } from "../api.js";
-import { $, $$, attempt, clear, el, pct, prompt, toast } from "../ui.js";
+import { $, $$, attempt, clear, el, pct, prompt, spotlight, toast } from "../ui.js";
 import { onArrive, goTo } from "../nav.js";
 
 const SLOTS = 14;
@@ -600,6 +600,11 @@ export const onShow = () => refreshDrafts(current?.draft_id ?? null);
 
 // Arriving from a compiled recipe: open the rig it just produced, rather
 // than whatever was last selected.
-onArrive("rig", ({ draftId }) => {
-  if (draftId) attempt(() => refreshDrafts(draftId));
+onArrive("rig", ({ draftId, focus }) => {
+  if (!draftId) return;
+  attempt(async () => {
+    await refreshDrafts(draftId);
+    // Arriving to finish a tone by ear: straight to the words.
+    if (focus === "nudge") spotlight($("#nudge-text"));
+  });
 });

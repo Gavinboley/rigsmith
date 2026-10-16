@@ -974,7 +974,9 @@ def _stage_rig(run: Run, *, from_ears: bool = False) -> str:
     add("cab", best["cab"])
     if best.get("geq"):
         add("effect", "G EQ", wire_params({"model": "G EQ", "params": best["geq"], "readings": best.get("geq_db") or {}}))
-        shown = ", ".join(f"{k[4:]} {v:+.0f}" for k, v in (best.get("geq_db") or {}).items() if abs(v) >= 1)
+        from ..rig.sheet import label
+
+        shown = ", ".join(f"{label(k)} {v:+.0f} dB" for k, v in (best.get("geq_db") or {}).items() if abs(v) >= 1)
         run.note(f"a G EQ after the cab, fitted to the record ({shown}) - it measured closer; trust your ears over it")
     for block in after:
         add(block["category"], block["model"], wire_params(block))

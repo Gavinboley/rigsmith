@@ -1172,3 +1172,19 @@ def test_the_amp_can_be_turned_by_ear_from_the_board(browser, server):
         while rigs.get(draft_id).rig.blocks[0].params.get("Bass") != 0.34 and time.monotonic() < deadline + 5:
             time.sleep(0.1)
         assert rigs.get(draft_id).rig.blocks[0].params["Bass"] == 0.34
+
+
+def test_a_finished_run_hands_its_draft_over_to_be_finished_by_ear(browser, server):
+    from rigsmith.core import autopilot, rigs
+
+    draft_id = rigs.create("Finished").draft.draft_id
+    rigs.add_block(draft_id, "amp", "Some Amp")
+    autopilot.Run(run_id="by-ear-run", request=autopilot.Request(title="By Ear Song"), state="done", draft_id=draft_id).save()
+    with page_at(browser, server) as page:
+        page.click("#tabs .tab[data-panel='autopilot']")
+        page.click("#ap-runs .item:has-text('By Ear Song')")
+        page.click("#ap-current button:has-text('Finish by ear')")
+        page.wait_for_selector("#tabs .tab[data-panel='rig'][aria-selected='true']")
+        page.wait_for_selector("#nudge-text.spotlight")
+        assert page.evaluate("document.activeElement.id") == "nudge-text"
+        assert page.input_value("#draft-select") == draft_id

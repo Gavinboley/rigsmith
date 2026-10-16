@@ -215,6 +215,9 @@ function show(run) {
   if (run.song_id) links.append(el("button", { class: "btn small", text: "Song map", onclick: () => goTo("songs", { songId: run.song_id }) }));
   if (run.draft_id) {
     links.append(el("button", { class: "btn small", text: "Open the draft", onclick: () => goTo("rig", { draftId: run.draft_id }) }));
+    if (run.state === "done") {
+      links.append(el("button", { class: "btn small ghost", text: "Finish by ear", title: "Open the draft with the words ready: too boomy, a bit brighter, too much reverb", onclick: () => goTo("rig", { draftId: run.draft_id, focus: "nudge" }) }));
+    }
     links.append(el("button", { class: "btn small ghost", text: "Tone sheet", title: "The draft as you would dial it in by hand, and why - printable", onclick: () => window.open(`/api/drafts/${encodeURIComponent(run.draft_id)}/sheet.html`, "_blank") }));
   }
   if (run.ab_session) {
