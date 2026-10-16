@@ -9,6 +9,15 @@ same thing.
 The **Getting set up** card on the Autopilot page tracks most of this and
 links to each step.
 
+## 0. Before anything is plugged in
+
+Run `rigsmith doctor`. It says what this machine can and cannot do yet -
+the optional pieces that are missing, who would answer the chat, whether
+the Core is visible on the network - each with the line that fixes it.
+Two matter for this session: MIDI (`pip install 'rigsmith[midi]'`) loads
+rigs and verifies writes over the USB cable, and someone has to answer
+the chat - Claude Code signed in, or a local model loaded.
+
 ## 1. Choose who answers
 
 **Settings.** *Accuracy* uses Claude (through Claude Code, or the API) for
