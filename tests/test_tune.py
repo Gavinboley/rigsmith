@@ -234,6 +234,26 @@ def test_a_complaint_is_read_as_its_cure():
     assert nudge.parse("too purple").unknown == ["too purple"]
 
 
+def test_a_nudge_reaches_the_reverb_and_the_delay(workspace):
+    from rigsmith.core import rigs
+
+    draft_id = rigs.create("Wet").draft.draft_id
+    rigs.add_block(draft_id, "amp", "Some Amp")
+    rigs.add_block(draft_id, "effect", "Spring Reverb", params={"Mix": 0.3})
+    result = rigs.nudge(draft_id, "too much reverb, a bit brighter and more delay")
+    reverb = next(b for b in result.draft.rig.blocks if b.model_id == "Spring Reverb")
+    amp = next(b for b in result.draft.rig.blocks if b.category.value == "amp")
+    assert reverb.params["Mix"] == 0.22 and amp.params["Treble"] == 0.54
+    assert "(no delay block)" in result.summary, "what had nowhere to go is said"
+    rigs.add_block(draft_id, "effect", "Tape Echo")
+    echo = next(b for b in rigs.nudge(draft_id, "fewer repeats").draft.rig.blocks if b.model_id == "Tape Echo")
+    assert echo.params["Feedback"] == 0.42
+    dry = rigs.create("Dry").draft.draft_id
+    rigs.add_block(dry, "amp", "Some Amp")
+    with pytest.raises(Invalid, match="no reverb block"):
+        rigs.nudge(dry, "less reverb")
+
+
 def test_a_draft_is_nudged_on_its_amp(workspace):
     from rigsmith.core import rigs
 

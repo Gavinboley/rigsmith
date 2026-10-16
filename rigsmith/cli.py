@@ -355,11 +355,11 @@ def rig_doubling(draft_id: str, slot: int, mode: str, second: str | None) -> Non
 @rig.command("nudge")
 @click.argument("draft_id")
 @click.argument("how")
-@click.option("--slot", type=int, help="The block to turn; default the first amp.")
+@click.option("--slot", type=int, help="The block to turn; default the first amp, or the first reverb or delay for words about those.")
 @click.option("--live", is_flag=True, help="Also on the Core, when the rig it has loaded is this draft.")
 @handled
 def rig_nudge(draft_id: str, how: str, slot: int | None, live: bool) -> None:
-    """Turn the amp the way words say: "a bit brighter, tighter low end"."""
+    """Turn the rig the way words say: "a bit brighter, too much reverb"."""
     from .core import rigs
 
     click.echo(rigs.nudge(draft_id, how, slot=slot, live=live).summary)

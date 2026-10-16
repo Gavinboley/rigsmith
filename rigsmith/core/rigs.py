@@ -385,48 +385,85 @@ def set_param(draft_id: str, slot: int, name: str, value: Any) -> EditResult:
 
 
 def nudge(draft_id: str, text: str, *, slot: int | None = None, live: bool = False) -> EditResult:
-    """Move the amp's knobs the way the words say: "a bit brighter, tighter".
+    """Move the knobs the way the words say: "a bit brighter, too much reverb".
 
-    The amp is the first amp block unless ``slot`` names one. A control the
-    draft has not set starts from the catalog's default for it. ``live``
-    also sends the moves to the Core, when the rig it has loaded is this one
+    Amp words turn the first amp block, and "more reverb" or "fewer
+    repeats" the first reverb or delay with that control - or all of them
+    turn the block ``slot`` names. A control the draft has not set starts
+    from the catalog's default for it. ``live`` also sends the moves to the
+    Core, when the rig it has loaded is this one
     (:func:`rigsmith.core.devices.send_live`), so the change is heard at once.
     """
     from ..rig.catalog import get_catalog
     from ..tune import nudge as words
 
     draft = _get(draft_id)
-    if slot is not None:
-        block = _block(draft, slot)
-    else:
-        block = next((b for b in sorted(draft.rig.blocks, key=lambda b: b.slot) if b.category is BlockCategory.AMP), None)
-        if block is None:
-            raise Invalid("this draft has no amp block to turn", hint="Add one, or name the slot to nudge.")
     asked = words.parse(text)
     if not asked.moves:
         raise Invalid(
             f"nothing in '{text}' says which way to move",
-            hint="Try: brighter, darker, more or less gain, more or less bass, tighter, more or less mids, more bite, smoother, louder - with 'a bit' or 'a lot'; or what is wrong: too boomy, too much gain, not enough bite.",
+            hint="Try: brighter, darker, more or less gain, more or less bass, tighter, more or less mids, more bite, smoother, louder, more or less reverb or delay - with 'a bit' or 'a lot'; or what is wrong: too boomy, too much gain, not enough bite.",
         )
-    spec = get_catalog().get(block.model_id)
-    current = dict(block.params)
-    for control in asked.moves:
-        if control not in current:
-            param = spec.param(control) if spec else None
-            default = param.default if param is not None and isinstance(param.default, (int, float)) and not isinstance(param.default, bool) else 0.5
-            current[control] = float(default) if 0.0 <= float(default) <= 1.0 else 0.5
-    changed = words.apply(current, asked.moves)
-    for control, (_, after) in changed.items():
-        block.params[control] = after
-    summary = ", ".join(f"{control} {before:.0%} -> {after:.0%}" for control, (before, after) in changed.items()) or "already at the end of their travel"
-    message = f"slot {block.slot} ({block.model_id}): {summary}"
-    if live and changed:
-        import asyncio
+    catalog = get_catalog()
+    chosen = _block(draft, slot) if slot is not None else None
+    ordered = sorted(draft.rig.blocks, key=lambda b: b.slot)
 
-        from . import devices
+    def control_on(block, kind: str, name: str) -> str | None:
+        """What ``block`` calls the control, or None when it has none."""
+        if kind == "amp":
+            return name
+        spec = catalog.get(block.model_id)
+        names = words.EFFECT_CONTROLS.get(name, ())
+        if spec is None or not spec.params:
+            return names[0] if names else None
+        return next((n for n in names if spec.param(n) is not None), None)
 
-        sent = asyncio.run(devices.send_live(draft.rig, block.slot, {c: after for c, (_, after) in changed.items()}))
-        message += " - and on the Core" + (f", which kept its own {', '.join(sent['refused'])}" if sent["refused"] else "")
+    def is_kind(block, kind: str) -> bool:
+        if kind == "amp":
+            return block.category is BlockCategory.AMP
+        spec = catalog.get(block.model_id)
+        return block.category is BlockCategory.EFFECT and words.effect_kind(block.model_id, spec.subcategory if spec else None) == kind
+
+    moves: dict[int, dict[str, float]] = {}
+    missing: list[str] = []
+    for control, change in asked.moves.items():
+        kind, name = words.target(control)
+        candidates = [chosen] if chosen is not None else [b for b in ordered if is_kind(b, kind)]
+        found = next(((b, control_on(b, kind, name)) for b in candidates if control_on(b, kind, name)), None)
+        if found is None:
+            missing.append(f"no {kind} block" if chosen is None else f"no {name} control on slot {chosen.slot}")
+            continue
+        block, real = found
+        moves.setdefault(block.slot, {})[real] = moves.get(block.slot, {}).get(real, 0.0) + change
+    if not moves:
+        raise Invalid(f"this draft has {' or '.join(dict.fromkeys(missing))} to turn", hint="Add one, or name the slot to nudge.")
+
+    parts = []
+    for block_slot, block_moves in sorted(moves.items()):
+        block = _block(draft, block_slot)
+        spec = catalog.get(block.model_id)
+        current = dict(block.params)
+        for control in block_moves:
+            if control not in current:
+                param = spec.param(control) if spec else None
+                default = param.default if param is not None and isinstance(param.default, (int, float)) and not isinstance(param.default, bool) else 0.5
+                current[control] = float(default) if 0.0 <= float(default) <= 1.0 else 0.5
+        changed = words.apply(current, block_moves)
+        for control, (_, after) in changed.items():
+            block.params[control] = after
+        summary = ", ".join(f"{control} {before:.0%} -> {after:.0%}" for control, (before, after) in changed.items()) or "already at the end of their travel"
+        part = f"slot {block.slot} ({block.model_id}): {summary}"
+        if live and changed:
+            import asyncio
+
+            from . import devices
+
+            sent = asyncio.run(devices.send_live(draft.rig, block.slot, {c: after for c, (_, after) in changed.items()}))
+            part += " - and on the Core" + (f", which kept its own {', '.join(sent['refused'])}" if sent["refused"] else "")
+        parts.append(part)
+    message = "; ".join(parts)
+    if missing:
+        message += f" ({', '.join(dict.fromkeys(missing))})"
     if asked.unknown:
         message += f" (not understood: {', '.join(asked.unknown)})"
     return _finish(draft, message)

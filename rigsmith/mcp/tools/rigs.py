@@ -217,8 +217,9 @@ def nudge_tone(draft_id: str, how: str, slot: int | None = None) -> str:
     brighter", "tighter low end", "a lot more gain, less fizz" - or what is
     wrong with it: "too boomy", "too much gain", "not enough bite". Knows
     brighter/darker, more/less gain, bass, mids, treble and presence,
-    tighter, fuller, more bite, smoother, louder/quieter; "a bit" and "a
-    lot" scale it. Says what it moved and anything it did not understand."""
+    tighter, fuller, more bite, smoother, louder/quieter on the amp, and
+    more/less reverb or delay, wetter/drier and more/fewer repeats on the
+    first reverb or delay; "a bit" and "a lot" scale it. Says what it moved and anything it did not understand."""
     return rigs.nudge(draft_id, how, slot=slot).summary
 
 

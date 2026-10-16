@@ -2,7 +2,8 @@
 
 After listening, what a person knows is a direction, not a number. These
 are the directions guitarists use, each mapped to the amp controls that
-move a tone that way; "a bit", "a touch" and "a lot" scale the step. Just
+move a tone that way - or, for "more reverb" or "fewer repeats", to the
+reverb or delay; "a bit", "a touch" and "a lot" scale the step. Just
 as often what comes out is the complaint rather than the cure - "too
 boomy", "too much gain", "not enough bite" - so those are read as the
 direction that fixes them. It is deliberately a small vocabulary: anything
@@ -20,7 +21,9 @@ STEP = 0.08
 GENTLE = ("a bit", "slightly", "a touch", "a little", "a hair", "tad")
 STRONG = ("a lot", "much", "way", "far", "lots", "really")
 
-#: Each direction, and how far each control moves for one step of it.
+#: Each direction, and how far each control moves for one step of it. A
+#: control is the amp's, unless it names the effect it is on - "reverb:wet"
+#: is the first reverb's wet level, whatever that model calls it.
 DIRECTIONS: dict[str, dict[str, float]] = {
     "brighter": {"Treble": 1.0, "Presence": 1.0},
     "darker": {"Treble": -1.0, "Presence": -1.0},
@@ -64,6 +67,22 @@ DIRECTIONS: dict[str, dict[str, float]] = {
     "less boxy": {"Mid": -1.0},
     "more sparkle": {"Treble": 1.0},
     "crunchier": {"GainA": 1.0},
+    "more reverb": {"reverb:wet": 1.0},
+    "less reverb": {"reverb:wet": -1.0},
+    "more delay": {"delay:wet": 1.0},
+    "less delay": {"delay:wet": -1.0},
+    "wetter": {"reverb:wet": 1.0, "delay:wet": 1.0},
+    "drier": {"reverb:wet": -1.0, "delay:wet": -1.0},
+    "more repeats": {"delay:repeats": 1.0},
+    "fewer repeats": {"delay:repeats": -1.0},
+    "less repeats": {"delay:repeats": -1.0},
+}
+
+#: An effect's controls by what they do, and the names models give them, in
+#: the order to look for them.
+EFFECT_CONTROLS: dict[str, tuple[str, ...]] = {
+    "wet": ("Mix", "DelayWet", "Level"),
+    "repeats": ("Feedback", "DelayFdbk", "Fdbk"),
 }
 
 #: "Too <this>" -> the direction that fixes it.
@@ -90,6 +109,9 @@ COMPLAINTS: dict[str, str] = {
     "boxy": "less mids",
     "quiet": "louder",
     "loud": "quieter",
+    "wet": "drier",
+    "washy": "less reverb",
+    "dry": "wetter",
 }
 
 
@@ -123,6 +145,26 @@ def parse(text: str) -> Nudge:
         for control, weight in DIRECTIONS[found].items():
             result.moves[control] = result.moves.get(control, 0.0) + weight * scale
     return result
+
+
+def target(control: str) -> tuple[str, str]:
+    """``"reverb:wet"`` -> ``("reverb", "wet")``; an amp control -> ``("amp", control)``."""
+    kind, _, name = control.rpartition(":")
+    return kind or "amp", name
+
+
+def effect_kind(model_id: str, subcategory: str | None) -> str | None:
+    """"reverb" or "delay" for an effect model, or None.
+
+    By the catalog's subcategory, and by name as well: the Core files its
+    AIR Reverb and AIR Delay under vocal effects.
+    """
+    name = model_id.lower()
+    if subcategory == "reverb" or "verb" in name or "shimmer" in name:
+        return "reverb"
+    if subcategory == "delay" or "delay" in name or "echo" in name:
+        return "delay"
+    return None
 
 
 def apply(params: dict, moves: dict[str, float], *, default: float = 0.5) -> dict[str, tuple[float, float]]:
