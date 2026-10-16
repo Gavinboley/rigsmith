@@ -448,3 +448,21 @@ def test_a_fast_eighth_note_part_is_not_read_at_two_thirds():
                 audio[start : start + len(hit)] += hit
     tempo, _ = structure.estimate_tempo(audio, RATE)
     assert abs(tempo / bpm - 1) < 0.02, tempo
+
+
+def test_the_room_is_read_where_the_playing_stops():
+    """A dry lead's own string decay read as a plate; a long reverb read as nothing."""
+    from scipy.signal import fftconvolve
+
+    beat = 0.6
+    notes = [(b * beat, beat * 0.9, [64, 67, 69, 71, 74, 71, 69, 67][b % 8], 0.9) for b in range(40) if b % 16 < 14]
+    dry = SimAmp(Type=2, Gain=0.5).process(render_notes(notes, seed=4))
+    rng = np.random.default_rng(0)
+    rt60 = 1.8
+    t = np.arange(int(rt60 * 1.2 * RATE)) / RATE
+    ir = rng.normal(0, 1, len(t)) * 10 ** (-3 * t / rt60)
+    wet = fftconvolve(dry, ir / np.sqrt(np.sum(ir ** 2)))[: len(dry)]
+    hall = 0.75 * dry + 0.25 * wet / np.std(wet) * np.std(dry)
+    assert describe.sketch(dry, RATE, from_stem=False).space == "dry"
+    read = describe.sketch(hall, RATE, from_stem=False)
+    assert read.space == "a plate or hall", (read.decay_ms, read.space)

@@ -90,8 +90,9 @@ class Part:
 #: Bumped when the analysis learns something a stored map does not have, so
 #: a song mapped before can say so. 2: chorus and vibrato from pitch, tremolo
 #: only inside notes, gain read by how monophonic the part is. 3: deep
-#: tremolo heard at all, and every tremolo's depth.
-ANALYSIS_VERSION = 3
+#: tremolo heard at all, and every tremolo's depth. 4: the room measured
+#: where playing stops, so reverb is read rather than guessed.
+ANALYSIS_VERSION = 4
 
 
 @dataclass
@@ -159,7 +160,7 @@ class Song:
             lines.extend("  " + p.describe() for p in self.parts)
         lines.extend(f"  note: {n}" for n in self.notes)
         if self.stale:
-            lines.append(f"  note: mapped by an older analyser - run 'rigsmith song analyse {self.song_id}' again for what the newer one hears - deep tremolo and its depth, chorus, vibrato, a fairer gain reading")
+            lines.append(f"  note: mapped by an older analyser - run 'rigsmith song analyse {self.song_id}' again for what the newer one hears - the room's reverb, deep tremolo and its depth, chorus, vibrato, a fairer gain reading")
         return "\n".join(lines)
 
     @property
