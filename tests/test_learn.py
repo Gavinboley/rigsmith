@@ -527,6 +527,24 @@ def test_driven_chugs_on_the_low_e_are_read_as_low_es(gain):
     assert right >= 0.85 * len(truth), right
 
 
+@pytest.mark.parametrize("gain", [0.1, 0.5])
+def test_a_drop_a_riff_is_read_note_for_note(gain):
+    """A1 sat on the pitch tracker's floor and a 46 ms window held two and a
+    half of its cycles: every note read unclear, and the riff came back as
+    chords an octave up (F1 0.11)."""
+    from rigsmith.learn.pluck import render_notes
+    from rigsmith.learn.transcribe import transcribe
+    from rigsmith.loop.virtual import SimAmp
+
+    beat = 60 / 110
+    truth = [(b * beat + k * beat / 2, beat / 2 * 0.85, [33, 33, 36, 38][b % 4], 0.85) for b in range(32) for k in range(2)]
+    audio = SimAmp(Type=0 if gain < 0.3 else 2, Gain=gain).process(render_notes(truth, seed=5))
+    result = transcribe(audio, 48000, method="builtin", match_record_pitch=False)
+    assert result.mode == "monophonic"
+    right = sum(1 for start, _, midi, _ in truth if [round(e.midi) for e in result.events if abs(e.start - start) < 0.05] == [midi])
+    assert right >= 0.85 * len(truth), right
+
+
 def test_a_drop_d_riff_keeps_its_low_d():
     from rigsmith.learn.pluck import render_notes
     from rigsmith.learn.transcribe import transcribe

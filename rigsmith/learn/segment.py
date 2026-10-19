@@ -42,6 +42,8 @@ MIN_NOTE_S = 0.08
 #: Where the pitch is read: after the pick noise, before the decay thins out.
 PITCH_FROM_S = 0.04
 PITCH_TO_S = 0.30
+#: Below this, a note's clarity is measured over four of its cycles.
+LOW_NOTE_HZ = 75.0
 #: A note shorter than this is read from nearly its attack.
 SHORT_NOTE_S = 0.2
 SHORT_PITCH_FROM_S = 0.005
@@ -277,7 +279,22 @@ def _settled_pitch(segment: np.ndarray, sample_rate: int) -> tuple[float, float]
         return 0.0, float(np.median(clarities)) if clarities else 0.0
     # Octave errors are the autocorrelator's characteristic mistake; the
     # median of a handful of windows throws out the odd one.
-    return float(np.median(estimates)), float(np.median(clarities))
+    hz = float(np.median(estimates))
+    clarity = float(np.median(clarities))
+    # A 46 ms window holds two and a half cycles of a drop-A string, and the
+    # correlation of so few reads as unclear however clean the note is. A low
+    # note's clarity is measured over four cycles of it instead.
+    if hz < LOW_NOTE_HZ:
+        long_window = int(4 * sample_rate / hz)
+        longer = [
+            _estimate_f0(segment[start : start + long_window], sample_rate)[1]
+            for start in range(first, max(first + 1, len(segment) - long_window), long_window // 2)
+            if len(segment[start : start + long_window]) == long_window
+            and float(np.max(np.abs(segment[start : start + long_window]))) >= loudest * 0.03
+        ]
+        if longer:
+            clarity = max(clarity, float(np.median(longer)))
+    return hz, clarity
 
 
 # --------------------------------------------------------------------------

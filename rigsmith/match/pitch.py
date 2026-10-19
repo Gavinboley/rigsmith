@@ -30,10 +30,17 @@ A4_HZ = 440.0
 
 NOTE_NAMES = ("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
 
-#: The guitar's usable fundamental range, generously bounded: a 7-string low B
-#: is 61.7 Hz, and the 24th fret of the high E is 1319 Hz.
-MIN_F0 = 55.0
+#: The guitar's usable fundamental range, generously bounded: a drop-A
+#: seven-string's low A is 55 Hz and an eight-string's low F# 46 Hz, and
+#: the 24th fret of the high E is 1319 Hz.
+MIN_F0 = 40.0
 MAX_F0 = 1400.0
+
+#: A lag half as long whose correlation comes within this share of the
+#: strongest is the note; the strongest is then its octave below. Every
+#: note correlates at twice its period too, and with the floor low enough
+#: for a drop-A riff, an E2's doubled period is inside the search.
+SUBOCTAVE_SHARE = 0.9
 
 #: Deviation from concert pitch worth mentioning. Five cents is inaudible and
 #: within the estimator's own error; fifteen starts to move harmonics enough
@@ -177,6 +184,13 @@ def _estimate_f0(window: np.ndarray, sample_rate: int) -> tuple[float, float]:
 
     segment = correlation[min_lag : max_lag + 1]
     peak = int(np.argmax(segment)) + min_lag
+    # Prefer the shorter period when one half as long is nearly as strong.
+    while peak // 2 >= min_lag:
+        around = correlation[max(min_lag, peak // 2 - 2) : peak // 2 + 3]
+        shorter = int(np.argmax(around)) + max(min_lag, peak // 2 - 2)
+        if correlation[shorter] < SUBOCTAVE_SHARE * correlation[peak]:
+            break
+        peak = shorter
     clarity = float(correlation[peak] / correlation[0]) if correlation[0] else 0.0
     if clarity < MIN_CLARITY:
         return 0.0, clarity
