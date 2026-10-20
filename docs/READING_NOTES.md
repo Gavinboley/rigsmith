@@ -1,0 +1,84 @@
+# Reading a part's notes
+
+To test a tone against a record, rigsmith plays the record's part on your
+guitar - the same notes at the same moments - and runs that DI through the
+candidates. It reads the notes from the guitar stem. When it reads them
+wrong, every candidate is heard playing a different part from the record,
+and the search tunes the amp to make up for notes. So the notes are worth a
+glance before anything is tuned against them.
+
+## What it reads well
+
+Measured on synthetic parts, clean through high gain (F1 a note, 1.0 is every
+note right):
+
+| Part | Reads at |
+|---|---|
+| Single-note riffs, leads, palm-muted chugs | 0.98-1.00 |
+| Strummed triads, sevenths, eighth-note re-strums | 0.84-1.00 |
+| Power chords - E or drop C, two or three strings | 0.46-0.96 (high gain lowest) |
+| Arpeggios and Travis picking, each note left to ring | 0.62-1.00 |
+
+Chords are voiced the way they were played - a two-note E5 as two notes, a
+close triad close, a drop-D low string kept - by reading the octaves after
+each attack, not just the chord's name.
+
+## What a recording does to it, and what is done back
+
+- **A delay's repeats** read as notes played: a lead came back with twice
+  its notes. The echo's time, mix and feedback are read off the stem and
+  the delay is undone before the notes are read (delayed parts back from
+  0.6-0.9 to 0.91-0.93). The transcription says when it did.
+- **A drum kit bleeding into the stem** read as attacks - a chord on every
+  hi-hat. Attacks are read from the guitar's band, below 6 kHz.
+- **A bass bleeding in** rang an octave under the chords and was taken for
+  their root. A chord fits its octaves first.
+- **The first note** of a part cut on its downbeat used to go missing; it
+  is kept.
+- **The lowest string** is inferred from the stem, and a drop tuning played
+  mostly above its low string reads as standard. When the research names the
+  tuning (the recipe's), the notes are read down to it.
+
+## Checking them
+
+On a part's card, once its DI is rendered:
+
+- **heard as** - single notes, chords or an arpeggio, or "notes from the tab".
+- **notes** - the piano roll of what the DI plays, with the count and the
+  range. Click it to hear the DI from that moment. "136 notes, A1 to E6" is
+  a transcription to doubt; so is a lead two octaves under where it sits on
+  the record.
+- A render warns when notes go past a guitar's 24th fret or spread over
+  three octaves, and when they go below your guitar's lowest string.
+
+The tone sheet says what played the part into the rig, and autopilot's DI
+step says how the notes were read.
+
+## Putting them right
+
+1. **Read it another way.** "On my guitar" on the part asks how to read the
+   stem: let it decide, single notes, chords, or an arpeggio (one note per
+   pick, left to ring). The part keeps the reading, and autopilot uses it.
+2. **Give it a tab's MIDI.** A Guitar Pro or Songsterr export of the part,
+   aligned to the record by its notes. Or **save as MIDI** from the notes
+   view, fix the wrong note in a tab editor, and choose or drop the file
+   back in the same dialog.
+3. **Name the tuning.** Research records it (`set_recipe_guitar`); a drop
+   tuning it knows is read down to its low string.
+
+## Where it stops
+
+These still read poorly, and want basic-pitch or a tab:
+
+- open six-string chords (0.55-0.70),
+- slow, driven fingerpicking,
+- chugs among chord stabs in a drop tuning (0.1-0.4),
+- a clean arpeggio drenched in a long reverb (read as chords),
+- parts that switch between single notes and chords within a bar.
+
+**basic-pitch**, Spotify's transcriber, is used automatically once it can be
+run: `pip install 'rigsmith[transcribe]'`. It runs as its own command, so if
+it will not install on rigsmith's Python, install it apart -
+`pipx install basic-pitch --python 3.11` - and it is found on the PATH, or
+set `RIGSMITH_BASIC_PITCH` to its command. `rigsmith doctor`, and the setup
+card on the Autopilot page, say which one is used.

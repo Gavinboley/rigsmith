@@ -36,7 +36,8 @@ the parts that need the Core, your guitar or your copy of a song say so.
   the notes are read. Open six-string chords, slow driven fingerpicking,
   chugs among chord stabs in a drop tuning, and an arpeggio drenched in
   reverb want basic-pitch (`pip install 'rigsmith[transcribe]'`), used
-  automatically once installed - or a tab's MIDI. A part read the wrong way can be
+  automatically once installed - or a tab's MIDI.
+  [READING_NOTES.md](READING_NOTES.md) has it all in one place. A part read the wrong way can be
   re-read as single notes, chords or an arpeggio ("on my guitar" on its
   card), and keeps that reading for autopilot.
 - **Notes** on a rendered part (and on an autopilot run's DI) draws what

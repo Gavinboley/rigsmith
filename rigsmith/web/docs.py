@@ -19,6 +19,7 @@ GUIDES = {
     "first-session": "FIRST_SESSION.md",
     "local-models": "LOCAL_MODELS.md",
     "tone-matching": "TONE_MATCHING.md",
+    "reading-notes": "READING_NOTES.md",
     "protocol": "PROTOCOL.md",
 }
 
