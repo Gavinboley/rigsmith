@@ -39,6 +39,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -315,6 +316,35 @@ def _sounds_below(magnitude: np.ndarray, sample_rate: int, bottom: int) -> bool:
         if 0 < i < len(spectrum) - 1 and spectrum[i] >= floor and spectrum[i] > spectrum[i - 1] and spectrum[i] >= spectrum[i + 1]:
             return True
     return False
+
+
+#: The 5th and 7th harmonics of the low pitch the salience hears below E2,
+#: against its 4th, 6th and 8th, for that pitch to be a string. A B1 through
+#: a cab keeps too little of its fundamental for :func:`_sounds_below` (B
+#: standard read an octave up, F1 0.25-0.38), but sounds every harmonic -
+#: 0.50-0.62 from B standard to drop A. The salience's echo an octave under a
+#: note above has only that note's harmonics, the even ones: 0.36 at most on
+#: every E-standard part.
+LOW_STRING_ODD = 0.45
+
+
+def _string_below(magnitude: np.ndarray, frames, sample_rate: int, bottom: int) -> bool:
+    """Whether the pitch the salience hears most often below E2 is a string,
+    by its odd harmonics, when its fundamental is too faint to show."""
+    below = [(index, round(min(p for p, _ in found))) for index, found in enumerate(frames) if found]
+    below = [(index, pitch) for index, pitch in below if bottom <= pitch < 40 and index < len(magnitude)]
+    if len(below) < 10:
+        return False
+    pitch = Counter(p for _, p in below).most_common(1)[0][0]
+    spectrum = np.median(magnitude[[index for index, p in below if p == pitch]], axis=0)
+    freqs = np.fft.rfftfreq(N_FFT, 1 / sample_rate)
+    f0 = 440.0 * 2 ** ((pitch - 69) / 12)
+
+    def peak(hz: float) -> float:
+        band = (freqs >= hz * 0.985) & (freqs <= hz * 1.015)
+        return float(spectrum[band].max()) if band.any() else 0.0
+
+    return (peak(5 * f0) + peak(7 * f0)) / max(peak(4 * f0) + peak(6 * f0) + peak(8 * f0), 1e-12) >= LOW_STRING_ODD
 
 
 def infer_lowest(frames) -> int:
@@ -776,6 +806,13 @@ ECHO_MIN_MIX = 0.15
 #: The most of each repeat that is assumed to feed the next.
 ECHO_MAX_FEEDBACK = 0.7
 
+#: A steady low note puts the cepstrum's peaks at whole multiples of its
+#: period, and one of them can stand as tall as a faint delay: a dry drop-A
+#: riff showed an "echo" every 90.9 ms - five A1 cycles - at 15%. The note's
+#: own period then stands far taller than the lag (3.8-4.0x); under a real
+#: delay no fraction of the lag reached 1.5x.
+ECHO_PITCH_RATIO = 2.0
+
 
 def _without_echo(audio: np.ndarray, sample_rate: int) -> tuple[np.ndarray, str | None]:
     """The stem with its delay taken out, and a line saying so - or the stem.
@@ -810,6 +847,9 @@ def _without_echo(audio: np.ndarray, sample_rate: int) -> tuple[np.ndarray, str 
     mix = 2.0 * float(cepstrum[lag])
     if mix < ECHO_MIN_MIX:
         return audio, None
+    fractions = [float(cepstrum[max(1, round(lag / k) - 2) : round(lag / k) + 3].max()) for k in range(2, 9)]
+    if max(fractions) >= ECHO_PITCH_RATIO * float(cepstrum[lag]):
+        return audio, None  # a note's period, many times over - not an echo
     around = cepstrum[2 * lag - 3 : 2 * lag + 4]
     second = 2.0 * float(around[int(np.argmax(np.abs(around)))])
     feedback = float(np.clip((2.0 * second + mix * mix) / (2.0 * mix), 0.0, ECHO_MAX_FEEDBACK))
@@ -889,7 +929,7 @@ def transcribe(
     frames = salience_frames(magnitude, sample_rate, min_midi=min_midi, tuning_cents=result.tuning_cents)
     if auto_lowest:
         bottom = infer_lowest(frames)
-        if bottom < 40 and not _sounds_below(magnitude, sample_rate, bottom):
+        if bottom < 40 and not _sounds_below(magnitude, sample_rate, bottom) and not _string_below(magnitude, frames, sample_rate, bottom):
             # The salience credits a pitch 2/3 under a note - an A1 under a
             # low E - and a part that keeps returning to its low notes moves
             # the percentile there. Below E2 it has to be heard, too.

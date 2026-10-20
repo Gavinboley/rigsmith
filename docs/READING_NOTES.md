@@ -47,9 +47,15 @@ apart from a low riff in a drop tuning.
   their root. A chord fits its octaves first.
 - **The first note** of a part cut on its downbeat used to go missing; it
   is kept.
-- **The lowest string** is inferred from the stem, and a drop tuning played
-  mostly above its low string reads as standard. When the research names the
+- **The lowest string** is inferred from the stem - from its fundamental,
+  or, where a cab has taken that away (a B1 keeps little of it), from the
+  5th and 7th harmonics only a string sounds. B standard read an octave up
+  before (F1 0.38); it reads note for note. A drop tuning played mostly
+  above its low string still reads as standard. When the research names the
   tuning (the recipe's), the notes are read down to it.
+- **A low riff's own note** can stand in the cepstrum like a slapback - a
+  dry drop-A riff showed an "echo" every five A1 cycles - and is no longer
+  taken out as one.
 
 ## Checking them
 

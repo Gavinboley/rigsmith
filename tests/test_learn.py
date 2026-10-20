@@ -883,6 +883,38 @@ def test_a_drop_a_riff_is_read_note_for_note(gain):
     assert right >= 0.85 * len(truth), right
 
 
+@pytest.mark.parametrize("amp_type, gain", [(0, 0.1), (3, 0.85)])
+def test_a_b_standard_riff_is_read_at_its_own_octave(amp_type, gain):
+    """B1 through a cab keeps too little of its fundamental to be heard as
+    a string by it, and the riff came back an octave up (F1 0.38). Its 5th
+    and 7th harmonics are there; the salience's echo under a B2 has none."""
+    from rigsmith.learn.pluck import render_notes
+    from rigsmith.learn.transcribe import transcribe
+    from rigsmith.loop.virtual import SimAmp
+
+    beat = 60 / 100
+    truth = [(b * beat + k * beat / 2, beat / 2 * 0.9, [35, 35, 38, 35, 40, 38, 42, 41][(2 * b + k) % 8], 0.85) for b in range(32) for k in range(2)]
+    audio = SimAmp(Type=amp_type, Gain=gain).process(render_notes(truth, seed=5))
+    result = transcribe(audio, 48000, method="builtin", match_record_pitch=False)
+    right = sum(1 for start, _, midi, _ in truth if [round(e.midi) for e in result.events if abs(e.start - start) < 0.05] == [midi])
+    assert right >= 0.85 * len(truth), right
+
+
+@pytest.mark.parametrize("gain", [0.5, 0.85])
+def test_a_dry_low_riff_is_not_given_an_echo(gain):
+    """Five A1 cycles are 90.9 ms, and the riff's steady low note stood in
+    the cepstrum there as tall as a 15% slapback - which was "taken out"."""
+    from rigsmith.learn.pluck import render_notes
+    from rigsmith.learn.transcribe import transcribe
+    from rigsmith.loop.virtual import SimAmp
+
+    beat = 60 / 100
+    truth = [(b * beat + k * beat / 2, beat / 2 * 0.9, [33, 33, 36, 38][(2 * b + k) % 4], 0.85) for b in range(32) for k in range(2)]
+    audio = SimAmp(Type=2 if gain < 0.7 else 3, Gain=gain).process(render_notes(truth, seed=5))
+    result = transcribe(audio, 48000, method="builtin", match_record_pitch=False)
+    assert not any("echo" in note for note in result.notes_text), result.notes_text
+
+
 def test_a_drop_d_riff_keeps_its_low_d():
     from rigsmith.learn.pluck import render_notes
     from rigsmith.learn.transcribe import transcribe
