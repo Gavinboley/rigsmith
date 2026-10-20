@@ -37,6 +37,14 @@ HOP = 256
 #: Two onsets closer than this are one onset with a messy attack.
 MIN_GAP_S = 0.06
 
+#: Flux is read up to here for onsets. Above it a guitar has little left to
+#: rise, and a drum bleeding into a separated stem has plenty - a hi-hat 35 dB
+#: under the guitar is a huge rise in bins the guitar left near silent. Read
+#: over every bin, bleed at -25 dB turned clean power chords into a chord on
+#: every eighth (F1 0.92 -> 0.61) and high-gain re-strums into a third of
+#: themselves (0.33); read to 6 kHz, 0.91 and 0.86.
+FLUX_BAND_HZ = 6000.0
+
 #: A note shorter than this has nothing to sample.
 MIN_NOTE_S = 0.08
 
@@ -146,7 +154,7 @@ def _frames(audio: np.ndarray, n_fft: int = N_FFT, hop: int = HOP) -> np.ndarray
     return np.abs(np.fft.rfft(frames * window, axis=1))
 
 
-def onset_strength(audio: np.ndarray, sample_rate: int) -> np.ndarray:
+def onset_strength(audio: np.ndarray, sample_rate: int, *, band_hz: float | None = None) -> np.ndarray:
     """Spectral flux with a small frequency max-filter (SuperFlux-style).
 
     The max-filter keeps vibrato and slight pitch drift from reading as a
@@ -154,10 +162,13 @@ def onset_strength(audio: np.ndarray, sample_rate: int) -> np.ndarray:
     the loudest of its neighbours in the previous frame, not its old bin.
     Bins more than 60 dB under the loudest in the file are left out, because
     noise twitching near the floor rises in half of them every frame.
+    ``band_hz`` leaves out the bins above it (see :data:`FLUX_BAND_HZ`).
     """
     magnitude = _frames(np.asarray(audio, dtype=np.float64))
     if len(magnitude) < 2:
         return np.zeros(len(magnitude))
+    if band_hz:
+        magnitude = magnitude[:, : int(band_hz / (sample_rate / N_FFT)) + 1]
     top = float(magnitude.max()) or 1.0
     gated = np.maximum(magnitude, top * 1e-3)
     log = 20 * np.log10(gated / top)
@@ -342,7 +353,7 @@ def detect_onsets(audio, sample_rate: int, *, sensitivity: float = 1.0) -> list[
     audio = np.asarray(audio, dtype=np.float64)
     if audio.ndim > 1:
         audio = audio.mean(axis=1)
-    strength = onset_strength(audio, sample_rate)
+    strength = onset_strength(audio, sample_rate, band_hz=FLUX_BAND_HZ)
     peaks = [p for p in _pick_peaks(strength, sample_rate, sensitivity=sensitivity) if p >= EDGE_FRAMES]
     envelope = _envelope_db(audio, sample_rate)
     needed = rise_threshold(envelope)
@@ -392,8 +403,19 @@ def pitch_onsets(audio, sample_rate: int) -> PitchOnsets:
     magnitude = _frames(audio)
     if len(magnitude) < 2:
         return PitchOnsets([], 0.0, 0.0)
-    strength = onset_strength(audio, sample_rate)
-    peaks = [p for p in _pick_peaks(strength, sample_rate, sensitivity=PITCH_ONSET_SENSITIVITY) if p >= EDGE_FRAMES]
+    # Candidates from the whole spectrum, and from the guitar's band where
+    # the whole spectrum has none: a driven Travis pattern's picks show mostly
+    # above the band, while a drum's bleed there sets a threshold an
+    # arpeggio's own attacks fall under. A drum brings no new pitch, so the
+    # confirmation below still keeps it out.
+    gap = max(1, int(MIN_GAP_S * sample_rate / HOP))
+    full = _pick_peaks(onset_strength(audio, sample_rate), sample_rate, sensitivity=PITCH_ONSET_SENSITIVITY)
+    banded = _pick_peaks(onset_strength(audio, sample_rate, band_hz=FLUX_BAND_HZ), sample_rate, sensitivity=PITCH_ONSET_SENSITIVITY)
+    candidates = sorted(full + [b for b in banded if all(abs(b - f) >= gap for f in full)])
+    peaks = []
+    for peak in candidates:
+        if peak >= EDGE_FRAMES and (not peaks or peak - peaks[-1] >= gap):
+            peaks.append(peak)
     envelope = _envelope_db(audio, sample_rate)
     needed = rise_threshold(envelope)
     top = float(magnitude.max()) or 1.0

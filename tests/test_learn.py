@@ -574,6 +574,54 @@ def test_a_hum_under_a_chord_is_not_taken_for_its_root():
     assert events and min(e.midi for e in events) >= 43, [e.midi for e in events]
 
 
+def _drum_bleed(length, level_db, reference, bpm=110, seed=0):
+    """Eighth-note hi-hats and a snare on two and four, ``level_db`` under
+    ``reference`` - what a separated stem keeps of the kit."""
+    rng = np.random.default_rng(seed)
+    out = np.zeros(length)
+    step = 60 / bpm / 2
+    for k in range(int(length / RATE / step) + 1):
+        start = int(k * step * RATE)
+        if k % 2:
+            n = int(0.12 * RATE)
+            hit = rng.normal(0, 1, n) * np.exp(-np.arange(n) / (0.03 * RATE))
+        else:
+            n = int(0.04 * RATE)
+            hit = np.diff(rng.normal(0, 1, n + 1)) * np.exp(-np.arange(n) / (0.008 * RATE))
+        out[start : start + n] += hit[: max(0, length - start)]
+    return out * np.sqrt(np.mean(reference ** 2)) / np.sqrt(np.mean(out ** 2)) * 10 ** (level_db / 20)
+
+
+def test_drum_bleed_does_not_become_a_chord_on_every_hit():
+    """Flux read over every bin took a hi-hat 25 dB under the guitar - a big
+    rise where the guitar leaves the spectrum near silent - for an attack:
+    power chords came back as a chord on every eighth (F1 0.92 -> 0.61)."""
+    from rigsmith.loop.virtual import SimAmp
+
+    beat = 60 / 110
+    truth = []
+    for b in range(16):
+        root = [40, 43, 45, 38][(b // 2) % 4]
+        truth += [(b * beat, beat * 0.9, m, 0.8) for m in (root, root + 7)]
+    audio = SimAmp(Type=0, Gain=0.1).process(render_notes(truth, seed=5))
+    result = transcribe(audio + _drum_bleed(len(audio), -25, audio), RATE, method="builtin", match_record_pitch=False)
+    attacks = {round(e.start, 1) for e in result.events}
+    assert len(attacks) <= 18, f"{len(attacks)} chord attacks for 16 chords"
+
+
+def test_an_arpeggio_under_drum_bleed_keeps_its_picks():
+    """Drum peaks over the whole spectrum set the threshold a driven
+    arpeggio's own picks fell under: half its notes went missing."""
+    from rigsmith.loop.virtual import SimAmp
+
+    truth = _arpeggio()
+    audio = SimAmp(Type=3, Gain=0.85).process(render_notes(truth, seed=5))
+    result = transcribe(audio + _drum_bleed(len(audio), -25, audio), RATE, method="builtin", match_record_pitch=False)
+    assert result.mode == "arpeggio"
+    hits = sum(any(abs(e.start - t) < 0.05 and abs(e.midi - m) < 0.5 for e in result.events) for t, _, m, _ in truth)
+    assert hits >= 0.6 * len(truth), hits
+
+
 def test_a_close_triad_is_voiced_the_way_it_was_played():
     """Every triad came back as a barre from its root - E-G#-B as E-B-E-G#-B."""
     beat = 60 / 110

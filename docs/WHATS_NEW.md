@@ -31,7 +31,8 @@ the parts that need the Core, your guitar or your copy of a song say so.
   chugs, strummed and power chords read right through gain - voiced the way
   they were played, a two-note E5 as two notes, a close triad close, a
   drop-D low string kept - and arpeggios and Travis-style picking note for
-  note, each left to ring. Open six-string chords and slow driven
+  note, each left to ring; a drum kit bleeding into a separated stem is not
+  taken for attacks. Open six-string chords and slow driven
   fingerpicking want basic-pitch (`pip install 'rigsmith[transcribe]'`),
   which is used automatically once installed. A part read the wrong way can be
   re-read as single notes, chords or an arpeggio ("on my guitar" on its
