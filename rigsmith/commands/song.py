@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import click
 
 from ..clikit import _emit, handled
@@ -229,6 +231,33 @@ def song_di(song_id, part_id, profile_id, midi_path, track, text, power_chords, 
             like=like, amount=amount, reading=reading, progress=bar,
         )
     click.echo(result.render())
+
+
+@group.command("notes")
+@click.argument("song_id")
+@click.argument("part_id")
+@click.option("--midi-out", type=click.Path(path_type=Path), help="Copy the notes out as MIDI, to fix one in a tab editor.")
+@handled
+def song_notes(song_id, part_id, midi_out) -> None:
+    """The notes PART_ID's rendered DI plays: how they were heard, their range."""
+    import shutil
+
+    from ..core import songs
+    from ..learn.instrument import midi_to_note
+    from ..learn.synth import NoteEvent
+    from ..learn.transcribe import describe_events
+
+    notes = songs.part_notes(song_id, part_id)
+    events = [NoteEvent.from_dict(e) for e in notes["events"]]
+    heard = f", heard as {notes['heard_as']}" if notes.get("heard_as") else ""
+    span = f", {midi_to_note(min(e.midi for e in events))} to {midi_to_note(max(e.midi for e in events))}" if events else ""
+    click.echo(f"{notes['label']}: {len(events)} notes from {notes['source']}{heard}{span}")
+    click.echo(describe_events(events, limit=len(events)))
+    if midi_out:
+        if not notes.get("midi_path"):
+            raise click.ClickException("no MIDI was kept with this part's DI - render it again")
+        shutil.copyfile(notes["midi_path"], midi_out)
+        click.echo(f"MIDI written to {midi_out} - fix it, then: rigsmith song di {song_id} {part_id} <guitar> --midi {midi_out}")
 
 
 @group.command("take")

@@ -50,6 +50,8 @@ On a part's card, once its DI is rendered:
   the record.
 - A render warns when notes go past a guitar's 24th fret or spread over
   three octaves, and when they go below your guitar's lowest string.
+- From the command line: `rigsmith song notes <song> <part>`, with
+  `--midi-out` for the MIDI.
 
 The tone sheet says what played the part into the rig, and autopilot's DI
 step says how the notes were read.

@@ -568,6 +568,16 @@ def test_a_rendered_part_s_notes_can_be_read_back(workspace):
     assert [round(e["midi"]) for e in notes["events"]] == [52]
     assert notes["duration"] == 4.0 and notes["source"] == "transcribed" and notes["midi_path"]
 
+    # And from the command line, the notes and their MIDI to fix.
+    from click.testing import CliRunner
+
+    from rigsmith.cli import main
+
+    out = workspace / "fix-me.mid"
+    result = CliRunner().invoke(main, ["song", "notes", made.song_id, "intro-1-stem", "--midi-out", str(out)])
+    assert result.exit_code == 0, result.output
+    assert "1 notes from transcribed, E3 to E3" in result.output and out.is_file()
+
 
 def test_a_researched_tuning_sets_the_lowest_string_the_notes_are_read_to(workspace, monkeypatch):
     """Inferred from the stem, a drop-C part of chords and chugs read as E
