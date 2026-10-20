@@ -533,6 +533,22 @@ def test_a_power_chord_is_played_back_without_a_third(amp_type, gain, most_third
     assert np.median(sizes) <= 3, "two or three strings, not a barre"
 
 
+def test_a_drop_d_power_chord_keeps_its_low_d_beside_e_chords():
+    """With E2 played too, a whole-stem spectrum cannot part D2 from it; the
+    lowest string was taken as E2 and every D5 came back an octave up."""
+    from rigsmith.loop.virtual import SimAmp
+
+    beat = 60 / 110
+    truth = []
+    for b in range(32):
+        root = [40, 43, 45, 38][(b // 2) % 4]
+        truth += [(b * beat, beat * 0.9, m, 0.8) for m in (root, root + 7)]
+    audio = SimAmp(Type=0, Gain=0.1).process(render_notes(truth, seed=5))
+    result = transcribe(audio, RATE, method="builtin", match_record_pitch=False)
+    lows = [min((round(e.midi) for e in result.events if abs(e.start - t) < 0.06), default=None) for t, _, m, _ in truth if m == 38]
+    assert sum(low == 38 for low in lows) >= 0.75 * len(lows), lows
+
+
 def test_a_close_triad_is_voiced_the_way_it_was_played():
     """Every triad came back as a barre from its root - E-G#-B as E-B-E-G#-B."""
     beat = 60 / 110

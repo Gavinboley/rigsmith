@@ -1085,7 +1085,14 @@ def _chords_from_chroma(audio: np.ndarray, sample_rate: int, onsets, min_midi: i
                 score, root, name = best_lower
         played = [bass for bass in basses if int(round(bass)) % 12 == root]
         base = int(round(played[0])) if played else min_midi + ((root - min_midi) % 12)
-        while base < min_midi:
+        # The lowest string inferred for the whole stem misses a drop D's low
+        # string when E2 is played too: a whole-stem spectrum cannot part
+        # D2's lobe from E2's, so every D5 came back an octave up. A root
+        # that is itself the lowest strong pitch after the attack - measured
+        # over half a second, where the two part - is the note played, even
+        # below that floor. A fifth below, only offered, is not.
+        heard = bool(played) and played[0] == basses[0] and base >= TUNING_BOTTOMS[-1]
+        while base < min_midi and not heard:
             base += 12
         for tone in _voice(audio, sample_rate, start, end, base, name) or CHORD_VOICINGS[name]:
             events.append(NoteEvent(start=float(start), duration=max(0.05, end - start - 0.02), midi=float(base + tone), velocity=0.75))
