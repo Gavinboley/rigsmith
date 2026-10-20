@@ -33,9 +33,10 @@ the parts that need the Core, your guitar or your copy of a song say so.
   drop-D low string kept - and arpeggios and Travis-style picking note for
   note, each left to ring; a drum kit or a bass bleeding into a separated
   stem is not taken for notes, and a delay's repeats are taken out before
-  the notes are read. Open six-string chords and slow driven
-  fingerpicking want basic-pitch (`pip install 'rigsmith[transcribe]'`),
-  which is used automatically once installed. A part read the wrong way can be
+  the notes are read. Open six-string chords, slow driven fingerpicking,
+  chugs among chord stabs in a drop tuning, and an arpeggio drenched in
+  reverb want basic-pitch (`pip install 'rigsmith[transcribe]'`), used
+  automatically once installed - or a tab's MIDI. A part read the wrong way can be
   re-read as single notes, chords or an arpeggio ("on my guitar" on its
   card), and keeps that reading for autopilot.
 - **Notes** on a rendered part (and on an autopilot run's DI) draws what
