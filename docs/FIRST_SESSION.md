@@ -55,6 +55,13 @@ rigsmith learn guide chromatic --click
 `rigsmith[separation]` makes one with Demucs. **Map it**, then pick the part
 you are chasing in the map.
 
+Then check the notes before anything is tuned against them: **on my guitar**
+on the part renders it, and **notes** draws what it plays. A lead an octave
+out, or a chord on every pick where the record plays an arpeggio, is fixed
+in the same dialog - read the stem as single notes, chords or an arpeggio,
+or give it a tab's MIDI (**save as MIDI**, fix the note in a tab editor,
+choose the file back). The part keeps its reading, and autopilot uses it.
+
 ## 4. Pair with the Core
 
 **Device -> Pairing -> Pair**: the PIN appears on the page and on the Core's
