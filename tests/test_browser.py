@@ -1035,6 +1035,11 @@ def test_the_guitar_says_how_much_of_the_neck_it_has_heard(browser, server):
         # Counted to the 12th fret, as it says - six strings, frets 0-12.
         heard, of = stat.locator(".v").inner_text().split(" ")[0].split("/")
         assert of == "78" and 0 < int(heard) <= 78
+        # How far up the neck is asked only of the session that uses it.
+        assert page.locator("#guide-frets").is_hidden()
+        page.select_option("#guide-card select[aria-label='What to play']", "chromatic")
+        assert page.locator("#guide-frets").is_visible()
+        assert page.input_value("#guide-frets input") == "12"
 
 
 @contextmanager
@@ -1200,6 +1205,23 @@ def test_tuning_asks_for_a_part_only_once_there_is_a_song(browser, server):
         song.select_option(label="a file instead")
         page.wait_for_function("document.querySelectorAll('#tune-body select')[1].disabled")
         assert "unused" not in page.locator("#tune-body .dropzone").get_attribute("class")
+
+
+def test_a_loop_route_is_asked_for_only_when_the_core_plays(browser, server):
+    with page_at(browser, server) as page:
+        page.click("#tabs .tab[data-panel='autopilot']")
+        route = page.locator("section[data-panel='autopilot'] label.field", has_text="Loop route")
+        route.wait_for(state="attached")
+        assert route.is_hidden(), "the simulated bench needs no route"
+        page.locator("section[data-panel='autopilot'] label.field", has_text="Bench").locator("select").select_option("device")
+        assert route.is_visible()
+
+        page.click("#tabs .tab[data-panel='tune']")
+        route = page.locator("#tune-body label.field", has_text="Loop route")
+        route.wait_for(state="attached")
+        assert route.is_hidden()
+        page.locator("#tune-body label.field", has_text="Renderer").locator("select").select_option("loop")
+        assert route.is_visible()
 
 
 def test_a_tab_s_midi_can_be_chosen_in_the_render_dialog(browser, server, tmp_path):

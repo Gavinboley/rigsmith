@@ -87,13 +87,17 @@ function renderForm() {
     }
   };
   const progress = el("div", { class: "hint", id: "tune-progress" });
+  // The loop route is only asked for when the Core is doing the rendering.
+  const routeField = field("Loop route", form.route);
+  form.renderer.addEventListener("change", () => (routeField.hidden = form.renderer.value !== "loop"));
+  routeField.hidden = true;
 
   host.append(
     el(
       "div",
       { class: "card hero" },
-      el("div", { class: "form-grid" }, field("Song", form.song), field("Part", form.part), form.target, field("DI", form.di), field("Mode", form.mode), field("Renderer", form.renderer), field("Loop route", form.route), field("Rig", form.draft)),
-      el("div", { class: "row" }, el("span", { class: "hint", text: "knobs:" }), ...form.knobs.map((box) => el("label", { class: "check hint", title: box.value }, box, box.value === "GainA" ? "Gain" : box.value)), el("span", { class: "grow" }), el("span", { class: "hint", text: "budget" }), form.budget, form.method),
+      el("div", { class: "form-grid" }, field("Song", form.song), field("Part", form.part), form.target, field("DI", form.di), field("Mode", form.mode), field("Renderer", form.renderer), routeField, field("Rig", form.draft)),
+      el("div", { class: "row" }, el("span", { class: "hint", text: "knobs:" }), ...form.knobs.map((box) => el("label", { class: "check hint", title: box.value }, box, box.value === "GainA" ? "Gain" : box.value)), el("span", { class: "grow" }), el("label", { class: "check hint" }, "budget", form.budget, form.method)),
       el("div", { class: "notice", text: "Performance mode needs the DI to be the part played on your guitar, on its clock (Songs - 'on my guitar'). Distribution mode works with any DI but barely constrains the low end." }),
       el("div", { class: "row" }, progress, el("span", { class: "grow" }), el("button", { class: "btn primary", text: "Start tuning", onclick: start }))
     ),

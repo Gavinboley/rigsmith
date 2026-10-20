@@ -125,9 +125,13 @@ function sessionCard() {
   for (const [value, label] of [["quick", "Quick - four notes a string (1 min)"], ["chromatic", "Every note on every string (most accurate)"], ["dynamics", "Dynamics - soft, medium, hard"], ["techniques", "Techniques - mutes and chords"], ["free", "Anything - play freely"]]) {
     protocol.append(el("option", { value, text: label }));
   }
-  const frets = el("input", { type: "number", class: "narrow", value: 12, min: 1, max: 24, title: "frets (chromatic)" });
-  const device = el("select", { title: "Where your guitar is plugged in" });
-  const channel = el("input", { type: "number", class: "narrow", value: 1, min: 1, max: 32, title: "input channel" });
+  // How far up the neck only matters to "every note"; the other sessions
+  // have their own frets, so a bare "12" beside them only raised a question.
+  const frets = el("input", { type: "number", class: "narrow", value: 12, min: 1, max: 24, "aria-label": "Highest fret to play" });
+  const fretsField = el("label", { class: "check hint", id: "guide-frets", hidden: true }, "to fret", frets);
+  protocol.addEventListener("change", () => (fretsField.hidden = protocol.value !== "chromatic"));
+  const device = el("select", { title: "Where your guitar is plugged in", "aria-label": "Where your guitar is plugged in" });
+  const channel = el("input", { type: "number", class: "narrow", value: 1, min: 1, max: 32, "aria-label": "Input channel" });
   const zone = dropZone({ label: "...or drop a recording of the protocol", accept: "audio/*" });
   const stage = el("div", { id: "guide-stage" });
 
@@ -170,7 +174,7 @@ function sessionCard() {
   };
 
   box.append(
-    el("div", { class: "row" }, protocol, frets, el("span", { class: "hint", text: "plugged into" }), device, el("span", { class: "hint", text: "ch" }), channel),
+    el("div", { class: "row" }, protocol, fretsField, el("span", { class: "hint", text: "plugged into" }), device, el("label", { class: "check hint" }, "ch", channel)),
     el(
       "div",
       { class: "row" },

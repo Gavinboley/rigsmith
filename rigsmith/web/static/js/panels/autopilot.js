@@ -130,6 +130,11 @@ function renderForm() {
   };
   bench.addEventListener("change", showHabits);
   showHabits();
+  // The route is only asked for when the bench is the Core.
+  const routeField = field("Loop route", route);
+  const showRoute = () => (routeField.hidden = bench.value !== "device");
+  bench.addEventListener("change", showRoute);
+  showRoute();
   const start = el("button", { class: "btn primary", text: "Start autopilot" });
   start.onclick = () =>
     attempt(async () => {
@@ -162,7 +167,7 @@ function renderForm() {
     el("div", { class: "hint", id: "ap-song-hint" }),
     el("div", { class: "row" }, query, el("button", { class: "btn", text: "Look up", onclick: search })),
     results,
-    el("div", { class: "form-grid", style: "margin-top:12px" }, field("Title", title), field("Artist", artist), field("Your guitar", profile), field("Bench", bench), field("Loop route (device bench)", route)),
+    el("div", { class: "form-grid", style: "margin-top:12px" }, field("Title", title), field("Artist", artist), field("Your guitar", profile), field("Bench", bench), routeField),
     el("div", { class: "form-grid", style: "margin-top:12px" }, zones.mix, zones.stem, zones.midi, zones.take),
     libraryHint,
     el(
