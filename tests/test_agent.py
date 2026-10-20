@@ -431,3 +431,12 @@ def test_stop_stops_a_local_model_mid_reply():
     conversation.add_user("talk")
     result = runner.step_loop(conversation, [], emit=lambda e: None, approve=lambda c: True, cancelled=cancelled)
     assert result.stopped == "cancelled" and not result.text
+
+
+def test_qwen_4_is_picked_ahead_of_an_older_qwen_beside_it():
+    import httpx
+
+    def handler(request):
+        return httpx.Response(200, json={"data": [{"id": "qwen3-8b"}, {"id": "qwen4-27b-instruct"}, {"id": "text-embedding-qwen3"}]})
+
+    assert local(httpx.MockTransport(handler)).pick_model() == "qwen4-27b-instruct"

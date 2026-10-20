@@ -56,8 +56,9 @@ the Qwen 4 architecture), despite only 6B active parameters: it is 180B in
 total, about 100 GB even at 4 bits, under its own qwen-community-1.0
 license, and its card names no tool-call format - a 128 GB workstation
 might hold it, a desktop GPU will not. Qwen 4 (including a 27B open-weights
-tier) was announced in September 2026 but, as of mid-October, had not
-shipped and had no date.
+tier) was announced in September 2026 but, as of 20 October, had not
+shipped and had no date; when it does and is loaded, the auto-pick puts it
+ahead of any older Qwen on the same server.
 
 ## What rigsmith does about Qwen's quirks
 

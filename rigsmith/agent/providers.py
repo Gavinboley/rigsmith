@@ -35,9 +35,13 @@ from dataclasses import dataclass, field
 from ..core.errors import Invalid, Unavailable
 
 #: Local models in rough order of how well they drive ~20 tools, best first.
-#: Matched against whatever the server says it has loaded.
+#: Matched against whatever the server says it has loaded. Qwen 4's
+#: open-weight model was announced in September 2026 and not out by mid
+#: October; when it is loaded, it goes first, ahead of any older Qwen
+#: beside it (unmeasured, but each generation so far has called tools
+#: better than the last).
 LOCAL_PREFERENCE = (
-    "qwen3.8-27b", "qwen3.6-27b", "qwen3.5-27b", "qwen3.6-35b-a3b", "qwen3.5-35b-a3b",
+    "qwen4", "qwen-4", "qwen3.8-27b", "qwen3.6-27b", "qwen3.5-27b", "qwen3.6-35b-a3b", "qwen3.5-35b-a3b",
     "qwen3-30b-a3b-instruct-2507", "qwen3-30b-a3b-thinking-2507", "qwen3-30b-a3b",
     "qwen3-coder-30b", "qwen3-32b", "qwen3-14b", "qwen3.5-9b", "qwen3-8b",
     "qwen3-4b-instruct-2507", "qwen3-4b", "qwen",
