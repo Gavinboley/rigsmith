@@ -162,6 +162,11 @@ def _periodicity(audio, sample_rate, *, n: int = 2048, hop: int = 1024) -> float
     return float(np.median((correlation[:, low:high] / zero).max(axis=1)))
 
 
+#: How much of the crest's drive evidence the flatness needs before it fully
+#: counts (see :func:`_gain`).
+FLATNESS_NEEDS_CREST = 0.4
+
+
 def _gain(frames, freqs, crest_db, periodicity: float | None = None) -> float:
     """0-1 drive estimate.
 
@@ -181,6 +186,12 @@ def _gain(frames, freqs, crest_db, periodicity: float | None = None) -> float:
     The scales were set on the simulated amp's voicings; a mastered stem's
     limiter lowers the crest of everything, which is the main reason this
     reads a little high on records.
+
+    Flatness counts only as far as the crest agrees (``FLATNESS_NEEDS_CREST``):
+    a pick's attack is broadband too, and clean chugs and arpeggios, all
+    attacks, sat at 0.34-0.49 flatness with a clean crest - they read as
+    edge of breakup or crunch. Across 88 synthetic parts and drives the
+    range came out right 52 times against 49, within one 82 against 79.
     """
     if not len(frames):
         return 0.0
@@ -196,6 +207,7 @@ def _gain(frames, freqs, crest_db, periodicity: float | None = None) -> float:
         f_term = np.clip((flatness - 0.2) / 0.2, 0, 1)
     else:
         f_term = np.clip((flatness - 0.2) / 0.12, 0, 1)
+    f_term *= min(1.0, float(c_term) / FLATNESS_NEEDS_CREST)
     return float(np.clip(0.6 * c_term + 0.4 * f_term, 0, 1))
 
 

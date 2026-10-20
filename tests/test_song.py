@@ -454,6 +454,20 @@ def test_a_fast_eighth_note_part_is_not_read_at_two_thirds():
     assert abs(tempo / bpm - 1) < 0.02, tempo
 
 
+def test_a_clean_part_that_is_all_attacks_reads_clean():
+    """A pick's attack is broadband, and clean sixteenth-note chugs and
+    arpeggios - all attacks - looked as filled-in as distortion: they read as
+    crunch and edge of breakup. Their crest said clean all along."""
+    beat = 60 / 110
+    chugs = [(b * beat + k * beat / 4, beat / 8, 40 if b % 8 < 6 else 43, 0.85) for b in range(24) for k in range(4)]
+    arpeggio = [(b * beat + k * beat / 4, beat * 0.8, root + step, 0.7) for b in range(24) for k, step in enumerate((0, 4, 7, 12)) for root in [(52, 57, 55, 50)[(b // 4) % 4]]]
+    for notes in (chugs, arpeggio):
+        clean = SimAmp(Type=0, Gain=0.1).process(render_notes(notes, seed=5))
+        assert describe.sketch(clean, RATE, from_stem=False).gain < 0.2
+    driven = SimAmp(Type=3, Gain=0.85).process(render_notes(chugs, seed=5))
+    assert describe.sketch(driven, RATE, from_stem=False).gain >= 0.78, "the crest still carries a driven one"
+
+
 def test_the_room_is_read_where_the_playing_stops():
     """A dry lead's own string decay read as a plate; a long reverb read as nothing."""
     from scipy.signal import fftconvolve
