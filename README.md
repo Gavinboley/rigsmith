@@ -11,7 +11,7 @@ pip install -e ".[all]"
 rigsmith ui
 ```
 
-> **Status: everything runs today.** Rig authoring, validation, NAM analysis, tone matching, catalog extraction, USB backup, MIDI, guitar learning, song maps, the hardware loop, the tuner, autopilot, the chat and the web UI are covered by 1134 tests. The Remote Editor protocol has been captured against a real Core and a rig written to it and read back exactly - see [docs/PROTOCOL.md](docs/PROTOCOL.md). What still wants hardware is *measuring*: the loop and the blind A/B need the Core and an interface plugged in - [docs/FIRST_SESSION.md](docs/FIRST_SESSION.md) walks through that first session.
+> **Status: everything runs today.** Rig authoring, validation, NAM analysis, tone matching, catalog extraction, USB backup, MIDI, guitar learning, song maps, the hardware loop, the tuner, autopilot, the chat and the web UI are covered by 1135 tests. The Remote Editor protocol has been captured against a real Core and a rig written to it and read back exactly - see [docs/PROTOCOL.md](docs/PROTOCOL.md). What still wants hardware is *measuring*: the loop and the blind A/B need the Core and an interface plugged in - [docs/FIRST_SESSION.md](docs/FIRST_SESSION.md) walks through that first session.
 
 ---
 
@@ -451,9 +451,10 @@ One run, ten stages: find the song and its credits, isolate the guitar, map
 it, pick the part (yours, or the most prominent), research the gear into a
 recipe (every claim sourced, or marked as measured), play the part on your
 guitar (moved to the record's pickup when the research names the guitar),
-hear a field of the Core's amps chosen from the part's measured gain - each
-one switched live on the device, through its usual cab, and reamped through
-the loop - hear the best amp through the other cabs worth trying (a
+hear a field of the Core's amps chosen from the part's measured gain, and
+one from every other gain range so a gain read wrong cannot leave the right
+kind of amp unheard - each one switched live on the device, through its
+usual cab, and reamped through the loop - hear the best amp through the other cabs worth trying (a
 Greenback and a V30 4x12 on one head are different records), tune the best
 two amps, fit a G EQ to what is left (it goes into the draft only if it
 scores closer), then build a draft rig - with the gate, boost, chorus,

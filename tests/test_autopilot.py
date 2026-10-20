@@ -192,6 +192,8 @@ def test_the_device_bench_switches_amp_and_cab_through_the_loop(workspace):
     assert run.state == "done", run.describe()
     assert run.stages["cabs"].state in ("done", "skipped")
     assert run.results[0]["composite"] <= run.results[-1]["composite"]
+    # Every gain range heard once, whatever the part measured as.
+    assert {r["tier"] for r in run.results if " + " not in r["label"] and "(tuned" not in r["label"]} == set(candidates.ORDER)
 
 
 def test_a_fitted_eq_goes_in_only_when_it_scores_closer(workspace):
@@ -654,3 +656,14 @@ def test_a_third_sound_goes_to_the_kept_one_nearest_what_its_run_found(workspace
     assert "59 Deluxe Gain Mod" in sounds["intro-3-stem"], "the clean intro keeps its own"
     assert "92 Treadplate Modern" in sounds["solo-2-centre"], sounds
     assert any("solo" in note and "92 Treadplate Modern" in note for note in result["notes"])
+
+
+def test_on_the_core_every_gain_range_is_heard_once():
+    """The measured gain chooses the field, and it can be two ranges out: a
+    lead centred between a driven double-track measured as edge of breakup."""
+    plain = candidates.candidates(0.3, count=4)
+    assert {c.tier for c in plain} <= {"clean", "edge", "crunch"}
+    covered = candidates.candidates(0.3, count=4, every_tier=True)
+    assert [c.model for c in covered[:4]] == [c.model for c in plain], "the measured field first, as it was"
+    assert {c.tier for c in covered} == set(candidates.ORDER)
+    assert all("every gain range" in c.reason for c in covered[4:]) and len({c.model for c in covered}) == len(covered)

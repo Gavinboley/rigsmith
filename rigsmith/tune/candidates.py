@@ -210,12 +210,14 @@ def _tier_of(name: str, fallback: str) -> str:
 
 def candidates(
     gain: float, *, researched: list[str] | None = None, favoured: list[str] | None = None,
-    count: int = 6, catalog=None,
+    count: int = 6, catalog=None, every_tier: bool = False,
 ) -> list[Candidate]:
     """Amps to try: researched ones first, then the measured tier and its neighbours.
 
     Models the catalog does not list are dropped, so a list built against
-    one firmware never sends a stale name to another.
+    one firmware never sends a stale name to another. ``every_tier`` adds,
+    past ``count``, one amp from each tier the field has not got - a guard
+    against a gain read two tiers out (see :mod:`rigsmith.core.autopilot`).
     """
     tier = tier_for(gain)
     index = ORDER.index(tier)
@@ -267,10 +269,22 @@ def candidates(
     # Every amp is heard through its tier's cab, set explicitly - so the
     # comparison is amp against amp, not against whatever cab the loaded rig
     # happened to have, and the draft built from the winner sounds the same.
+    found = found[:count]
+    if every_tier:
+        for other in ORDER:
+            if any(c.tier == other for c in found):
+                continue
+            names, other_cab = TIERS[other]
+            for name in names:
+                ok, device_index = known(name)
+                if ok and name not in seen:
+                    found.append(Candidate(name, other, other_cab, f"a {other} amp, so every gain range is heard once", device_index, VIRTUAL_VOICING[other], selector_of(name)))
+                    seen.add(name)
+                    break
     for candidate in found:
         _, candidate.cab_index, candidate.cab_selector = _lookup(catalog, candidate.cab)
         candidate.cab_voicing = virtual_cab(candidate.cab)
-    return found[:count]
+    return found
 
 
 def stand_in(voicing: int, *, catalog=None) -> Candidate | None:

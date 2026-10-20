@@ -675,7 +675,16 @@ def _stage_candidates(run: Run, progress) -> str:
     song = songs.get(run.song_id)
     part = _part(song, run)
     gain = float((part.sketch or {}).get("gain") or 0)
-    field_ = pick(gain, researched=_researched_amps(run), favoured=_ear_winners(run), count=run.request.candidates, catalog=get_catalog())
+    # On the Core, one amp from every gain range as well: the measured gain
+    # chooses the field, and it can be two ranges out - a lead centred
+    # between a driven double-track measured as edge of breakup (0.26,
+    # where it reads 0.86 alone), clean arpeggios and chugs as crunch. Two
+    # more reamps buy a field that cannot miss the range entirely. (The
+    # simulated bench hears every one of its voicings anyway.)
+    field_ = pick(
+        gain, researched=_researched_amps(run), favoured=_ear_winners(run), count=run.request.candidates,
+        catalog=get_catalog(), every_tier=run.request.bench == "device",
+    )
     if not field_:
         raise Invalid("no candidate amps to try")
     hosts = _device_hosts(run)
