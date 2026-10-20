@@ -627,6 +627,18 @@ def test_tone3000_login_is_reachable_from_the_page(client):
         assert "client id" in (job["error"] or "").lower()
 
 
+def test_a_song_says_what_its_research_found(client):
+    from rigsmith.core import recipes, songs
+
+    made = songs.create("Researched")
+    assert "research" not in client.get(f"/api/songs/{made.song_id}").json()
+    recipe_id, _ = recipes.create("Researched")
+    recipes.set_instrument(recipe_id, guitar="Les Paul", tuning="drop C")
+    songs.update(made.song_id, recipe_id=recipe_id)
+    research = client.get(f"/api/songs/{made.song_id}").json()["research"]
+    assert research["tuning"] == "drop C" and research["guitar"] == "Les Paul" and research["recipe_id"] == recipe_id
+
+
 def test_a_part_s_notes_are_served_with_their_midi(client, monkeypatch, tmp_path):
     from rigsmith.core import songs
     from rigsmith.core.errors import NotFound

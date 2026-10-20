@@ -63,6 +63,19 @@ def _payload(song) -> dict:
         if path:
             urls[f"layer-{layer}"] = _audio_url(path)
     data["urls"] = urls
+    # What the research knows about the record, at a glance on the song.
+    if song.recipe_id:
+        from ...core import recipes
+        from ...core.errors import NotFound
+
+        try:
+            recipe = recipes.get(song.recipe_id)
+            data["research"] = {
+                "recipe_id": song.recipe_id, "tuning": recipe.tuning, "guitar": recipe.guitar,
+                "pickup": recipe.pickup, "gear": len(recipe.gear), "confidence": round(recipe.confidence, 2),
+            }
+        except NotFound:
+            pass
     # Whose playing each part's DI is - autopilot uses yours over a rendering.
     from ...core import takes
     from ...core.errors import NotFound

@@ -89,7 +89,10 @@ def origin(draft_id: str) -> dict:
             if recipe.summary:
                 found["research"].append(recipe.summary)
             if recipe.guitar:
-                found["research"].append(f"guitar: {recipe.guitar}" + (f", {recipe.pickup} pickup" if recipe.pickup else "") + (f", {recipe.tuning}" if recipe.tuning else ""))
+                found["research"].append(f"guitar: {recipe.guitar}" + (f", {recipe.pickup} pickup" if recipe.pickup else ""))
+            if recipe.tuning:
+                # The rig is half of playing the part; the tuning is the other.
+                found["origin"].append(("Tuning", f"{recipe.tuning} - the research's; the part's notes were read down to it"))
             for gear in recipe.gear:
                 source = f" - {gear.sources[0].title}" if gear.sources else ""
                 found["research"].append(f"{gear.role}: {gear.name} ({gear.confidence.value}{source})")

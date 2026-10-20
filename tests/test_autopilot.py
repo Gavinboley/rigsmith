@@ -367,6 +367,20 @@ def test_synced_blocks_give_the_draft_the_songs_tempo(workspace):
         rigs.set_tempo(other, 20.0)
 
 
+def test_the_tone_sheet_says_the_researched_tuning(workspace):
+    """The tuning was only on the sheet inside the guitar's line - and not at
+    all when the research named a tuning but no guitar."""
+    from rigsmith.core import recipes, sheets
+
+    recipe_id, _ = recipes.create("Low tune")
+    recipes.set_instrument(recipe_id, tuning="drop C")
+    draft_id = rigs.create("Low tune - verse").draft.draft_id
+    run = autopilot.Run(run_id="tuning-run", request=autopilot.Request(title="Low tune"))
+    run.draft_id, run.recipe_id, run.state = draft_id, recipe_id, "done"
+    run.save()
+    assert "**Tuning:** drop C" in sheets.tone_sheet(draft_id).markdown()
+
+
 def test_a_drafts_tone_sheet_says_where_it_came_from(workspace):
     from rigsmith.core import sheets
 

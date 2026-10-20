@@ -152,6 +152,7 @@ function render() {
           el("h2", { text: song.title }),
           el("div", { class: "song-meta", text: [song.artist, song.album, song.year].filter(Boolean).join("  -  ") }),
           credits.length ? el("div", { class: "hint", text: "guitar: " + credits.map((c) => c.name).join(", ") }) : null,
+          song.research ? researchLine(song.research) : null,
           song.structure ? tempoLine() : null
         )
       ),
@@ -196,6 +197,23 @@ function render() {
 /* The tempo decides each part's delay note value and the tempo a draft rig
  * is saved with, and the detector's known mistake is an octave - so it can
  * be halved, doubled, tapped along with the record, or typed. */
+/** What the research found, at a glance: the tuning first - it decides how
+ * low the notes are read - then the guitar and how sure the gear is. */
+function researchLine(research) {
+  const bits = [
+    research.tuning ? `tuned ${research.tuning}` : null,
+    research.guitar ? research.guitar + (research.pickup ? `, ${research.pickup} pickup` : "") : null,
+    research.gear ? `${research.gear} piece${research.gear === 1 ? "" : "s"} of gear, ${Math.round(research.confidence * 100)}% sure` : null,
+  ].filter(Boolean);
+  if (!bits.length) return null;
+  return el(
+    "div",
+    { class: "hint song-research" },
+    el("span", { text: `research: ${bits.join("  -  ")}  ` }),
+    el("button", { class: "btn small ghost", text: "open", onclick: () => goTo("recipes", { recipeId: research.recipe_id }) })
+  );
+}
+
 function tempoLine() {
   const s = song.structure;
   const bpm = Number(s.tempo || 0);
