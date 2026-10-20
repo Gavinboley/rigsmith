@@ -49,6 +49,11 @@ def origin(draft_id: str) -> dict:
                 found["origin"].append(("Part", part.label + (f" - {part.sketch['summary']}" if (part.sketch or {}).get("summary") else "")))
             except Exception:
                 pass
+        # What played the part into the rig: which guitar, and whether its
+        # notes came from a tab or were heard - and how.
+        di = run.stages.get("di")
+        if di is not None and di.state == "done" and di.summary:
+            found["origin"].append(("DI", di.summary))
         if run.results:
             chosen = run.ear_pick or run.results[0]["label"]
             best = next((r for r in run.results if r["label"] == chosen), run.results[0])

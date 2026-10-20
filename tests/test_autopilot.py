@@ -381,6 +381,8 @@ def test_a_drafts_tone_sheet_says_where_it_came_from(workspace):
     run.ear_pick = "92 Treadplate Modern"
     run.remaining = [{"band": "presence", "low": 2000, "high": 5000, "delta_db": -3.2, "audible": True, "meaning": "duller than the record", "try": "Presence up"}]
     run.notes = ["the rig carries the song's tempo"]
+    run.stages["di"].state = "done"
+    run.stages["di"].summary = "verse - left on demo (transcribed, read as an arpeggio, notes 82% confident)"
     rigs.add_block(draft_id, "amp", "92 Treadplate Modern", params={"Treble": 0.5})
     run.built_at = rigs.get(draft_id).updated_at
     run.save()
@@ -397,6 +399,7 @@ def test_a_drafts_tone_sheet_says_where_it_came_from(workspace):
     assert "by your ears in the blind test" in text and "82 Lead 800 100W (0.250)" in text
     assert "presence -3.2 dB - duller than the record; try Presence up" in text
     assert "the rig carries the song's tempo" in text
+    assert "**DI:** verse - left on demo (transcribed, read as an arpeggio" in text, "how the part was played into the rig"
     assert sheets.origin(rigs.create("Hand made").draft.draft_id) == {}, "a draft nobody's run built has no history"
 
 
