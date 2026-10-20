@@ -26,7 +26,7 @@ from pathlib import Path
 
 import numpy as np
 
-from .instrument import midi_to_note
+from .instrument import assign_strings, midi_to_note, tuning
 
 #: Furthest a sample is shifted, in semitones, before something else plays the
 #: note. Three is where resampling starts to sound like resampling.
@@ -181,20 +181,7 @@ def render(
     if profile and median_db <= -100:
         median_db, p95_db = -12.0, -6.0
 
-    # Which notes are cut short by the next one on the same string. Without a
-    # string, the next note within a semitone-and-a-half is assumed to be on
-    # it - a run down one string mutes each note as the next is picked.
-    stops: list[float | None] = [None] * len(events)
-    for i, event in enumerate(events):
-        for later in events[i + 1 :]:
-            if later.start <= event.start + 0.02:
-                continue
-            same = (
-                event.string is not None and later.string == event.string
-            ) or (event.string is None and abs(later.midi - event.midi) <= 4.5)
-            if same:
-                stops[i] = later.start
-                break
+    stops = _stops(events, getattr(profile, "tuning", None))
 
     for index, event in enumerate(events):
         target_db = _velocity_to_db(event.velocity, median_db, p95_db)
@@ -298,12 +285,46 @@ def render(
     return rendered
 
 
+def _stops(events: list[NoteEvent], tuning_name: str | None = None) -> list[float | None]:
+    """When each note is cut short by the next one on its string.
+
+    A note with no string is placed as a hand would place it (see
+    :func:`~rigsmith.learn.instrument.assign_strings`), so an arpeggio's
+    notes ring over each other on their own strings. Guessing instead that
+    any later note within four and a half semitones shared its string cut
+    every arpeggio note at the next pick. The placing only decides the
+    muting - which of the guitar's samples plays a note is unchanged.
+    """
+    strings = [e.string for e in events]
+    unplaced = [i for i, s in enumerate(strings) if s is None]
+    if unplaced:
+        try:
+            tune = tuning(tuning_name)
+        except Exception:
+            tune = tuning(None)
+        placed = assign_strings([(events[i].start, events[i].start + events[i].duration, events[i].midi) for i in unplaced], tune)
+        for i, string in zip(unplaced, placed):
+            strings[i] = string
+    stops: list[float | None] = [None] * len(events)
+    for i, event in enumerate(events):
+        for j in range(i + 1, len(events)):
+            later = events[j]
+            if later.start <= event.start + 0.02:
+                continue
+            # Off the neck, the old guess: the next note within a few
+            # semitones is on its string.
+            same = strings[j] == strings[i] if strings[i] is not None else abs(later.midi - event.midi) <= 4.5
+            if same:
+                stops[i] = later.start
+                break
+    return stops
+
+
 def _below_the_guitar(events: list[NoteEvent], profile) -> str | None:
     """A warning when the part goes lower than the guitar's lowest string -
     a record in a lower tuning than the one the guitar was learned in."""
     if profile is None or not events:
         return None
-    from .instrument import midi_to_note, tuning
 
     try:
         bottom = min(tuning(getattr(profile, "tuning", None)).open_strings)

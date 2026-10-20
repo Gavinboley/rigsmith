@@ -185,5 +185,45 @@ def tuning(name: str | None = None) -> Tuning:
     )
 
 
+#: Where a note is placed by :func:`assign_strings`: no higher than this
+#: fret, and a string still ringing costs this much more than a reach.
+PLACING_MAX_FRET = 15
+BUSY_STRING_COST = 8.0
+
+
+def assign_strings(notes, tune: Tuning, *, max_fret: int = PLACING_MAX_FRET) -> list[int | None]:
+    """A string for each note, as a hand would play them.
+
+    ``notes`` are ``(start, end, midi)`` in time order. Each goes near where
+    the hand already is - an open string is free - and not onto a string
+    still ringing another note unless there is nowhere else: an arpeggio's
+    notes land on different strings and ring together, while a run up one
+    string mutes each note with the next. ``None`` where the pitch is off
+    the neck.
+    """
+    ringing: dict[int, float] = {}
+    frets: list[int] = []
+    placed: list[int | None] = []
+    for start, end, midi in notes:
+        places = tune.positions(int(round(midi)), max_fret=max_fret)
+        if not places:
+            placed.append(None)
+            continue
+        recent = sorted(frets[-4:])
+        hand = recent[len(recent) // 2] if recent else None
+
+        def cost(place: Position) -> float:
+            reach = 0.0 if place.fret == 0 else (abs(place.fret - hand) if hand is not None else 0.3 * place.fret)
+            busy = BUSY_STRING_COST if ringing.get(place.string, -1.0) > start + 0.02 else 0.0
+            return reach + busy + 0.05 * place.fret
+
+        best = min(places, key=cost)
+        placed.append(best.string)
+        ringing[best.string] = end
+        if best.fret > 0:
+            frets.append(best.fret)
+    return placed
+
+
 def tunings() -> list[Tuning]:
     return [tuning(name) for name in TUNINGS]

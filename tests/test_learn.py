@@ -647,6 +647,30 @@ def test_silence_has_no_pitch_onsets_and_raises_no_warning():
     assert found.times == [] and found.pitch_only == 0.0
 
 
+def test_an_arpeggio_is_placed_on_different_strings_and_rings_through():
+    """With no strings given, the renderer took any later note within four
+    and a half semitones to share a string, and cut E3 at G#3, G#3 at B3:
+    an arpeggio read note for note was played back as single notes."""
+    from rigsmith.learn.synth import _stops
+
+    beat = 60 / 110
+    shape = [NoteEvent(start=k * beat / 4, duration=beat * 0.8, midi=float(m)) for k, m in enumerate((52, 56, 59, 64))]
+    strings = instrument.assign_strings([(e.start, e.start + e.duration, e.midi) for e in shape], instrument.tuning("E standard"))
+    assert len(set(strings)) == 4, strings
+    again = shape + [NoteEvent(start=beat, duration=beat * 0.8, midi=52.0)]
+    stops = _stops(again)
+    assert stops[1:4] == [None, None, None], "nothing else plays on their strings"
+    assert stops[0] == pytest.approx(beat), "the E3 is stopped where it is picked again"
+
+
+def test_a_run_up_one_string_still_mutes_each_note_with_the_next():
+    from rigsmith.learn.synth import _stops
+
+    run = [NoteEvent(start=i * 0.2, duration=0.5, midi=float(m)) for i, m in enumerate((40, 41, 42, 43))]
+    stops = _stops(run)
+    assert stops[:3] == [pytest.approx(0.2), pytest.approx(0.4), pytest.approx(0.6)]
+
+
 def test_a_part_auto_misreads_can_be_read_as_an_arpeggio_on_request():
     """A driven Travis pattern rings like a chord part to the automatic
     choice; asked for, it is read a note per pick."""
