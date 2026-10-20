@@ -55,7 +55,14 @@ double-track reads as barely broken up), so:
 The amps are heard with nothing after them, so a delay on the record is taken
 out of it before they are compared - left in, every amp was scored against
 repeats it could not make, and the wrong one often won. The delay itself
-goes on the draft, at the time and note value the map measured.
+goes on the draft, at the time and note value the map measured. A part in
+a room the map could time is heard the other way round: each amp through a
+room like it.
+
+A mastering limiter rides the level under an echo and can hide it - on a
+limited copy of the demo song, the lead's delay went unheard and its draft
+had none. When a part plainly has a delay and its draft does not, add one
+by ear; the part's sketch says what was measured.
 
 ## Tuning, and how long it takes
 

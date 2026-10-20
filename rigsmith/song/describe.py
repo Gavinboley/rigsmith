@@ -298,6 +298,15 @@ def layer_echo(found: dict, layer: str) -> tuple[float, float, str | None] | Non
     return None
 
 
+#: An echo's peak in the cepstrum, against the spread of everything else
+#: there: the least a lag is looked at with, the most that is accepted on its
+#: own, and what its first feedback repeat at twice the lag has to reach for
+#: a lesser peak to count (see :func:`_delay`).
+ECHO_CANDIDATE_Z = 40
+ECHO_STRONG_Z = 150
+ECHO_REPEAT_Z = 15
+
+
 def _delay(audio, sample_rate, tempo) -> tuple[float | None, float, str | None]:
     """An echo's time, from the power cepstrum.
 
@@ -356,11 +365,11 @@ def _delay(audio, sample_rate, tempo) -> tuple[float | None, float, str | None]:
     z = 0.0
     for index in np.argsort(z_all)[::-1][:24]:
         candidate_z = float(z_all[index])
-        if candidate_z < 40:
+        if candidate_z < ECHO_CANDIDATE_Z:
             break
         candidate = (lo + int(index)) / sample_rate * 1000.0
-        strong = candidate_z >= 150
-        repeated = z_at(2 * candidate) >= 15
+        strong = candidate_z >= ECHO_STRONG_Z
+        repeated = z_at(2 * candidate) >= ECHO_REPEAT_Z
         if not (strong or repeated):
             continue
         # Under 120 ms the cepstrum is crowded with the rahmonics of low
