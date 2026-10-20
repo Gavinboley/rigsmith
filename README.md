@@ -11,7 +11,7 @@ pip install -e ".[all]"
 rigsmith ui
 ```
 
-> **Status: everything runs today.** Rig authoring, validation, NAM analysis, tone matching, catalog extraction, USB backup, MIDI, guitar learning, song maps, the hardware loop, the tuner, autopilot, the chat and the web UI are covered by 1133 tests. The Remote Editor protocol has been captured against a real Core and a rig written to it and read back exactly - see [docs/PROTOCOL.md](docs/PROTOCOL.md). What still wants hardware is *measuring*: the loop and the blind A/B need the Core and an interface plugged in - [docs/FIRST_SESSION.md](docs/FIRST_SESSION.md) walks through that first session.
+> **Status: everything runs today.** Rig authoring, validation, NAM analysis, tone matching, catalog extraction, USB backup, MIDI, guitar learning, song maps, the hardware loop, the tuner, autopilot, the chat and the web UI are covered by 1134 tests. The Remote Editor protocol has been captured against a real Core and a rig written to it and read back exactly - see [docs/PROTOCOL.md](docs/PROTOCOL.md). What still wants hardware is *measuring*: the loop and the blind A/B need the Core and an interface plugged in - [docs/FIRST_SESSION.md](docs/FIRST_SESSION.md) walks through that first session.
 
 ---
 
@@ -465,8 +465,10 @@ Choose several parts (the clean intro, the verse, the solo) and each gets a
 run of its own, then one **song rig**: up to two amp-and-cab sounds side by
 side in the chain, and a scene per part on its own footswitch that turns on
 that part's sound and the effects it measures as having. A HeadRush scene
-switches blocks rather than holding knob values, so parts whose best sound
-did not make the two are moved to the nearest one, and the run says which.
+switches blocks rather than holding knob values, so the main part keeps its
+sound, the second is whichever leaves the others nearest theirs, and a part
+whose sound did not make the two is moved to the one nearest what its own
+run found - and the run says which.
 `rigsmith autopilot song-rig <run> <run> ...` builds one from finished runs,
 and `--whole-song` (or **every sound in the song** on the page) picks the
 parts itself: the most prominent part of each kind of section, with two

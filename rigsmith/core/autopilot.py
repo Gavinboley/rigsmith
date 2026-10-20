@@ -1178,10 +1178,11 @@ def song_rig(run_ids: list[str], *, name: str | None = None) -> dict:
     Parts that want one effect set differently - an eighth-note delay in the
     verse, a dotted eighth in the chorus - get one block each, up to two.
 
-    When the parts' best sounds come to more than two, the two most used are
-    kept and every other part is given the kept sound nearest its measured
-    gain - and the result says which parts were moved, since those scenes
-    will not be what their own runs found.
+    When the parts' best sounds come to more than two, the first part's is
+    kept - the song's main part - and with it whichever leaves the others
+    nearest their own; each other part is given the kept sound nearest what
+    its own run found, and the result says which parts were moved, since
+    those scenes will not be what their own runs found.
     """
     from ..tune.candidates import ORDER, surrounding_blocks, tier_for, wire_params
     from . import rigs, songs
@@ -1206,23 +1207,37 @@ def song_rig(run_ids: list[str], *, name: str | None = None) -> dict:
         best = _choice(run)
         parts.append({"run": run, "part": part, "best": best, "config": (best["model"], best["cab"])})
 
-    # Keep at most two sounds: the most used, then the best-scoring.
+    # Keep at most two sounds. A part is moved toward what its own run found
+    # closest - it listened - rather than its measured gain, which off a
+    # layer can be far out: the demo's lead, centred between a driven
+    # double-track, measured as edge of breakup, and its scene was given the
+    # clean intro's amp. The first part is the song's main one and keeps its
+    # sound; the second kept is whichever leaves the moved parts nearest
+    # their own, then the most used. (Scores of different parts are not
+    # comparable, so they do not choose.)
     counts: dict[tuple, int] = {}
     for item in parts:
         counts[item["config"]] = counts.get(item["config"], 0) + 1
-    ranked = sorted(counts, key=lambda c: (-counts[c], min(i["best"]["composite"] for i in parts if i["config"] == c)))
-    kept = ranked[:2]
     notes = []
 
     def tier_of(config) -> int:
         owner = next(i for i in parts if (i["best"]["model"], i["best"]["cab"]) == config)
         return ORDER.index(owner["best"].get("tier") or tier_for(float((owner["part"].sketch or {}).get("gain") or 0)))
 
+    def own_tier(item) -> int:
+        return ORDER.index(item["best"].get("tier") or tier_for(float((item["part"].sketch or {}).get("gain") or 0)))
+
+    def moved_by(pair) -> int:
+        return sum(min(abs(tier_of(c) - own_tier(i)) for c in pair) for i in parts if i["config"] not in pair)
+
+    main = parts[0]["config"]
+    others = [c for c in counts if c != main]
+    kept = [main] + ([min(others, key=lambda c: (moved_by([main, c]), -counts[c]))] if others else [])
+
     for item in parts:
         if item["config"] in kept:
             continue
-        gain_tier = ORDER.index(tier_for(float((item["part"].sketch or {}).get("gain") or 0)))
-        nearest = min(kept, key=lambda c: abs(tier_of(c) - gain_tier))
+        nearest = min(kept, key=lambda c: abs(tier_of(c) - own_tier(item)))
         notes.append(
             f"{item['part'].label} found {item['config'][0]} but a rig holds two amp sounds; "
             f"its scene uses {nearest[0]}, the nearest kept one"

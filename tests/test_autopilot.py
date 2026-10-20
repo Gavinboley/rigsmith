@@ -614,3 +614,43 @@ def test_one_side_of_a_double_is_known_as_one_side():
     assert autopilot._double_tracked(song, "left")
     assert not autopilot._double_tracked(song, "centre")
     assert not autopilot._double_tracked(types.SimpleNamespace(layers=None), "left")
+
+
+def test_a_third_sound_goes_to_the_kept_one_nearest_what_its_run_found(workspace):
+    """The demo's lead, centred between a driven double-track, measured as
+    edge of breakup; its run found a high-gain amp, and its scene was given
+    the clean intro's."""
+    from rigsmith.core import songs
+    from rigsmith.core.songs import Part
+    from rigsmith.song.describe import ToneSketch
+
+    made = songs.create("Three Sounds")
+    made.structure = {"tempo": 120.0, "sections": [
+        {"start": 0.0, "end": 10.0, "label": "A", "name": "chorus"},
+        {"start": 10.0, "end": 20.0, "label": "B", "name": "solo"},
+        {"start": 20.0, "end": 30.0, "label": "C", "name": "intro"},
+    ]}
+
+    def part(part_id, section, name, layer, gain):
+        return Part(part_id, section, name, layer, section * 10.0, section * 10.0 + 10.0, sketch=ToneSketch(gain=gain).to_dict())
+
+    made.parts = [part("chorus-1-left", 0, "chorus", "left", 0.8), part("solo-2-centre", 1, "solo", "centre", 0.26), part("intro-3-stem", 2, "intro", "stem", 0.05)]
+    made.save()
+    found = [
+        ("92 Treadplate Modern", "4x12 Classic 30W", "modern", 0.13),
+        ("82 Lead 800 100W", "4x12 Green 20W", "high", 0.15),
+        ("59 Deluxe Gain Mod", "2x12 AC Blue", "edge", 0.09),
+    ]
+    run_ids = []
+    for index, (chosen, (model, cab, tier, composite)) in enumerate(zip(made.parts, found)):
+        best = {"label": model, "model": model, "cab": cab, "composite": composite, "knobs": {}, "tier": tier}
+        run = autopilot.Run(run_id=f"three-{index}", request=autopilot.Request(title="Three Sounds"), song_id=made.song_id, part_ids=[chosen.part_id], results=[best], state="done")
+        run.save()
+        run_ids.append(run.run_id)
+
+    result = autopilot.song_rig(run_ids)
+    sounds = {s["part"]: s["sound"] for s in result["scenes"]}
+    assert "92 Treadplate Modern" in sounds["chorus-1-left"], "the main part keeps its sound"
+    assert "59 Deluxe Gain Mod" in sounds["intro-3-stem"], "the clean intro keeps its own"
+    assert "92 Treadplate Modern" in sounds["solo-2-centre"], sounds
+    assert any("solo" in note and "92 Treadplate Modern" in note for note in result["notes"])
