@@ -739,6 +739,60 @@ def _basic_pitch(path: Path) -> list[NoteEvent] | None:
         return to_events(read(produced[0]))
 
 
+#: An echo is taken out before the notes are read when its first repeat
+#: comes back at least this loud against the note. A steady part's note
+#: spacing can stand in the cepstrum like an echo; every dry synthetic part
+#: that showed one came out at 0.105 or less, real delays at 0.155 and up.
+ECHO_MIN_MIX = 0.15
+
+#: The most of each repeat that is assumed to feed the next.
+ECHO_MAX_FEEDBACK = 0.7
+
+
+def _without_echo(audio: np.ndarray, sample_rate: int) -> tuple[np.ndarray, str | None]:
+    """The stem with its delay taken out, and a line saying so - or the stem.
+
+    A delay's repeats are read as notes: on synthetic parts with a dotted
+    eighth at 35% and 40% feedback, a lead came back with twice its notes
+    and clean triads at F1 0.48. The echo's time is where the song map finds
+    it (:func:`..song.describe._delay`). Its mix and feedback are read off
+    the same power cepstrum - a feedback delay puts its mix at the lag and
+    feedback x mix less half the mix squared at twice it; the windowed,
+    band-limited cepstrum shows half of each - and the delay is undone with
+    its inverse, (1 - fb z^-L) / (1 + (mix - fb) z^-L). Across mixes of 0.3-0.5
+    and feedback 0.3-0.6 the parts' mean F1 went from 0.59-0.71 to 0.92-0.93.
+    """
+    from scipy.signal import lfilter
+
+    from ..song.describe import _delay, power_cepstrum
+
+    lag_ms, _, _ = _delay(audio, sample_rate, None)
+    cepstrum = power_cepstrum(audio, sample_rate) if lag_ms else None
+    if cepstrum is None:
+        return audio, None
+    near = int(round(lag_ms / 1000.0 * sample_rate))
+    if 2 * near + 4 >= len(cepstrum) // 2:
+        return audio, None
+    lag = near - 3 + int(np.argmax(cepstrum[near - 3 : near + 4]))
+    mix = 2.0 * float(cepstrum[lag])
+    if mix < ECHO_MIN_MIX:
+        return audio, None
+    around = cepstrum[2 * lag - 3 : 2 * lag + 4]
+    second = 2.0 * float(around[int(np.argmax(np.abs(around)))])
+    feedback = float(np.clip((2.0 * second + mix * mix) / (2.0 * mix), 0.0, ECHO_MAX_FEEDBACK))
+    mix = min(mix, 0.95)
+    b = np.zeros(lag + 1)
+    a = np.zeros(lag + 1)
+    b[0] = a[0] = 1.0
+    b[lag] = -feedback
+    a[lag] = mix - feedback
+    dry = lfilter(b, a, audio)
+    return dry, (
+        f"an echo every {lag / sample_rate * 1000:.0f} ms ({mix:.0%} back, {feedback:.0%} of each repeat feeding the next) "
+        "was taken out before the notes were read"
+    )
+
+
 def transcribe(
     audio,
     sample_rate: int,
@@ -748,6 +802,7 @@ def transcribe(
     lowest: str | int = "auto",
     method: str = "auto",
     match_record_pitch: bool = True,
+    echo: bool = True,
 ) -> Transcription:
     """Notes from a guitar stem.
 
@@ -761,6 +816,8 @@ def transcribe(
             it can be run, else built in).
         match_record_pitch: Offset every note by the record's own deviation
             from concert pitch, so the rendered part sits where it does.
+        echo: Take a delay's repeats out before reading the notes (see
+            :func:`_without_echo`).
     """
     from ..match.pitch import analyse as pitch_analyse
     from .instrument import note_to_midi
@@ -789,6 +846,11 @@ def transcribe(
             return result
         if method == "basic-pitch":
             result.warnings.append("basic-pitch could not be run here; used the built-in estimator")
+
+    if echo:
+        audio, echo_text = _without_echo(audio, sample_rate)
+        if echo_text:
+            result.notes_text.append(echo_text)
 
     magnitude = _spectrogram(audio, sample_rate)
     frames = salience_frames(magnitude, sample_rate, min_midi=min_midi, tuning_cents=result.tuning_cents)

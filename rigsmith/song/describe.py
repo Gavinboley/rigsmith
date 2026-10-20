@@ -220,6 +220,30 @@ def _envelope(audio, sample_rate, hop_s=0.01):
     return np.sqrt(np.mean(blocks * blocks, axis=1))
 
 
+def power_cepstrum(audio, sample_rate: int, *, size: int = 1 << 17) -> np.ndarray | None:
+    """The power cepstrum of the 150 Hz-5 kHz band, averaged over windows of
+    ``size`` samples - where an echo shows as a peak at its delay."""
+    from scipy.signal import butter, sosfiltfilt
+
+    sos = butter(4, [150.0, min(5000.0, 0.45 * sample_rate)], btype="bandpass", fs=sample_rate, output="sos")
+    signal = sosfiltfilt(sos, audio)
+    if len(signal) < size // 2:
+        return None
+    window = np.hanning(size)
+    total = np.zeros(size)
+    count = 0
+    for start in range(0, max(1, len(signal) - size // 2), size // 2):
+        chunk = signal[start : start + size]
+        if len(chunk) < size:
+            chunk = np.pad(chunk, (0, size - len(chunk)))
+        if float(np.sqrt(np.mean(chunk ** 2))) < 1e-5:
+            continue
+        spectrum = np.abs(np.fft.rfft(chunk * window)) ** 2
+        total += np.fft.irfft(np.log(spectrum + 1e-12), size)
+        count += 1
+    return total / count if count else None
+
+
 def _delay(audio, sample_rate, tempo) -> tuple[float | None, float, str | None]:
     """An echo's time, from the power cepstrum.
 
@@ -233,28 +257,11 @@ def _delay(audio, sample_rate, tempo) -> tuple[float | None, float, str | None]:
     from 80 ms to a second for a peak standing well clear of its surroundings.
     """
     from scipy.ndimage import median_filter
-    from scipy.signal import butter, sosfiltfilt
 
-    sos = butter(4, [150.0, min(5000.0, 0.45 * sample_rate)], btype="bandpass", fs=sample_rate, output="sos")
-    signal = sosfiltfilt(sos, audio)
-    size = 1 << 17
-    if len(signal) < size // 2:
+    cepstrum = power_cepstrum(audio, sample_rate)
+    if cepstrum is None:
         return None, 0.0, None
-    window = np.hanning(size)
-    total = np.zeros(size)
-    count = 0
-    for start in range(0, max(1, len(signal) - size // 2), size // 2):
-        chunk = signal[start : start + size]
-        if len(chunk) < size:
-            chunk = np.pad(chunk, (0, size - len(chunk)))
-        if float(np.sqrt(np.mean(chunk ** 2))) < 1e-5:
-            continue
-        spectrum = np.abs(np.fft.rfft(chunk * window)) ** 2
-        total += np.fft.irfft(np.log(spectrum + 1e-12), size)
-        count += 1
-    if not count:
-        return None, 0.0, None
-    cepstrum = total / count
+    size = len(cepstrum)
     lo, hi = int(0.08 * sample_rate), min(size // 2, int(1.0 * sample_rate))
     region = cepstrum[lo:hi]
     baseline = median_filter(region, size=int(0.05 * sample_rate) | 1)

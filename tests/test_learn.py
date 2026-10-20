@@ -615,6 +615,48 @@ def test_a_bass_under_close_triads_is_not_taken_for_their_root():
     assert exact >= 6, f"{exact} of 8 voiced as played"
 
 
+def _with_delay(audio, seconds, mix=0.35, feedback=0.4):
+    lag = int(seconds * RATE)
+    out = audio.copy()
+    gain = mix
+    for k in range(1, 6):
+        if k * lag >= len(audio):
+            break
+        out[k * lag :] += gain * audio[: len(audio) - k * lag]
+        gain *= feedback
+    return out
+
+
+def test_a_delays_repeats_are_not_read_as_notes():
+    """With a dotted-eighth delay a lead came back with twice its notes -
+    every repeat read as one played."""
+    beat = 60 / 110
+    truth = [(b * beat, beat * 0.9, [64, 67, 69, 71, 74, 76, 74, 71][b % 8], 0.9) for b in range(24)]
+    audio = _with_delay(render_notes(truth, seed=5), 0.75 * beat)
+    result = transcribe(audio, RATE, method="builtin", match_record_pitch=False)
+    assert any("echo" in note for note in result.notes_text)
+    hits = sum(any(abs(e.start - t) < 0.05 and abs(e.midi - m) < 0.5 for e in result.events) for t, _, m, _ in truth)
+    assert hits >= 0.95 * len(truth) and len(result.events) <= 1.1 * len(truth), (hits, len(result.events))
+
+
+def test_a_dry_part_keeps_its_audio():
+    """A steady part's note spacing stands in the cepstrum like an echo, but
+    its 'repeat' is far too quiet to be one."""
+    beat = 60 / 110
+    truth = [(b * beat, beat * 0.9, [64, 67, 69, 71, 74, 76, 74, 71][b % 8], 0.9) for b in range(24)]
+    result = transcribe(render_notes(truth, seed=5), RATE, method="builtin", match_record_pitch=False)
+    assert not any("echo" in note for note in result.notes_text)
+
+
+def test_a_driven_arpeggio_under_a_delay_is_still_an_arpeggio():
+    from rigsmith.loop.virtual import SimAmp
+
+    beat = 60 / 110
+    truth = _arpeggio(bars=6)
+    audio = _with_delay(SimAmp(Type=3, Gain=0.85).process(render_notes(truth, seed=5)), 0.5 * beat, mix=0.5, feedback=0.3)
+    assert transcribe(audio, RATE, method="builtin", match_record_pitch=False).mode == "arpeggio"
+
+
 def test_drum_bleed_does_not_become_a_chord_on_every_hit():
     """Flux read over every bin took a hi-hat 25 dB under the guitar - a big
     rise where the guitar leaves the spectrum near silent - for an attack:
