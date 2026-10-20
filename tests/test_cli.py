@@ -427,3 +427,13 @@ def test_each_turns_last_word_names_its_turn(runner):
     finally:
         stop()
     assert finished == [("error", 1), ("error", 2)]
+
+
+def test_autopilot_demo_starts_on_the_demo_song(runner, monkeypatch):
+    from rigsmith.core import autopilot, demo
+
+    asked = {}
+    monkeypatch.setattr(demo, "start", lambda **kwargs: asked.update(kwargs) or autopilot.Run(run_id="r1", request=autopilot.Request(title=demo.TITLE)))
+    result = invoke(runner, "autopilot", "demo", "--detach")
+    assert result.exit_code == 0 and "started on the demo song" in result.output
+    assert asked == {"profile_id": None, "bench": "virtual", "route_id": None}

@@ -179,6 +179,23 @@ function renderForm() {
       budget,
       habitsBox,
       el("span", { class: "grow" }),
+      el("button", {
+        class: "btn ghost",
+        id: "ap-demo",
+        text: "Try the demo song",
+        title: "A song made here, through known settings of the simulated amp - no file needed, and the run says how close it got",
+        onclick: () =>
+          attempt(async () => {
+            const run = await api.post("/api/autopilot/demo", {
+              profile_id: profile.value === "synthetic" ? null : profile.value,
+              bench: bench.value,
+              route_id: bench.value === "device" ? route.value || null : null,
+            });
+            show(run);
+            toast("Autopilot started on the demo song", { kind: "ok" });
+            refreshRuns();
+          }),
+      }),
       el("button", { class: "btn ghost", text: "Ask instead", title: "Describe what you want to the assistant", onclick: () => ask(`I want the guitar tone from ${title.value || "a song"}${artist.value ? " by " + artist.value : ""}. What do you need from me?`) }),
       start
     )
@@ -288,6 +305,17 @@ function show(run) {
     links.append(el("button", { class: "btn small", text: "Resume", onclick: () => attempt(async () => show(await api.post(`/api/autopilot/${run.run_id}/resume`))) }));
   }
   card.append(links);
+  // On the demo song the answer is known, so the run is marked against it.
+  if (run.demo) {
+    card.append(
+      el(
+        "div",
+        { class: `notice demo-answer ${run.demo.voicing_right === false ? "warn" : "ok"}`, id: "ap-demo-answer" },
+        el("strong", { text: "The demo's answer. " }),
+        run.demo.summary
+      )
+    );
+  }
 
   if (run.results?.length) {
     const worst = Math.max(...run.results.map((r) => r.composite)) || 1;

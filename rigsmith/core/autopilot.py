@@ -144,6 +144,9 @@ class Run:
     part_spans: dict = field(default_factory=dict)
     """``{part_id: [layer, start, end]}`` - so the run still finds its part
     after a re-map renames it (:func:`_part`)."""
+    demo: dict | None = None
+    """On the demo song, how close the run came to the amp it was made with
+    (:func:`rigsmith.core.demo.verdict`); None on any other song."""
     notes: list[str] = field(default_factory=list)
     created_at: str = field(default_factory=_now)
     finished_at: str | None = None
@@ -208,6 +211,8 @@ class Run:
             lines.append("  still different from the record:")
             for row in sorted(audible, key=lambda r: -abs(r["delta_db"])):
                 lines.append(f"    {row['band']:<9} {row['delta_db']:+5.1f} dB  try {row['try']}")
+        if self.demo:
+            lines.append(f"  the demo's answer: {self.demo['summary']}")
         lines.extend(f"  note: {n}" for n in self.all_notes())
         return "\n".join(lines)
 
@@ -238,7 +243,7 @@ def list_runs() -> list[Run]:
 
 
 def _stage_song(run: Run) -> str:
-    from . import appsettings, songs
+    from . import appsettings, demo, songs
 
     request = run.request
     if request.song_id:
@@ -251,7 +256,8 @@ def _stage_song(run: Run) -> str:
                 song = songs.attach(identifier, mix=request.mix, stem=request.stem)
         except NotFound:
             song = songs.create(request.title, artist=request.artist, mix=request.mix, stem=request.stem)
-    if not appsettings.load().local and not song.credits:
+    # The demo was made here: there is nothing about it to look up.
+    if not appsettings.load().local and not song.credits and demo.answer(song.song_id) is None:
         try:
             song = songs.enrich(song.song_id)
         except Exception as exc:
@@ -1498,6 +1504,14 @@ def execute(run_id: str, *, progress: Progress | None = None) -> Run:
         events.publish({"type": "autopilot", "run_id": run.run_id, "stage": name, "state": stage.state, "summary": stage.summary})
     if len(run.part_ids) > 1 and not run.part_runs:
         _chase_other_parts(run, progress)
+    # On the demo song the answer is known: say how close the run came.
+    from . import demo
+
+    try:
+        run.demo = demo.verdict(run)
+    except Exception as exc:
+        run.demo = None
+        run.note(f"the demo's answer could not be compared: {exc}")
     run.state = "done"
     run.finished_at = _now()
     run.save()

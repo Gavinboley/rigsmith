@@ -80,6 +80,20 @@ def start(body: RunBody) -> dict:
     return _payload(run)
 
 
+class DemoBody(BaseModel):
+    profile_id: str | None = None
+    bench: str = "virtual"
+    route_id: str | None = None
+
+
+@router.post("/demo")
+def start_demo(body: DemoBody) -> dict:
+    """Autopilot on the demo song - made the first time - whose answer is known."""
+    from ...core import demo
+
+    return _payload(demo.start(profile_id=body.profile_id, bench=body.bench, route_id=body.route_id))
+
+
 class SongRigBody(BaseModel):
     run_ids: list[str]
     name: str | None = None

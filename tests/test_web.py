@@ -678,6 +678,21 @@ def test_an_autopilot_run_shows_the_notes_its_di_plays(client, monkeypatch, tmp_
     assert client.get("/api/autopilot/a-run/notes").status_code == 404
 
 
+def test_the_demo_song_starts_from_the_page(client, monkeypatch):
+    from rigsmith.core import autopilot, demo
+
+    asked = {}
+
+    def fake(**kwargs):
+        asked.update(kwargs)
+        return autopilot.Run(run_id="demo-run", request=autopilot.Request(title=demo.TITLE, artist=demo.ARTIST))
+
+    monkeypatch.setattr(demo, "start", fake)
+    run = client.post("/api/autopilot/demo", json={"bench": "virtual"}).json()
+    assert run["run_id"] == "demo-run" and run["request"]["title"] == demo.TITLE
+    assert asked == {"profile_id": None, "bench": "virtual", "route_id": None}
+
+
 def test_a_part_can_be_read_as_an_arpeggio_from_the_song_page(client, monkeypatch, tmp_path):
     from types import SimpleNamespace
 

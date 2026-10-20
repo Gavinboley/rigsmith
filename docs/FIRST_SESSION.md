@@ -18,6 +18,12 @@ Two matter for this session: MIDI (`pip install 'rigsmith[midi]'`) loads
 rigs and verifies writes over the USB cable, and someone has to answer
 the chat - Claude Code signed in, or a local model loaded.
 
+`rigsmith autopilot demo` (or **Try the demo song** on the Autopilot page)
+is a minute's check that the whole chain works on this machine: a short
+song is made here, through known settings of the simulated amp, and the
+run ends with how close it came - the voicing, and each knob against the
+one the song was made with.
+
 ## 1. Choose who answers
 
 **Settings.** *Accuracy* uses Claude (through Claude Code, or the API) for

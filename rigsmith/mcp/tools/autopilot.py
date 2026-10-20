@@ -47,6 +47,23 @@ def run_autopilot(
 
 
 @tool
+def run_autopilot_demo(profile_id: str | None = None, bench: Literal["virtual", "device"] = "virtual", route_id: str | None = None) -> str:
+    """Run autopilot on rigsmith's demo song - for someone with no song file
+    to hand, or to check the whole chain works.
+
+    The demo is made the first time (a clean intro, a double-tracked rhythm,
+    a lead solo, a band under them) through known settings of the simulated
+    amp, so a finished run says which voicing it chose and how far each knob
+    landed from the real one - autopilot_status shows it as "the demo's
+    answer". Returns a run id.
+    """
+    from ...core import demo
+
+    run = demo.start(profile_id=profile_id, bench=bench, route_id=route_id)
+    return f"Started autopilot {run.run_id} on the demo song. Check it with autopilot_status('{run.run_id}')."
+
+
+@tool
 def ear_habits(bench: Literal["virtual", "device"] = "device") -> str:
     """The amp knobs the user keeps turning the same way after autopilot
     builds a rig - their room, monitors or taste rather than any one song -

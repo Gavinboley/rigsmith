@@ -37,6 +37,7 @@ const PANELS = [
  * on a button the page draws for itself. */
 const ACTIONS = [
   ["Start autopilot", "autopilot", { text: "Start autopilot" }, "a song in, a rig out"],
+  ["Try the demo song", "autopilot", "#ap-demo", "autopilot with no file - and how close it got"],
   ["Add a song", "songs", "#song-new", "the record you are chasing"],
   ["Isolate the guitar", "songs", { text: "Isolate guitar" }, "split the stem out of the mix", "Pick a song with a mix and no stem yet - the button is on it."],
   ["Play a part on my guitar", "songs", { text: "on my guitar" }, "read as single notes, chords or an arpeggio", "Pick a song that has been mapped - every part has it."],

@@ -47,11 +47,38 @@ def autopilot_run(title, artist, mix, stem, song_id, parts, profile_id, di, midi
     )
     run = autopilot.start(request)
     click.echo(f"autopilot {run.run_id} started.")
-    if detach:
-        return
+    if not detach:
+        _follow(run.run_id)
+
+
+@group.command("demo")
+@click.option("--profile", "profile_id", help="Your guitar profile; default from settings.")
+@click.option("--bench", type=click.Choice(["virtual", "device"]), default="virtual", show_default=True)
+@click.option("--route", "route_id", help="Loop route for the device bench.")
+@click.option("--detach", is_flag=True, help="Start it and return; check with 'autopilot show'.")
+@handled
+def autopilot_demo(profile_id, bench, route_id, detach) -> None:
+    """Try autopilot on a demo song made here - and see how close it gets.
+
+    The demo's guitars went through known settings of the simulated amp, so
+    the run ends by saying which voicing it chose and how far each knob is
+    from the one the record was made with.
+    """
+    from ..core import demo
+
+    run = demo.start(profile_id=profile_id, bench=bench, route_id=route_id)
+    click.echo(f"autopilot {run.run_id} started on the demo song.")
+    if not detach:
+        _follow(run.run_id)
+
+
+def _follow(run_id: str) -> None:
+    """Print each stage as it moves, then the whole run."""
+    from ..core import autopilot
+
     shown = {}
     while True:
-        current = autopilot.get(run.run_id)
+        current = autopilot.get(run_id)
         for name in autopilot.STAGES:
             stage = current.stages[name]
             key = (stage.state, stage.summary)
@@ -61,7 +88,7 @@ def autopilot_run(title, artist, mix, stem, song_id, parts, profile_id, di, midi
         if current.state != "running":
             break
         time.sleep(0.5)
-    click.echo("\n" + autopilot.get(run.run_id).describe())
+    click.echo("\n" + autopilot.get(run_id).describe())
 
 
 @group.command("habits")

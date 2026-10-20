@@ -126,11 +126,14 @@ def _loop() -> Step:
 def _song() -> Step:
     from . import songs
 
-    found = songs.list_songs()
+    from .demo import SONG_ID
+
+    # The demo song is rigsmith's, not one you own.
+    found = [s for s in songs.list_songs() if s.song_id != SONG_ID]
     if found:
         mapped = [s for s in found if s.parts]
         return Step("song", "Add a song you own", True, f"{len(found)} song(s), {len(mapped)} mapped", "songs")
-    return Step("song", "Add a song you own", False, "Your copy of the record - autopilot maps it into parts.", "songs")
+    return Step("song", "Add a song you own", False, "Your copy of the record - autopilot maps it into parts. No file to hand? 'Try the demo song' below runs the whole thing on one made here.", "songs")
 
 
 def _brains() -> Step:

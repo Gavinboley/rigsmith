@@ -72,14 +72,16 @@ ROLES: dict[str, Role] = {
         "with autopilot_listen_back - their ears outrank every score. When "
         "they say how a rig sounds ('too boomy', 'a bit brighter', 'too much "
         "reverb'), turn the draft they mean with nudge_tone; 'that was worse' "
-        "is undo_rig_edit. Start a run from their ear_habits only when asked.",
+        "is undo_rig_edit. Start a run from their ear_habits only when asked. "
+        "Someone with no song file to hand, or asking whether it all works, can "
+        "try run_autopilot_demo: a song made here whose answer is known.",
         groups=[],
         tools=[
             "app_mode", "list_songs", "show_song", "list_takes", "list_guitar_profiles",
             "show_guitar_profile", "list_drafts", "explain_rig", "list_recipes", "show_recipe",
             "loop_status", "tuning_runs", "list_jobs", "job_status", "workspace_status",
             "choose_parts", "song_brief", "search_models",
-            "run_autopilot", "autopilot_status",
+            "run_autopilot", "run_autopilot_demo", "autopilot_status",
             "setup_status", "device_sessions", "estimate_pickup",
             "autopilot_listen_back", "check_bench_rig", "tone_sheet", "resume_autopilot", "nudge_tone",
             "undo_rig_edit", "ear_habits",
@@ -175,7 +177,7 @@ ROLES: dict[str, Role] = {
 ROLES["assistant"].local_tools = [
     "app_mode", "list_songs", "show_song", "choose_parts", "song_brief",
     "list_drafts", "explain_rig", "tone_sheet", "nudge_tone", "undo_rig_edit", "search_models",
-    "run_autopilot", "autopilot_status", "autopilot_listen_back", "resume_autopilot",
+    "run_autopilot", "run_autopilot_demo", "autopilot_status", "autopilot_listen_back", "resume_autopilot",
     "setup_status", "workspace_status", "list_jobs", "job_status",
 ]
 ROLES["tone-matcher"].local_tools = [

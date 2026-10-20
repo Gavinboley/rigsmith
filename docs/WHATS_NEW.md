@@ -20,6 +20,12 @@ the parts that need the Core, your guitar or your copy of a song say so.
 - **The tone sheet** is the rig as you would dial it in by hand, where it
   came from, what still differs from the record, and what you changed
   since it was built.
+- **A demo song** to try it all on with no file: made here - a clean intro,
+  a double-tracked riff and chorus, a lead solo, a band under them -
+  through known settings of the simulated amp, so the run ends with how
+  close it came: the voicing it chose, and each knob against the real one.
+  `rigsmith autopilot demo`, **Try the demo song** on the Autopilot page,
+  or ask the assistant.
 
 ## The song map
 

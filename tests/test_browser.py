@@ -1431,6 +1431,23 @@ def test_a_month_of_runs_shows_the_latest_and_keeps_the_rest_a_click_away(browse
         page.wait_for_function("document.querySelectorAll('#ap-runs .item').length === 8")
 
 
+def test_a_run_on_the_demo_shows_how_close_it_came(browser, server):
+    from rigsmith.core import autopilot
+
+    said = "The demo's rhythm guitar (chorus - left) went through Sim Modern at gain 70%."
+    autopilot.Run(
+        run_id="demo-1", request=autopilot.Request(title="Demo Song", artist="rigsmith"), state="done",
+        demo={"guitar": "rhythm", "part": "chorus - left", "truth": {}, "found": {}, "voicing_right": True, "summary": said},
+    ).save()
+    with page_at(browser, server) as page:
+        page.click("#tabs .tab[data-panel='autopilot']")
+        page.wait_for_selector("#ap-demo")
+        page.click("#ap-runs .item:has-text('Demo Song')")
+        answer = page.locator("#ap-demo-answer")
+        answer.wait_for()
+        assert said in answer.inner_text() and "ok" in answer.get_attribute("class")
+
+
 def test_a_finished_run_hands_its_draft_over_to_be_finished_by_ear(browser, server):
     from rigsmith.core import autopilot, rigs
 
