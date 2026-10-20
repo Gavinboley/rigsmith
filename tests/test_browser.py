@@ -1114,6 +1114,51 @@ def test_a_songs_tempo_can_be_doubled_and_tapped(browser, server):
         assert 60 <= tapped <= 160, f"five taps half a second apart read {tapped}"
 
 
+def test_a_play_button_still_says_stop_after_the_page_redraws(browser, server, tmp_path):
+    """Playing the mix, then "show all": the redrawn button said "play" over
+    the playing audio, and pressing it left a blank button behind."""
+    from rigsmith.core import songs
+    from rigsmith.core.songs import Part
+
+    made = songs.create("Playing")
+    made.mix = str(audio_file(tmp_path, "mix.wav", seconds=30.0))
+    made.structure = {"tempo": 120.0, "duration": 30.0, "sections": [{"start": 0.0, "end": 30.0, "label": "A", "name": "verse"}]}
+    made.parts = [Part("verse-1-stem", 0, "verse", "stem", 0.0, 15.0), Part("verse-1-left", 0, "verse", "left", 0.0, 15.0, presence=0.2)]
+    made.save()
+    with page_at(browser, server) as page:
+        page.click("#tabs .tab[data-panel='songs']")
+        mix = "section[data-panel='songs'] button[data-label='play the mix']"
+        page.wait_for_selector(mix)
+        page.click(mix)
+        page.wait_for_function(f"document.querySelector(\"{mix}\").textContent === 'stop'")
+        page.click("section[data-panel='songs'] button:has-text('show all')")
+        page.wait_for_selector("section[data-panel='songs'] button:has-text('show fewer')")
+        assert page.inner_text(mix) == "stop", "the redrawn button knows the mix is playing"
+        page.click(mix)
+        page.wait_for_function(f"document.querySelector(\"{mix}\").textContent === 'play the mix'")
+
+
+def test_no_page_scrolls_sideways_on_a_phone(browser, server):
+    """The status pills made every page 563 px wide at 390."""
+    with page_at(browser, server) as page:
+        page.set_viewport_size({"width": 390, "height": 844})
+        for panel in page.eval_on_selector_all("#tabs .tab[data-panel]", "tabs => tabs.map(t => t.dataset.panel)"):
+            page.click(f"#tabs .tab[data-panel='{panel}']")
+            page.wait_for_timeout(300)
+            width = page.evaluate("document.documentElement.scrollWidth")
+            assert width <= 391, f"the {panel} page is {width} px wide on a 390 px phone"
+
+
+def test_ctrl_k_finds_how_to_read_a_part_and_its_notes(browser, server):
+    with page_at(browser, server) as page:
+        page.keyboard.press("Control+k")
+        page.wait_for_selector(".palette input")
+        page.keyboard.type("arpeggio")
+        assert "Play a part on my guitar" in page.locator(".palette-item").first.inner_text()
+        page.fill(".palette input", "notes")
+        assert "See a part's notes" in page.locator(".palette-item").first.inner_text()
+
+
 def test_the_tone_sheet_opens_as_its_own_page(browser, server):
     from rigsmith.core import rigs
 

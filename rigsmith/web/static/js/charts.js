@@ -1,6 +1,7 @@
 /* Small line charts on uPlot, styled once. */
 
-import { el } from "./ui.js";
+import { api } from "./api.js";
+import { attempt, el } from "./ui.js";
 
 const AXIS = { stroke: "#6b7583", grid: { stroke: "#1e242b" }, ticks: { stroke: "#262d36" } };
 
@@ -14,7 +15,9 @@ export function lineChart(host, spec) {
     host.append(el("div", { class: "hint", text: "charting library unavailable" }));
     return null;
   }
-  const width = Math.max(260, host.clientWidth || 600);
+  // Drawn while its panel is hidden, the host has no width yet: fall back to
+  // what the window can hold, not a fixed 600 that pushed a phone sideways.
+  const width = Math.max(260, host.clientWidth || Math.min(600, window.innerWidth - 48));
   const options = {
     width,
     height: spec.height || 200,
@@ -49,7 +52,7 @@ export function pianoRoll(host, events, opts = {}) {
     host.append(el("div", { class: "hint", text: "no notes" }));
     return null;
   }
-  const width = Math.max(220, host.clientWidth || 300);
+  const width = Math.max(220, host.clientWidth || Math.min(300, window.innerWidth - 48));
   const height = opts.height || 96;
   const ratio = window.devicePixelRatio || 1;
   const canvas = el("canvas", {
@@ -86,6 +89,42 @@ export function pianoRoll(host, events, opts = {}) {
   ctx.globalAlpha = 1;
   host.append(canvas);
   return canvas;
+}
+
+/**
+ * Fold the notes a DI plays open under ``anchor``, or shut again: a piano
+ * roll, the count and range, and the MIDI to fix one in a tab editor.
+ * @param {HTMLElement} button the control that toggles it (gets aria-expanded)
+ * @param {HTMLElement} anchor the box goes right after this
+ * @param {string} url an API path answering {events, duration?, midi_url?}
+ * @param {{label?: string}} [opts]
+ */
+export async function toggleNotes(button, anchor, url, opts = {}) {
+  const open = anchor.nextElementSibling?.classList.contains("p-notes") ? anchor.nextElementSibling : null;
+  if (open) {
+    open.remove();
+    button.setAttribute("aria-expanded", "false");
+    return;
+  }
+  const notes = await attempt(() => api.get(url));
+  if (!notes) return;
+  const pitches = notes.events.map((e) => Math.round(e.midi));
+  const range = pitches.length ? `, ${noteName(Math.min(...pitches))} to ${noteName(Math.max(...pitches))}` : "";
+  const roll = el("div", { class: "p-roll" });
+  const box = el(
+    "div",
+    { class: "p-notes" },
+    roll,
+    el(
+      "div",
+      { class: "hint" },
+      el("span", { text: `${notes.events.length} notes${range}` }),
+      notes.midi_url ? el("a", { href: notes.midi_url, download: "", text: "save as MIDI", title: "Fix a wrong note in a tab editor, then render the part from that MIDI" }) : null
+    )
+  );
+  anchor.after(box);
+  button.setAttribute("aria-expanded", "true");
+  pianoRoll(roll, notes.events, { duration: notes.duration, label: opts.label });
 }
 
 export const COLOURS = { amber: "#f0a020", green: "#48b884", blue: "#5aa3e0", red: "#e0574b", violet: "#a07ae0", dim: "#6b7583" };

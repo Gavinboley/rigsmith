@@ -766,20 +766,12 @@ def part_notes(song_id: str, part_id: str) -> dict:
         take = takes.get(part.di_take)
     except NotFound:
         raise NotFound(f"{part.label}'s DI is gone from the takes library", hint="Render it again.") from None
-    path = Path(take.path).with_suffix(".notes.json")
-    if not path.is_file():
+    from .parts import notes_beside
+
+    notes = notes_beside(take.path)
+    if notes is None:
         raise NotFound(f"no notes were kept with {part.label}'s DI", hint="A DI you played yourself has no note list - only a rendered one does.")
-    data = json.loads(path.read_text(encoding="utf-8"))
-    midi = Path(take.path).with_suffix(".mid")
-    return {
-        "part_id": part.part_id,
-        "label": part.label,
-        "duration": round(part.end - part.start, 3),
-        "source": data.get("source"),
-        "heard_as": part.heard_as,
-        "events": data.get("events", []),
-        "midi_path": str(midi) if midi.is_file() else None,
-    }
+    return {"part_id": part.part_id, "label": part.label, "duration": round(part.end - part.start, 3), "heard_as": part.heard_as, **notes}
 
 
 def _heard_as(result) -> str | None:

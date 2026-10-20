@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+from urllib.parse import quote
+
 from fastapi import APIRouter
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from ...core import autopilot
@@ -44,6 +48,7 @@ def _payload(run) -> dict:
         data["target_url"] = _audio_url(run.target_path)
     if run.di_path:
         data["di_url"] = _audio_url(run.di_path)
+        data["has_notes"] = Path(run.di_path).with_suffix(".notes.json").is_file()
     data["notes"] = run.all_notes()
     return data
 
@@ -90,6 +95,37 @@ def build_song_rig(body: SongRigBody) -> dict:
 @router.get("/{run_id}")
 def get_run(run_id: str) -> dict:
     return _payload(autopilot.get(run_id))
+
+
+def _run_notes(run_id: str) -> dict:
+    from ...core.errors import NotFound
+    from ...core.parts import notes_beside
+
+    run = autopilot.get(run_id)
+    notes = notes_beside(run.di_path) if run.di_path else None
+    if notes is None:
+        raise NotFound("this run's DI has no note list", hint="A DI you played yourself has none - only one rendered from the part's notes does.")
+    return notes
+
+
+@router.get("/{run_id}/notes")
+def run_notes(run_id: str) -> dict:
+    """The notes the run's DI plays - the view a part's DI has."""
+    notes = _run_notes(run_id)
+    midi = notes.pop("midi_path")
+    notes["midi_url"] = f"/api/autopilot/{quote(run_id)}/notes.mid" if midi else None
+    notes["duration"] = round(max((e["start"] + e["duration"] for e in notes["events"]), default=0.0), 3)
+    return notes
+
+
+@router.get("/{run_id}/notes.mid")
+def run_notes_midi(run_id: str) -> FileResponse:
+    from ...core.errors import NotFound
+
+    midi = _run_notes(run_id)["midi_path"]
+    if not midi:
+        raise NotFound("no MIDI was kept with this run's DI")
+    return FileResponse(midi, media_type="audio/midi", filename=f"{run_id}.mid")
 
 
 @router.post("/{run_id}/resume")

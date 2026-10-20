@@ -12,7 +12,7 @@ import { goTo, onArrive } from "../nav.js";
 import { $, attempt, clear, el, prompt, toast } from "../ui.js";
 import { dropZone } from "../upload.js";
 import { ask } from "../chat.js";
-import { noteName, pianoRoll } from "../charts.js";
+import { toggleNotes } from "../charts.js";
 
 let songId = null;
 let song = null;
@@ -22,22 +22,38 @@ const SECTION_COLOURS = ["#f0a020", "#5aa3e0", "#48b884", "#c2687f", "#a07ae0", 
 const LAYERS = ["stem", "left", "centre", "right", "wide"];
 const LAYER_NAMES = { stem: "all", left: "left", centre: "centre", right: "right", wide: "wide" };
 
-function play(url, button) {
+// What the panel's one audio element is playing, by key - a URL, or
+// "part:<id>" for a part whose audio is cut on demand. Buttons read their
+// "stop" from this rather than holding it, so a re-render (show all,
+// choosing a part) cannot leave one saying "play" over playing audio.
+let playing = null;
+
+function isPlaying(key) {
+  return !audio.paused && playing === key;
+}
+
+function syncPlayButtons() {
+  document.querySelectorAll('section[data-panel="songs"] button[data-play]').forEach((button) => {
+    button.textContent = isPlaying(button.dataset.play) ? "stop" : button.dataset.label;
+  });
+}
+["play", "pause", "ended"].forEach((name) => audio.addEventListener(name, syncPlayButtons));
+
+/** A button that plays ``key`` and says "stop" while it does. */
+function playButton(label, key, onclick, attrs = {}) {
+  return el("button", { class: "btn small", ...attrs, text: isPlaying(key) ? "stop" : label, "data-label": label, "data-play": key, onclick });
+}
+
+function play(url, key = url) {
   if (!url) return;
-  if (!audio.paused && audio.dataset.url === url) {
+  if (isPlaying(key)) {
     audio.pause();
-    if (button) button.textContent = button.dataset.label;
     return;
   }
   document.querySelectorAll("audio").forEach((a) => a.pause());
   audio.src = url;
-  audio.dataset.url = url;
-  audio.play();
-  if (button) {
-    button.dataset.label = button.dataset.label || button.textContent;
-    button.textContent = "stop";
-    audio.onended = audio.onpause = () => (button.textContent = button.dataset.label);
-  }
+  playing = key;
+  audio.play().catch(() => {});
 }
 
 function time(seconds) {
@@ -131,9 +147,9 @@ function render() {
       el(
         "div",
         { class: "row" },
-        song.urls?.mix ? el("button", { class: "btn small", text: "play the mix", onclick: (e) => play(song.urls.mix, e.target) }) : null,
-        song.urls?.stem ? el("button", { class: "btn small", text: "play the guitar", onclick: (e) => play(song.urls.stem, e.target) }) : null,
-        ...Object.keys(song.urls || {}).filter((k) => k.startsWith("layer-")).map((k) => el("button", { class: "btn small ghost", text: k.replace("layer-", ""), title: "play this layer alone", onclick: (e) => play(song.urls[k], e.target) })),
+        song.urls?.mix ? playButton("play the mix", song.urls.mix, () => play(song.urls.mix)) : null,
+        song.urls?.stem ? playButton("play the guitar", song.urls.stem, () => play(song.urls.stem)) : null,
+        ...Object.keys(song.urls || {}).filter((k) => k.startsWith("layer-")).map((k) => playButton(k.replace("layer-", ""), song.urls[k], () => play(song.urls[k]), { class: "btn small ghost", title: "play this layer alone" })),
         el("span", { class: "grow" }),
         el("button", { class: "btn small", text: "Add audio", onclick: addAudio }),
         el("button", { class: "btn small", text: "Look up", title: "Album, year, credits", onclick: () => attempt(async () => { song = await api.post(`/api/songs/${songId}/lookup`); render(); }) }),
@@ -322,7 +338,7 @@ function partsGrid() {
             { class: "p-di hint" },
             el("span", { class: `tag ${part.di.kind === "yours" ? "a2" : ""}`, text: part.di.kind === "yours" ? "your take" : "rendered DI" }),
             el("span", { text: part.di.kind === "yours" ? " autopilot uses it" : ` on ${part.di.guitar || "the synthetic string"}${readingText(part)}` }),
-            el("button", { class: "btn small ghost", text: "play DI", onclick: (e) => play(part.di.url, e.target) }),
+            playButton("play DI", part.di.url, () => play(part.di.url), { class: "btn small ghost" }),
             part.di.kind === "yours" ? null : el("button", { class: "btn small ghost", text: "notes", title: "See the notes this DI plays", "aria-expanded": "false", onclick: (e) => showNotes(part, e.currentTarget) })
           )
         : null,
@@ -331,7 +347,7 @@ function partsGrid() {
         "div",
         { class: "p-actions" },
         el("button", { class: `btn small ${part.chosen ? "primary" : ""}`, text: part.chosen ? "chosen" : "choose", onclick: () => toggle(part) }),
-        el("button", { class: "btn small", text: "play", onclick: (e) => playPart(part, e.target) }),
+        playButton("play", `part:${part.part_id}`, () => playPart(part)),
         el("button", { class: "btn small", text: "on my guitar", title: "Render this part as a DI on a learned guitar", onclick: () => renderDi(part) }),
         el("button", { class: "btn small", text: "my take", title: "Your own recording of this part, put on the record's clock", onclick: () => useTake(part) }),
         el("button", { class: "btn small", text: "tune", title: "Tune a rig against this part", onclick: () => goTo("tune", { songId: songId, partId: part.part_id, diTake: part.di_take }) }),
@@ -344,9 +360,14 @@ function partsGrid() {
   return box;
 }
 
-async function playPart(part, button) {
+async function playPart(part) {
+  const key = `part:${part.part_id}`;
+  if (isPlaying(key)) {
+    audio.pause();
+    return;
+  }
   const result = await attempt(() => api.get(`/api/songs/${songId}/parts/${part.part_id}/audio`));
-  if (result) play(result.url, button);
+  if (result) play(result.url, key);
 }
 
 async function toggle(part) {
@@ -454,33 +475,8 @@ function readingText(part) {
 
 /** The notes a rendered DI plays, drawn under it - a wrong transcription
  * shows before a tone is tuned against it. Clicking again folds it away. */
-async function showNotes(part, button) {
-  const line = button.closest(".p-di");
-  const open = line.nextElementSibling?.classList.contains("p-notes") ? line.nextElementSibling : null;
-  if (open) {
-    open.remove();
-    button.setAttribute("aria-expanded", "false");
-    return;
-  }
-  const notes = await attempt(() => api.get(`/api/songs/${songId}/parts/${encodeURIComponent(part.part_id)}/notes`));
-  if (!notes) return;
-  const pitches = notes.events.map((e) => Math.round(e.midi));
-  const range = pitches.length ? `, ${noteName(Math.min(...pitches))} to ${noteName(Math.max(...pitches))}` : "";
-  const roll = el("div", { class: "p-roll" });
-  const box = el(
-    "div",
-    { class: "p-notes" },
-    roll,
-    el(
-      "div",
-      { class: "hint" },
-      el("span", { text: `${notes.events.length} notes${range}` }),
-      notes.midi_url ? el("a", { href: notes.midi_url, download: "", text: "save as MIDI", title: "Fix a wrong note in a tab editor, then render the part from that MIDI" }) : null
-    )
-  );
-  line.after(box);
-  button.setAttribute("aria-expanded", "true");
-  pianoRoll(roll, notes.events, { duration: notes.duration, label: `The notes of ${part.label}` });
+function showNotes(part, button) {
+  return toggleNotes(button, button.closest(".p-di"), `/api/songs/${songId}/parts/${encodeURIComponent(part.part_id)}/notes`, { label: `The notes of ${part.label}` });
 }
 
 async function renderDi(part) {

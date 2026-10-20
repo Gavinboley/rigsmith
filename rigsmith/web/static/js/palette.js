@@ -39,6 +39,8 @@ const ACTIONS = [
   ["Start autopilot", "autopilot", { text: "Start autopilot" }, "a song in, a rig out"],
   ["Add a song", "songs", "#song-new", "the record you are chasing"],
   ["Isolate the guitar", "songs", { text: "Isolate guitar" }, "split the stem out of the mix", "Pick a song with a mix and no stem yet - the button is on it."],
+  ["Play a part on my guitar", "songs", { text: "on my guitar" }, "read as single notes, chords or an arpeggio", "Pick a song that has been mapped - every part has it."],
+  ["See a part's notes", "songs", { text: "notes" }, "the notes its DI plays, and the MIDI", "Render a part on your guitar first - its notes are on its card then."],
   ["Research a tone", "recipes", "#new-recipe", "the gear behind a sound"],
   ["Teach it my guitar", "guitar", "#profile-new", "every note on every string"],
   ["Check my level", "guitar", { text: "check my level" }, "is the input hot enough", "Pick or add a guitar first - the check is on its page."],

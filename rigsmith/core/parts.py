@@ -100,6 +100,19 @@ def _parts_dir() -> Path:
     return directory
 
 
+def notes_beside(audio_path) -> dict | None:
+    """The notes kept beside a rendered DI - where they came from, the
+    events, and the MIDI's path - or None for audio with no note list (a DI
+    you played yourself)."""
+    audio = Path(audio_path)
+    path = audio.with_suffix(".notes.json")
+    if not path.is_file():
+        return None
+    data = json.loads(path.read_text(encoding="utf-8"))
+    midi = audio.with_suffix(".mid")
+    return {"source": data.get("source"), "events": data.get("events", []), "midi_path": str(midi) if midi.is_file() else None}
+
+
 def part_di(
     profile_id: str | None,
     *,

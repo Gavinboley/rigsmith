@@ -649,6 +649,23 @@ def test_a_part_s_notes_are_served_with_their_midi(client, monkeypatch, tmp_path
     assert client.get("/api/songs/a-song/parts/intro-1-stem/notes").status_code == 404
 
 
+def test_an_autopilot_run_shows_the_notes_its_di_plays(client, monkeypatch, tmp_path):
+    import json
+    from types import SimpleNamespace
+
+    from rigsmith.core import autopilot
+
+    di = tmp_path / "run-di.wav"
+    di.write_bytes(b"RIFF")
+    di.with_suffix(".notes.json").write_text(json.dumps({"source": "transcribed", "events": [{"start": 0.5, "duration": 1.0, "midi": 40.0}]}), encoding="utf-8")
+    monkeypatch.setattr(autopilot, "get", lambda run_id: SimpleNamespace(di_path=str(di)))
+    payload = client.get("/api/autopilot/a-run/notes").json()
+    assert payload["events"][0]["midi"] == 40.0 and payload["duration"] == 1.5
+    assert payload["midi_url"] is None, "no MIDI was kept beside this one"
+    monkeypatch.setattr(autopilot, "get", lambda run_id: SimpleNamespace(di_path=str(tmp_path / "your-take.wav")))
+    assert client.get("/api/autopilot/a-run/notes").status_code == 404
+
+
 def test_a_part_can_be_read_as_an_arpeggio_from_the_song_page(client, monkeypatch, tmp_path):
     from types import SimpleNamespace
 

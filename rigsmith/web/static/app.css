@@ -86,6 +86,22 @@ html, body {
 .tab[aria-selected="true"] { background: var(--panel); color: var(--amber); }
 
 .status { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+/* On a phone the status pills scroll in their own strip; they made every
+   page 563 px wide at 390. */
+@media (max-width: 640px) {
+  .topbar { gap: 10px; padding: 0 12px; }
+  .brand-sub { display: none; }
+  .status { min-width: 0; overflow-x: auto; scrollbar-width: none; }
+  .status > * { flex: none; white-space: nowrap; }
+  #chat-toggle { order: -2; margin-left: 0; }
+  #palette-open { order: -1; }
+  .chat-drawer { width: 100vw; flex-basis: 100vw; }
+  /* Rows of controls wrap rather than push the page sideways. */
+  select, input { max-width: 100%; min-width: 0; }
+  #draft-select { min-width: 0; }
+  .draft-picker, .like-controls { flex-wrap: wrap; min-width: 0; max-width: 100%; }
+  .item, .scenes-head { flex-wrap: wrap; }
+}
 
 .pill {
   font-size: 11px; padding: 3px 9px; border-radius: 999px;

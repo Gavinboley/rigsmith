@@ -7,6 +7,7 @@
  */
 
 import { api } from "../api.js";
+import { toggleNotes } from "../charts.js";
 import { goTo, onArrive } from "../nav.js";
 import { likeControls } from "../pickups.js";
 import { remainingCard } from "../remaining.js";
@@ -262,6 +263,9 @@ function show(run) {
     }).catch(() => {});
   }
   links.append(audioLink("the part", run.target_url), audioLink("your DI", run.di_url));
+  if (run.has_notes) {
+    links.append(el("button", { class: "btn small ghost", text: "notes", title: "See the notes the DI plays", "aria-expanded": "false", onclick: (e) => toggleNotes(e.currentTarget, links, `/api/autopilot/${encodeURIComponent(run.run_id)}/notes`, { label: "The notes of the DI" }) }));
+  }
   if (run.state === "failed" || run.state === "stopped") {
     links.append(el("button", { class: "btn small", text: "Resume", onclick: () => attempt(async () => show(await api.post(`/api/autopilot/${run.run_id}/resume`))) }));
   }
