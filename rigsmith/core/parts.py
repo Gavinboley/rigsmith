@@ -113,6 +113,44 @@ def notes_beside(audio_path) -> dict | None:
     return {"source": data.get("source"), "events": data.get("events", []), "midi_path": str(midi) if midi.is_file() else None}
 
 
+#: Above the 24th fret of the high E string: no guitar plays it.
+HIGHEST_GUITAR_NOTE = 88
+
+#: How far, in semitones, the middle 90% of a part's notes may spread before
+#: they look more like harmonics and distortion read as notes than like one
+#: part - a bend or a pick scrape at the edges does not count.
+WIDEST_PART = 36
+
+
+def _doubtful_range(events) -> str | None:
+    """A warning when transcribed notes could not all be one guitar part.
+
+    The transcription's confidence is measured from pitch classes, which an
+    octave error does not change; a DI two octaves out scored no lower, and
+    the search tuned against it. Its range is the tell.
+    """
+    import numpy as np
+
+    from ..learn.instrument import midi_to_note
+
+    pitches = sorted(e.midi for e in events)
+    if len(pitches) < 8:
+        return None
+    above = sum(1 for p in pitches if p > HIGHEST_GUITAR_NOTE + 0.5)
+    if above >= max(2, 0.02 * len(pitches)):
+        return (
+            f"{above} note(s) above {midi_to_note(HIGHEST_GUITAR_NOTE)}, past a guitar's 24th fret - "
+            "harmonics read as notes. Check the part's notes, or give it a tab's MIDI"
+        )
+    low, high = float(np.percentile(pitches, 5)), float(np.percentile(pitches, 95))
+    if high - low > WIDEST_PART:
+        return (
+            f"the notes spread from {midi_to_note(round(low))} to {midi_to_note(round(high))}, over three "
+            "octaves - more than one part usually covers. Check them ('notes' on the part), or read it another way"
+        )
+    return None
+
+
 def part_di(
     profile_id: str | None,
     *,
@@ -210,6 +248,9 @@ def part_di(
         method = f"{transcription.method}, {transcription.mode}"
         confidence = round(transcription.confidence, 3)
         warnings.extend(transcription.warnings)
+        doubt = _doubtful_range(events)
+        if doubt:
+            warnings.append(doubt)
         if power_chords:
             events = expand_power_chords(events)
     if transpose and midi is None:

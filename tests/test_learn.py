@@ -775,6 +775,19 @@ def test_a_driven_travis_pattern_is_read_note_by_note():
     assert hits >= 0.8 * len(truth), hits
 
 
+def test_a_transcription_no_guitar_could_play_says_so():
+    """136 notes from A1 to E6 rendered without a word, and a search tuned
+    against them."""
+    from rigsmith.core.parts import _doubtful_range
+
+    riff = [NoteEvent(start=i * 0.25, duration=0.2, midi=float(m)) for i, m in enumerate([40, 43, 45, 47, 45, 43, 52, 50] * 2)]
+    assert _doubtful_range(riff) is None
+    harmonics = riff + [NoteEvent(start=4 + i * 0.25, duration=0.2, midi=91.0) for i in range(3)]
+    assert "24th fret" in _doubtful_range(harmonics)
+    spread = [NoteEvent(start=i * 0.25, duration=0.2, midi=float(m)) for i, m in enumerate([33, 36, 40, 52, 64, 76, 80, 84] * 3)]
+    assert "over three octaves" in _doubtful_range(spread)
+
+
 def test_a_part_auto_misreads_can_be_read_as_an_arpeggio_on_request():
     """Slower, the same driven Travis pattern still rings like a chord part
     to the automatic choice; asked for, it is read a note per pick."""
