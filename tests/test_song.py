@@ -472,6 +472,34 @@ def test_the_room_is_read_where_the_playing_stops():
     assert read.space == "a plate or hall", (read.decay_ms, read.space)
 
 
+@pytest.mark.parametrize("amp_type, gain", [(0, 0.1), (3, 0.85)])
+def test_chords_that_never_rest_are_not_read_as_a_wash(amp_type, gain):
+    """Between chords on every beat, a 6 dB dip and the next chord ringing
+    on at the note's own level read as a reverb tail: "a long wash" on dry
+    power chords, and a plate under dry clean chords."""
+    beat = 0.5
+    notes = [(b * beat, beat * 0.95, m, 0.8) for b in range(24) for m in (lambda r: (r, r + 7, r + 12))((45, 48, 43, 50)[(b // 4) % 4])]
+    dry = SimAmp(Type=amp_type, Gain=gain).process(render_notes(notes, seed=5))
+    read = describe.sketch(dry, RATE, from_stem=False)
+    assert read.space not in ("a plate or hall", "a long wash"), (read.decay_ms, read.space)
+
+
+def test_a_clean_intro_keeps_its_note_spacing_when_the_verse_comes_in():
+    """An arpeggio left to ring, a note every 500 ms, whose last moments are
+    the loud verse coming in: measured against that, none of its own notes
+    counted, it had no spacing, and its rhythm passed for a quarter-note
+    delay on the demo song."""
+    beat = 0.5
+    notes = [(b * beat, 0.9, [52, 55, 59, 64][b % 4], 0.5) for b in range(24)]
+    intro = SimAmp(Type=0, Gain=0.1, Level=0.3).process(render_notes(notes, seed=4))
+    verse = [(12.0 + k * 0.25, 0.22, 40, 0.9) for k in range(4)]
+    loud = SimAmp(Type=3, Gain=0.7).process(render_notes(verse, seed=5))
+    audio = np.zeros(int(13.2 * RATE))
+    audio[: len(intro)] += intro[: len(audio)]
+    audio[: len(loud)] += loud[: len(audio)]
+    assert describe._note_spacing_ms(audio[: int(12.6 * RATE)], RATE) == pytest.approx(500, abs=10)
+
+
 def test_a_short_double_tracked_section_is_still_heard_as_one_part_twice():
     """Under ~4 s there was no 8 s window to judge, and the answer was 'different parts'."""
     beat = 0.5

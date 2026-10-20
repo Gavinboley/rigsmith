@@ -377,20 +377,32 @@ def _note_spacing_ms(audio, sample_rate) -> float | None:
     An echo makes onsets too, so spacing measured over every onset of a
     delayed part comes out at a fraction of the echo time, and the echo then
     looks like rhythm. Echoes are quieter copies; only notes within 6 dB of
-    the loudest count.
+    the loud ones count - the loudest level a fifth of the notes reach, not
+    the loudest note: a clean intro whose last half-second was the distorted
+    verse coming in measured every one of its own notes 20 dB under that, had
+    no spacing, and its notes every 500 ms passed for a quarter-note delay.
     """
     from ..learn.segment import segment
 
     notes = segment(audio[: 30 * sample_rate], sample_rate, split_on_pitch=False)
     if len(notes) < 6:
         return None
-    loudest = max(n.peak_db for n in notes)
+    peaks = sorted((n.peak_db for n in notes), reverse=True)
+    loudest = next((p for p in peaks if sum(1 for q in peaks if p - 6 <= q <= p) >= 0.2 * len(peaks)), peaks[len(peaks) // 2])
     played = [n.start for n in notes if n.peak_db >= loudest - 6]
     if len(played) < 4:
         return None
     gaps = np.diff(played)
     gaps = gaps[gaps > 0.05]
     return float(np.median(gaps) * 1000.0) if len(gaps) else None
+
+
+#: How far under the note the playing has to fall, 40 ms after a stop, for
+#: the stop to count. Within this, the note is still sounding or the next
+#: one has started: between the chords of a part that never rests, a 6 dB
+#: dip and the next chord ringing on at the note's own level read as a
+#: reverb tail - "a long wash" on dry power chords, 1.4-5.3 s.
+STILL_PLAYING_DB = 4.0
 
 
 def _decay(audio, sample_rate) -> float | None:
@@ -435,9 +447,9 @@ def _decay(audio, sample_rate) -> float | None:
             end = start
             while end < min(len(db) - 3, start + 120) and db[end + 3] - db[end] < 4:
                 end += 1
-            if end - start >= 16:
+            tail = db[start:end]
+            if end - start >= 16 and float(np.mean(tail[:4])) - reference < -STILL_PLAYING_DB:
                 usable += 1
-                tail = db[start:end]
                 if float(np.mean(tail[:4])) - reference < -30:
                     dry += 1
                 else:
