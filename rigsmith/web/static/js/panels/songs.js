@@ -44,6 +44,17 @@ function playButton(label, key, onclick, attrs = {}) {
   return el("button", { class: "btn small", ...attrs, text: isPlaying(key) ? "stop" : label, "data-label": label, "data-play": key, onclick });
 }
 
+/** Play ``url`` from ``seconds`` in, whatever was playing. */
+function playFrom(url, seconds) {
+  document.querySelectorAll("audio").forEach((a) => a.pause());
+  if (playing !== url) {
+    audio.src = url;
+    playing = url;
+  }
+  audio.currentTime = seconds;
+  audio.play().catch(() => {});
+}
+
 function play(url, key = url) {
   if (!url) return;
   if (isPlaying(key)) {
@@ -476,7 +487,10 @@ function readingText(part) {
 /** The notes a rendered DI plays, drawn under it - a wrong transcription
  * shows before a tone is tuned against it. Clicking again folds it away. */
 function showNotes(part, button) {
-  return toggleNotes(button, button.closest(".p-di"), `/api/songs/${songId}/parts/${encodeURIComponent(part.part_id)}/notes`, { label: `The notes of ${part.label}` });
+  return toggleNotes(button, button.closest(".p-di"), `/api/songs/${songId}/parts/${encodeURIComponent(part.part_id)}/notes`, {
+    label: `The notes of ${part.label}`,
+    onSeek: (seconds) => playFrom(part.di.url, seconds),
+  });
 }
 
 async function renderDi(part) {

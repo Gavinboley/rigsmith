@@ -1191,6 +1191,36 @@ def test_drafts_with_one_name_can_be_told_apart_in_the_picker(browser, server):
         assert len(labels) == 3 and len(set(labels)) == 3, labels
 
 
+def test_a_parts_notes_unfold_and_play_from_where_they_are_clicked(browser, server, tmp_path):
+    import json
+
+    from rigsmith.core import songs, takes
+    from rigsmith.core.songs import Part
+
+    made = songs.create("Rolled")
+    made.structure = {"tempo": 120.0, "duration": 10.0, "sections": [{"start": 0.0, "end": 10.0, "label": "A", "name": "verse"}]}
+    made.parts = [Part("verse-1-stem", 0, "verse", "stem", 0.0, 10.0)]
+    made.save()
+    di = audio_file(tmp_path, "verse-di.wav", seconds=10.0)
+    events = [{"start": 0.5 * i, "duration": 0.4, "midi": 40.0 + i, "velocity": 0.75} for i in range(12)]
+    di.with_suffix(".notes.json").write_text(json.dumps({"source": "transcribed", "events": events}), encoding="utf-8")
+    take = takes.add(di, take_id="rolled-di", kind="di", origin="synth", copy=False)
+    song = songs.get(made.song_id)
+    song.part("verse-1-stem").di_take = take.take_id
+    song.save()
+    with page_at(browser, server) as page:
+        page.click("#tabs .tab[data-panel='songs']")
+        notes = "section[data-panel='songs'] .p-di button:has-text('notes')"
+        page.wait_for_selector(notes)
+        page.click(notes)
+        page.wait_for_selector(".p-notes canvas")
+        assert "12 notes, E2 to D#3" in page.inner_text(".p-notes")
+        page.click(".p-notes canvas", position={"x": 60, "y": 20})
+        page.wait_for_function("document.querySelector(\"section[data-panel='songs'] .p-di button[data-play]\").textContent === 'stop'")
+        page.click(notes)
+        assert page.locator(".p-notes").count() == 0, "a second click folds it away"
+
+
 def test_no_page_scrolls_sideways_on_a_phone(browser, server):
     """The status pills made every page 563 px wide at 390."""
     with page_at(browser, server) as page:

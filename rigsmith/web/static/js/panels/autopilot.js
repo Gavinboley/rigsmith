@@ -191,6 +191,19 @@ function stageNode(name, stage) {
   );
 }
 
+// Plays the DI from where its piano roll was clicked.
+let seekPlayer = null;
+function playFrom(url, seconds) {
+  document.querySelectorAll("audio").forEach((a) => a.pause());
+  if (!seekPlayer || seekPlayer.dataset.url !== url) {
+    seekPlayer?.pause();
+    seekPlayer = new Audio(url);
+    seekPlayer.dataset.url = url;
+  }
+  seekPlayer.currentTime = seconds;
+  seekPlayer.play().catch(() => {});
+}
+
 function audioLink(label, url) {
   if (!url) return null;
   // Fetched when played, not when drawn: a run page has a clip per finalist,
@@ -264,7 +277,7 @@ function show(run) {
   }
   links.append(audioLink("the part", run.target_url), audioLink("your DI", run.di_url));
   if (run.has_notes) {
-    links.append(el("button", { class: "btn small ghost", text: "notes", title: "See the notes the DI plays", "aria-expanded": "false", onclick: (e) => toggleNotes(e.currentTarget, links, `/api/autopilot/${encodeURIComponent(run.run_id)}/notes`, { label: "The notes of the DI" }) }));
+    links.append(el("button", { class: "btn small ghost", text: "notes", title: "See the notes the DI plays", "aria-expanded": "false", onclick: (e) => toggleNotes(e.currentTarget, links, `/api/autopilot/${encodeURIComponent(run.run_id)}/notes`, { label: "The notes of the DI", onSeek: (seconds) => playFrom(run.di_url, seconds) }) }));
   }
   if (run.state === "failed" || run.state === "stopped") {
     links.append(el("button", { class: "btn small", text: "Resume", onclick: () => attempt(async () => show(await api.post(`/api/autopilot/${run.run_id}/resume`))) }));

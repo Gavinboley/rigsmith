@@ -41,10 +41,11 @@ export function noteName(midi) {
 
 /**
  * Notes as a piano roll: time across, pitch up, a faint line on every E -
- * a guitar's own landmarks. Brighter is harder.
+ * a guitar's own landmarks. Brighter is harder. With ``onSeek``, a click
+ * plays from that moment.
  * @param {HTMLElement} host
  * @param {{start: number, duration: number, midi: number, velocity?: number}[]} events
- * @param {{duration?: number, height?: number, label?: string}} [opts]
+ * @param {{duration?: number, height?: number, label?: string, onSeek?: (seconds: number) => void}} [opts]
  */
 export function pianoRoll(host, events, opts = {}) {
   host.innerHTML = "";
@@ -87,6 +88,11 @@ export function pianoRoll(host, events, opts = {}) {
     ctx.fillRect(x, top(Math.round(e.midi)), Math.max(2, (e.duration / end) * width - 1), Math.max(2, row - 1));
   }
   ctx.globalAlpha = 1;
+  if (opts.onSeek) {
+    canvas.style.cursor = "pointer";
+    canvas.title = "click to play from here";
+    canvas.addEventListener("click", (event) => opts.onSeek(Math.max(0, (event.offsetX / width) * end)));
+  }
   host.append(canvas);
   return canvas;
 }
@@ -97,7 +103,7 @@ export function pianoRoll(host, events, opts = {}) {
  * @param {HTMLElement} button the control that toggles it (gets aria-expanded)
  * @param {HTMLElement} anchor the box goes right after this
  * @param {string} url an API path answering {events, duration?, midi_url?}
- * @param {{label?: string}} [opts]
+ * @param {{label?: string, onSeek?: (seconds: number) => void}} [opts]
  */
 export async function toggleNotes(button, anchor, url, opts = {}) {
   const open = anchor.nextElementSibling?.classList.contains("p-notes") ? anchor.nextElementSibling : null;
@@ -124,7 +130,7 @@ export async function toggleNotes(button, anchor, url, opts = {}) {
   );
   anchor.after(box);
   button.setAttribute("aria-expanded", "true");
-  pianoRoll(roll, notes.events, { duration: notes.duration, label: opts.label });
+  pianoRoll(roll, notes.events, { duration: notes.duration, label: opts.label, onSeek: opts.onSeek });
 }
 
 export const COLOURS = { amber: "#f0a020", green: "#48b884", blue: "#5aa3e0", red: "#e0574b", violet: "#a07ae0", dim: "#6b7583" };
