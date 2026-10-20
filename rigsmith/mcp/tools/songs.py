@@ -67,10 +67,15 @@ def show_song(song_id: str) -> str:
 
 
 @tool
-def choose_parts(song_id: str, part_ids: list[str], only: bool = False) -> str:
+def choose_parts(song_id: str, part_ids: list[str] | None = None, only: bool = False, one_per_sound: bool = False) -> str:
     """Pick the parts to chase. Ask the user which parts they care about -
-    the solo, the verse riff - rather than choosing for them."""
-    song = songs.choose(song_id, part_ids, only=only)
+    the solo, the verse riff - rather than choosing for them. ``one_per_sound``
+    chooses a part for each sound the song has (a clean intro, a driven
+    chorus, a lead) and only those - for a rig with a scene per sound."""
+    if one_per_sound:
+        song = songs.choose_sounds(song_id)
+    else:
+        song = songs.choose(song_id, list(part_ids or []), only=only)
     return f"{len(song.chosen())} chosen: " + ", ".join(p.part_id for p in song.chosen())
 
 

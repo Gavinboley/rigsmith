@@ -175,6 +175,12 @@ def choose(song_id: str, body: ChooseBody) -> dict:
     return _payload(songs.choose(song_id, body.part_ids, chosen=body.chosen, only=body.only))
 
 
+@router.post("/{song_id}/choose-sounds")
+def choose_sounds(song_id: str) -> dict:
+    """A part for each sound the song has, and only those."""
+    return _payload(songs.choose_sounds(song_id))
+
+
 @router.post("/{song_id}/sections/{index}/rename")
 def rename_section(song_id: str, index: int, body: RenameBody) -> dict:
     return _payload(songs.rename_section(song_id, index, body.name))

@@ -326,7 +326,7 @@ def _stage_parts(run: Run) -> str:
     song = songs.get(run.song_id)
     wanted = list(run.request.parts)
     if not wanted and run.request.whole_song:
-        wanted = [p.part_id for p in _sounds(song)]
+        wanted = [p.part_id for p in songs.sounds(song, limit=MAX_SONG_PARTS)]
         if wanted:
             run.note(f"the whole song: {len(wanted)} sound(s), a part for each - " + ", ".join(wanted))
     wanted = wanted or [p.part_id for p in song.chosen()]
@@ -359,56 +359,14 @@ def _part(song, run: Run, index: int = 0):
         return heir
 
 
-def _prominence(part) -> float:
-    """How much a part is worth chasing: loud, in a chorus, on a layer of its own."""
-    value = part.presence
-    if part.section_name == "chorus":
-        value += 0.5
-    elif part.section_name in ("verse", "solo"):
-        value += 0.3
-    if part.layer == "stem":
-        value -= 0.2
-    return value
-
-
 def _most_prominent(song):
     """The part most worth chasing when nobody said: a loud, repeated, mid-song part."""
+    from .songs import prominence
+
     playable = [p for p in song.parts if p.end - p.start >= 4] or song.parts
     if not playable:
         raise Invalid("the map has no parts to choose from")
-    return max(playable, key=_prominence)
-
-
-#: Two parts are one sound when they are on one layer (either side of a
-#: double-track counts as one) and their measured gains are within this.
-SAME_SOUND_GAIN = 0.25
-
-
-def _sounds(song) -> list:
-    """One part for each sound the song's guitar has, the most prominent first.
-
-    Songs change sound by section - a clean intro, a driven verse, a lead
-    solo - so the most prominent part of each kind of section is taken, and
-    two that are one sound are kept once. Measured gain alone would split one
-    guitar: the demo song's rhythm read 0.56 to 0.83 across its sections.
-    """
-    playable = [p for p in song.parts if p.end - p.start >= 4] or list(song.parts)
-    by_section: dict[str, list] = {}
-    for part in playable:
-        by_section.setdefault(part.section_name, []).append(part)
-    picks = sorted((max(parts, key=_prominence) for parts in by_section.values()), key=_prominence, reverse=True)
-
-    def layer(part) -> str:
-        return "sides" if part.layer in ("left", "right") else part.layer
-
-    def gain(part) -> float:
-        return float((part.sketch or {}).get("gain") or 0.0)
-
-    kept: list = []
-    for part in picks:
-        if not any(layer(k) == layer(part) and abs(gain(k) - gain(part)) < SAME_SOUND_GAIN for k in kept):
-            kept.append(part)
-    return kept[:MAX_SONG_PARTS]
+    return max(playable, key=prominence)
 
 
 def _stage_research(run: Run, progress) -> str:

@@ -1570,3 +1570,25 @@ def test_a_second_launch_finds_the_ui_already_running(server, tmp_path):
     assert already_running(address.hostname, address.port, tmp_path)
     assert not already_running(address.hostname, address.port, tmp_path / "another-workspace"), "not someone else's"
     assert not _port_free(address.hostname, address.port)
+
+
+def test_a_part_per_sound_is_one_click_on_the_song(browser, server, tmp_path):
+    from rigsmith.core import songs
+    from rigsmith.core.songs import Part
+
+    made = songs.create("One Per Sound")
+    made.mix = str(audio_file(tmp_path, "mix.wav", seconds=32.0))
+    names = ["intro", "verse", "chorus", "solo"]
+    made.structure = {"tempo": 120.0, "duration": 32.0, "sections": [{"start": i * 8.0, "end": i * 8.0 + 8.0, "label": "ABCD"[i], "name": n} for i, n in enumerate(names)]}
+    made.parts = [
+        Part("intro-1-stem", 0, "intro", "stem", 0.0, 8.0, sketch={"gain": 0.02, "summary": "clean"}),
+        Part("verse-2-left", 1, "verse", "left", 8.0, 16.0, sketch={"gain": 0.68, "summary": "high gain"}),
+        Part("chorus-3-left", 2, "chorus", "left", 16.0, 24.0, sketch={"gain": 0.6, "summary": "high gain"}),
+        Part("solo-4-centre", 3, "solo", "centre", 24.0, 32.0, sketch={"gain": 0.8, "summary": "saturated"}),
+    ]
+    made.save()
+    with page_at(browser, server) as page:
+        page.click("#tabs .tab[data-panel='songs']")
+        page.click("#choose-sounds")
+        page.wait_for_selector(".toast:has-text('Chose 3')")
+    assert sorted(p.part_id for p in songs.get(made.song_id).chosen()) == ["chorus-3-left", "intro-1-stem", "solo-4-centre"]

@@ -74,7 +74,9 @@ ROLES: dict[str, Role] = {
         "reverb'), turn the draft they mean with nudge_tone; 'that was worse' "
         "is undo_rig_edit. Start a run from their ear_habits only when asked. "
         "Someone with no song file to hand, or asking whether it all works, can "
-        "try run_autopilot_demo: a song made here whose answer is known.",
+        "try run_autopilot_demo: a song made here whose answer is known. "
+        "'The whole song' or 'every sound in it' is choose_parts with "
+        "one_per_sound, or run_autopilot with whole_song.",
         groups=[],
         tools=[
             "app_mode", "list_songs", "show_song", "list_takes", "list_guitar_profiles",

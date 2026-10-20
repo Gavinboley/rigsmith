@@ -122,7 +122,7 @@ def test_a_sound_is_chased_once_however_many_sections_play_it():
         part("chorus-3-left", "chorus", "left", 0.56), part("chorus-3-right", "chorus", "right", 0.78),
         part("solo-4-centre", "solo", "centre", 0.80), part("solo-4-left", "solo", "left", 0.31, presence=0.5),
     ])
-    picked = [p.part_id for p in autopilot._sounds(song)]
+    picked = [p.part_id for p in songs.sounds(song)]
     # The verse and chorus are one rhythm sound, read 0.56-0.70; the lead and
     # the clean intro are sounds of their own.
     assert picked[0] == "chorus-3-left" and set(picked) == {"chorus-3-left", "solo-4-centre", "intro-1-stem"}, picked

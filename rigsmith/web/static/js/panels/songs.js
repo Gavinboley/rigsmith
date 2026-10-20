@@ -346,6 +346,20 @@ function partsGrid() {
       { class: "scenes-head" },
       el("h3", { text: "Parts" }),
       el("span", { class: "hint", text: showAll ? `all ${song.parts.length}` : `chosen, and the main layer of each section - ${shown.length} of ${song.parts.length}` }),
+      el("span", { class: "grow" }),
+      el("button", {
+        class: "btn small",
+        id: "choose-sounds",
+        text: "one per sound",
+        title: "Choose a part for each sound the song has - a clean intro, a driven chorus, a lead - and only those; autopilot then builds one rig with a scene for each",
+        onclick: () =>
+          attempt(async () => {
+            song = await api.post(`/api/songs/${encodeURIComponent(song.song_id)}/choose-sounds`, {});
+            const chosen = song.parts.filter((p) => p.chosen);
+            render();
+            toast(`Chose ${chosen.length}: ${chosen.map((p) => p.label).join(", ")}`, { kind: "ok", key: "choose-sounds" });
+          }),
+      }),
       el("button", { class: "btn small", text: showAll ? "show fewer" : "show all", onclick: () => { showAll = !showAll; render(); } })
     )
   );

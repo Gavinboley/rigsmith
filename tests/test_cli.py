@@ -449,3 +449,20 @@ def test_a_run_on_the_core_says_how_long_it_will_take(runner, monkeypatch):
     assert "On the Core: about 10 minutes a part" in result.output, result.output
     result = invoke(runner, "autopilot", "run", "Song", "--detach")
     assert "On the Core" not in result.output
+
+
+def test_song_choose_takes_a_part_per_sound(runner):
+    from rigsmith.core import songs
+    from rigsmith.core.songs import Part
+
+    made = songs.create("Sounds")
+    made.parts = [
+        Part("intro-1-stem", 0, "intro", "stem", 0.0, 8.0, sketch={"gain": 0.02}),
+        Part("chorus-2-left", 1, "chorus", "left", 8.0, 16.0, sketch={"gain": 0.6}),
+        Part("chorus-2-right", 1, "chorus", "right", 8.0, 16.0, sketch={"gain": 0.62}),
+    ]
+    made.save()
+    result = invoke(runner, "song", "choose", made.song_id, "--sounds")
+    assert "2 part(s) chosen" in result.output and "chorus-2-left" in result.output and "intro-1-stem" in result.output
+    nothing = runner.invoke(main, ["song", "choose", made.song_id])
+    assert nothing.exit_code != 0 and "--sounds" in nothing.output

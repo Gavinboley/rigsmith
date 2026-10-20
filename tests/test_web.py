@@ -1155,3 +1155,24 @@ def test_markdown_is_escaped_before_it_is_marked_up():
     assert docs._inline("**`a<b>`** and <script>") == "<b><code>a&lt;b&gt;</code></b> and &lt;script&gt;"
     title, body = docs.render("# T\n\n| a | b |\n|---|---|\n| 1 | **2** |\n\n- one\n- two\n")
     assert title == "T" and "<td><b>2</b></td>" in body and "<ul><li>one</li><li>two</li></ul>" in body
+
+
+def _three_sound_song():
+    from rigsmith.core import songs
+    from rigsmith.core.songs import Part
+
+    made = songs.create("Sounds")
+    made.parts = [
+        Part("intro-1-stem", 0, "intro", "stem", 0.0, 8.0, sketch={"gain": 0.02}),
+        Part("verse-2-left", 1, "verse", "left", 8.0, 16.0, sketch={"gain": 0.68}),
+        Part("chorus-3-left", 2, "chorus", "left", 16.0, 24.0, sketch={"gain": 0.6}, chosen=True),
+        Part("solo-4-centre", 3, "solo", "centre", 24.0, 32.0, sketch={"gain": 0.8}),
+    ]
+    made.save()
+    return made
+
+
+def test_a_part_per_sound_is_chosen_from_the_page(client):
+    made = _three_sound_song()
+    song = client.post(f"/api/songs/{made.song_id}/choose-sounds").json()
+    assert sorted(p["part_id"] for p in song["parts"] if p["chosen"]) == ["chorus-3-left", "intro-1-stem", "solo-4-centre"]

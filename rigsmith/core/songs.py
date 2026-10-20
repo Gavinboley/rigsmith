@@ -550,6 +550,60 @@ def carry_over(previous: dict[str, Part], parts: list[Part]) -> None:
             heir.best = heir.best or old.best
 
 
+def prominence(part: Part) -> float:
+    """How much a part is worth chasing: loud, in a chorus, on a layer of its own."""
+    value = part.presence
+    if part.section_name == "chorus":
+        value += 0.5
+    elif part.section_name in ("verse", "solo"):
+        value += 0.3
+    if part.layer == "stem":
+        value -= 0.2
+    return value
+
+
+#: Two parts are one sound when they are on one layer (either side of a
+#: double-track counts as one) and their measured gains are within this.
+SAME_SOUND_GAIN = 0.25
+
+
+def sounds(song: Song, *, limit: int = 5) -> list[Part]:
+    """One part for each sound the song's guitar has, the most prominent first.
+
+    Songs change sound by section - a clean intro, a driven verse, a lead
+    solo - so the most prominent part of each kind of section is taken, and
+    two that are one sound are kept once. Measured gain alone would split one
+    guitar: the demo song's rhythm read 0.56 to 0.83 across its sections.
+    ``limit`` is a rig's footswitches.
+    """
+    playable = [p for p in song.parts if p.end - p.start >= 4] or list(song.parts)
+    by_section: dict[str, list[Part]] = {}
+    for part in playable:
+        by_section.setdefault(part.section_name, []).append(part)
+    picks = sorted((max(parts, key=prominence) for parts in by_section.values()), key=prominence, reverse=True)
+
+    def layer(part: Part) -> str:
+        return "sides" if part.layer in ("left", "right") else part.layer
+
+    def gain(part: Part) -> float:
+        return float((part.sketch or {}).get("gain") or 0.0)
+
+    kept: list[Part] = []
+    for part in picks:
+        if not any(layer(k) == layer(part) and abs(gain(k) - gain(part)) < SAME_SOUND_GAIN for k in kept):
+            kept.append(part)
+    return kept[:limit]
+
+
+def choose_sounds(song_id: str) -> Song:
+    """Choose a part for each sound the song has (:func:`sounds`), and only those."""
+    song = get(song_id)
+    picked = sounds(song)
+    if not picked:
+        raise Invalid("the song has no parts to choose from yet", hint="Map it first.")
+    return choose(song_id, [p.part_id for p in picked], only=True)
+
+
 def choose(song_id: str, part_ids: list[str], *, chosen: bool = True, only: bool = False) -> Song:
     """Pick the parts to chase. ``only`` clears every other choice."""
     require_writable("choose parts")

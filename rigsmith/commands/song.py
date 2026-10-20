@@ -150,15 +150,22 @@ def song_part(song_id, part_id) -> None:
 
 @group.command("choose")
 @click.argument("song_id")
-@click.argument("part_ids", nargs=-1, required=True)
+@click.argument("part_ids", nargs=-1)
 @click.option("--only", is_flag=True, help="Un-choose everything else.")
 @click.option("--drop", is_flag=True, help="Un-choose these instead.")
+@click.option("--sounds", is_flag=True, help="A part for each sound the song has, and only those.")
 @handled
-def song_choose(song_id, part_ids, only, drop) -> None:
+def song_choose(song_id, part_ids, only, drop, sounds) -> None:
     """Pick the parts to chase."""
     from ..core import songs
+    from ..core.errors import Invalid
 
-    song = songs.choose(song_id, list(part_ids), chosen=not drop, only=only)
+    if sounds:
+        song = songs.choose_sounds(song_id)
+    elif not part_ids:
+        raise Invalid("name the parts to choose", hint="Or --sounds for a part per sound the song has.")
+    else:
+        song = songs.choose(song_id, list(part_ids), chosen=not drop, only=only)
     click.echo(f"{len(song.chosen())} part(s) chosen: " + ", ".join(p.part_id for p in song.chosen()))
 
 
