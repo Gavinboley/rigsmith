@@ -32,7 +32,7 @@ async function renderPairing() {
   }
   const pin = el("div", { class: "pin", hidden: true });
   const out = el("div", { class: "hint" });
-  const host = el("input", { type: "text", placeholder: "host or IP (blank: discover)", value: lastHost || "" });
+  const host = el("input", { type: "text", placeholder: "host or IP - blank finds it", "aria-label": "The Core's host or IP; blank to find it on the network", class: "grow", value: lastHost || "" });
   box.append(
     ...[
     el("h3", { text: "Pairing", style: "margin-top:16px" }),

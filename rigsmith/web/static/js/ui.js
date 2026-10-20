@@ -104,17 +104,26 @@ export function prompt(title, fields, { okLabel = "OK" } = {}) {
       continue;
     }
 
-    body.append(el("label", { text: field.label, for: `f-${field.name}` }));
+    // A box to tick sits beside what it says, not centred under it.
     if (field.type === "checkbox") {
       body.append(
-        el("input", {
-          id: `f-${field.name}`,
-          name: field.name,
-          type: "checkbox",
-          checked: Boolean(field.value),
-        })
+        el(
+          "label",
+          { class: "check", for: `f-${field.name}` },
+          el("input", {
+            id: `f-${field.name}`,
+            name: field.name,
+            type: "checkbox",
+            checked: Boolean(field.value),
+          }),
+          field.label
+        )
       );
-    } else if (field.type === "file") {
+      continue;
+    }
+
+    body.append(el("label", { text: field.label, for: `f-${field.name}` }));
+    if (field.type === "file") {
       // A path on disk, typed - or a file chosen or dropped here, uploaded,
       // and its path filled in. ``field.upload(file)`` does the uploading.
       const input = el("input", { id: `f-${field.name}`, name: field.name, type: "text", value: field.value ?? "", placeholder: field.placeholder ?? "" });

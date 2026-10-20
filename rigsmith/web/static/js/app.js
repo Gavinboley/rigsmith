@@ -180,6 +180,13 @@ async function boot() {
     show(event.detail.panel);
   });
 
+  // Back and forward move between panels as they would between pages, and a
+  // #panel link anywhere opens that panel.
+  window.addEventListener("hashchange", () => {
+    const wanted = location.hash.replace("#", "");
+    if (wanted !== activePanel) show(wanted);
+  });
+
   $("#pill-mode").onclick = () => show("settings");
   $("#pill-jobs").onclick = () => show("workspace");
   palette.install();

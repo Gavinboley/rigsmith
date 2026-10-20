@@ -331,6 +331,11 @@ function show(run) {
   }
 }
 
+/* The latest few runs, newest first; the rest behind a button - a month of
+ * runs made the page a long scroll, worst on a phone. */
+const RUNS_SHOWN = 8;
+let allRuns = false;
+
 async function refreshRuns() {
   const data = await api.get("/api/autopilot").catch(() => null);
   if (!data) return;
@@ -339,7 +344,7 @@ async function refreshRuns() {
   if (!data.runs.length) {
     list.append(el("div", { class: "hint", text: "No runs yet. Look a song up above, drop your copy of it in, and start." }));
   }
-  for (const run of data.runs) {
+  for (const run of allRuns ? data.runs : data.runs.slice(0, RUNS_SHOWN)) {
     const best = run.results?.[0];
     list.append(
       el(
@@ -351,6 +356,11 @@ async function refreshRuns() {
         el("span", { class: "meta", text: best ? `${best.label} ${best.composite.toFixed(3)}` : "" }),
         el("span", { class: "meta", text: when(run.created_at) })
       )
+    );
+  }
+  if (data.runs.length > RUNS_SHOWN) {
+    list.append(
+      el("div", { class: "row" }, el("button", { class: "btn small", id: "ap-runs-more", text: allRuns ? "show the latest" : `show all ${data.runs.length} runs`, onclick: () => { allRuns = !allRuns; refreshRuns(); } }))
     );
   }
   if (!current && data.runs.length) show(data.runs[0]);

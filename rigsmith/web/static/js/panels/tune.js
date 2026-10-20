@@ -26,14 +26,24 @@ async function fillSongs(select, partSelect) {
   const { songs } = await api.get("/api/songs").catch(() => ({ songs: [] }));
   clear(select).append(el("option", { value: "", text: "a file instead" }));
   for (const song of songs) select.append(el("option", { value: song.song_id, text: song.title }));
+  // With no song the part list has nothing to offer and the dropped file is
+  // the target; with one, the part is, and the drop zone steps back.
+  const noSong = () => {
+    clear(partSelect).append(el("option", { value: "", text: "no song - drop the target" }));
+    partSelect.disabled = true;
+  };
   select.onchange = async () => {
-    clear(partSelect);
-    if (!select.value) return;
+    form.target?.classList.toggle("unused", Boolean(select.value));
+    form.target?.setAttribute("aria-disabled", String(Boolean(select.value)));
+    if (!select.value) return noSong();
     const song = await api.get(`/api/songs/${select.value}`);
     const parts = [...song.parts].sort((a, b) => Number(b.chosen) - Number(a.chosen));
+    clear(partSelect);
     for (const part of parts) partSelect.append(el("option", { value: part.part_id, text: `${part.chosen ? "* " : ""}${part.label} (${part.sketch?.summary || ""})`, "data-di": part.di_take || "" }));
+    partSelect.disabled = false;
     partSelect.onchange?.();
   };
+  noSong();
 }
 
 async function fillTakes(select) {

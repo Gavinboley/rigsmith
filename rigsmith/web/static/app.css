@@ -50,6 +50,9 @@ html, body {
 }
 
 .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+/* The browser's own link blue is unreadable on this background; a link
+   with a class of its own (a hint, a tag) keeps that class's colour. */
+a { color: var(--amber); text-underline-offset: 2px; }
 
 /* ---------------------------------------------------------------- topbar */
 
@@ -105,6 +108,11 @@ html, body {
   #draft-select { min-width: 0; }
   .draft-picker, .like-controls { flex-wrap: wrap; min-width: 0; max-width: 100%; }
   .item, .scenes-head { flex-wrap: wrap; }
+  /* What a row ends with (its buttons, its numbers) starts a line of its
+     own: pushed right, it sat right on one row and left on the next,
+     wherever the wrapping happened to fall. */
+  .item { row-gap: 4px; }
+  .item .spacer { flex-basis: 100%; height: 0; margin: 0; }
 }
 
 .pill {
@@ -183,7 +191,7 @@ button:focus-visible, summary:focus-visible, [tabindex]:focus-visible { outline:
 .tempo-field { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text-faint); }
 .tempo-field input { width: 74px; padding: 6px 8px; }
 .nudge-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 10px 0 4px; }
-.nudge-row input { flex: 1; min-width: 200px; padding: 5px 8px; }
+.nudge-row input[type="text"] { flex: 1; min-width: 200px; padding: 5px 8px; }
 
 /* ------------------------------------------------------------------- rig */
 
@@ -271,6 +279,14 @@ button:focus-visible, summary:focus-visible, [tabindex]:focus-visible { outline:
   cursor: pointer;
 }
 .slot.empty:hover { border-color: var(--amber-dim); color: var(--amber); }
+/* On a phone a block takes the row and the free slots pack four to a row,
+   still in slot order - nine full-size empty tiles were 600 px of plus signs
+   between the chain and its controls. */
+@media (max-width: 640px) {
+  .board { grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .slot:not(.empty) { grid-column: 1 / -1; }
+  .slot.empty { min-height: 44px; padding: 4px 6px; }
+}
 
 /* scenes */
 
@@ -416,6 +432,8 @@ button:focus-visible, summary:focus-visible, [tabindex]:focus-visible { outline:
 .modal h3 { margin: 0 0 12px; font-size: 15px; }
 .modal label { display: block; font-size: 12px; color: var(--text-dim); margin: 10px 0 4px; }
 .modal input, .modal select, .modal textarea { width: 100%; }
+.modal label.check { display: flex; font-size: 13px; color: var(--text); margin-top: 14px; }
+.modal label.check input { width: auto; }
 .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin: 16px 0 0; padding: 0; }
 
 /* progress inside a list item */
@@ -655,6 +673,7 @@ button:focus-visible, summary:focus-visible, [tabindex]:focus-visible { outline:
   transition: border-color .15s, background .15s;
 }
 .dropzone:hover, .dropzone.over { border-color: var(--amber-dim); background: #1c1a14; color: var(--text-dim); }
+.dropzone.unused { opacity: 0.45; pointer-events: none; }
 .dropzone .picked { color: var(--text); font-family: var(--mono); font-size: 12px; word-break: break-all; }
 
 .matches { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 8px; margin-top: 10px; }
@@ -667,6 +686,7 @@ button:focus-visible, summary:focus-visible, [tabindex]:focus-visible { outline:
 
 .stages { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin: 4px 0 14px; }
 @media (max-width: 1000px) { .stages { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 640px) { .stages { grid-template-columns: repeat(2, 1fr); } }
 .stage { border: 1px solid var(--line); border-radius: 8px; padding: 8px; background: var(--bg-raised); min-height: 64px; }
 .stage .s-name { font-size: 11px; letter-spacing: .07em; text-transform: uppercase; color: var(--text-faint); }
 .stage .s-sum { font-size: 11.5px; color: var(--text-dim); margin-top: 3px; line-height: 1.35; }
@@ -735,6 +755,7 @@ button:focus-visible, summary:focus-visible, [tabindex]:focus-visible { outline:
 .big-step small { display: block; font-size: 13px; color: var(--text-faint); font-weight: 400; }
 
 .stat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+@media (max-width: 640px) { .stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .stat { background: var(--bg-raised); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
 .stat .k { font-size: 11px; color: var(--text-faint); }
 .stat .v { font-size: 16px; font-weight: 600; font-family: var(--mono); }

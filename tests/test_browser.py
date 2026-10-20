@@ -183,6 +183,23 @@ def test_every_tab_opens_its_panel(browser, server):
             assert panel.is_visible(), f"the {name} panel did not open"
 
 
+def test_back_and_forward_move_between_panels(browser, server):
+    """Each panel is a place in the history, so Back goes where you were."""
+    with page_at(browser, server) as page:
+        page.wait_for_selector("#tabs .tab[aria-selected='true']")
+        page.click("#tabs .tab[data-panel='songs']")
+        page.click("#tabs .tab[data-panel='rig']")
+        page.wait_for_selector("#panels .panel[data-panel='rig']", state="visible")
+        page.go_back()
+        page.wait_for_selector("#panels .panel[data-panel='songs']", state="visible")
+        assert page.locator("#tabs .tab[data-panel='songs']").get_attribute("aria-selected") == "true"
+        page.go_forward()
+        page.wait_for_selector("#panels .panel[data-panel='rig']", state="visible")
+        # A link to a panel opens it.
+        page.evaluate("location.hash = '#loop'")
+        page.wait_for_selector("#panels .panel[data-panel='loop']", state="visible")
+
+
 # --------------------------------------------------------------------------
 # the panels do their job
 # --------------------------------------------------------------------------
@@ -788,6 +805,10 @@ def test_writing_asks_before_it_writes_and_shows_what(browser, server):
 
         # The waiver starts off. Somebody has to choose it.
         assert page.locator("#f-no_backup").is_checked() is False
+        # ...beside what it says - it was a full-width row with the box
+        # floating in its middle.
+        assert page.locator("#f-no_backup").bounding_box()["width"] < 40
+        assert page.locator("#modal-body label.check", has=page.locator("#f-no_backup")).count() == 1
 
         # Cancelling writes nothing and leaves the rig alone.
         page.click("#modal-form button[value='cancel']")
@@ -1001,6 +1022,21 @@ def test_a_new_workspace_is_shown_what_to_set_up(browser, server):
         page.wait_for_selector("#tabs .tab[data-panel='guitar'][aria-selected='true']")
 
 
+def test_the_guitar_says_how_much_of_the_neck_it_has_heard(browser, server):
+    from rigsmith.core import profiles
+
+    take, _ = profiles.demo_take("quick")
+    profiles.create("demo")
+    profiles.learn("demo", str(take), protocol_id="quick", fit_voice=False)
+    with page_at(browser, server) as page:
+        page.click("#tabs .tab[data-panel='guitar']")
+        stat = page.locator("#guitar-body .stat", has_text="covered to fret 12")
+        stat.wait_for()
+        # Counted to the 12th fret, as it says - six strings, frets 0-12.
+        heard, of = stat.locator(".v").inner_text().split(" ")[0].split("/")
+        assert of == "78" and 0 < int(heard) <= 78
+
+
 @contextmanager
 def streaming_model(words, delay=0.12):
     """A tiny OpenAI-compatible server that streams one reply word by word."""
@@ -1142,6 +1178,28 @@ def test_a_play_button_still_says_stop_after_the_page_redraws(browser, server, t
         assert page.inner_text(mix) == "stop", "the redrawn button knows the mix is playing"
         page.click(mix)
         page.wait_for_function(f"document.querySelector(\"{mix}\").textContent === 'play the mix'")
+
+
+def test_tuning_asks_for_a_part_only_once_there_is_a_song(browser, server):
+    from rigsmith.core import songs
+    from rigsmith.core.songs import Part
+
+    made = songs.create("Tuned")
+    made.parts = [Part("verse-1-stem", 0, "verse", "stem", 0.0, 15.0)]
+    made.save()
+    with page_at(browser, server) as page:
+        page.click("#tabs .tab[data-panel='tune']")
+        song, part = page.locator("#tune-body select").nth(0), page.locator("#tune-body select").nth(1)
+        page.wait_for_function("document.querySelectorAll('#tune-body select')[0].options.length > 1")
+        assert part.is_disabled() and "no song" in part.inner_text()
+        song.select_option(label="Tuned")
+        page.wait_for_function("!document.querySelectorAll('#tune-body select')[1].disabled")
+        assert "verse" in part.inner_text()
+        # The part is the target now; the drop zone steps back.
+        assert "unused" in page.locator("#tune-body .dropzone").get_attribute("class")
+        song.select_option(label="a file instead")
+        page.wait_for_function("document.querySelectorAll('#tune-body select')[1].disabled")
+        assert "unused" not in page.locator("#tune-body .dropzone").get_attribute("class")
 
 
 def test_a_tab_s_midi_can_be_chosen_in_the_render_dialog(browser, server, tmp_path):
@@ -1333,6 +1391,22 @@ def test_the_amp_can_be_turned_by_ear_from_the_board(browser, server):
         while rigs.get(draft_id).rig.blocks[0].params.get("Bass") != 0.34 and time.monotonic() < deadline + 5:
             time.sleep(0.1)
         assert rigs.get(draft_id).rig.blocks[0].params["Bass"] == 0.34
+
+
+def test_a_month_of_runs_shows_the_latest_and_keeps_the_rest_a_click_away(browser, server):
+    from rigsmith.core import autopilot
+
+    for n in range(11):
+        autopilot.Run(run_id=f"run-{n:02d}", request=autopilot.Request(title=f"Song {n}"), state="done").save()
+    with page_at(browser, server) as page:
+        page.click("#tabs .tab[data-panel='autopilot']")
+        page.wait_for_selector("#ap-runs-more")
+        assert page.locator("#ap-runs .item").count() == 8
+        assert page.inner_text("#ap-runs-more") == "show all 11 runs"
+        page.click("#ap-runs-more")
+        page.wait_for_function("document.querySelectorAll('#ap-runs .item').length === 11")
+        page.click("#ap-runs-more")
+        page.wait_for_function("document.querySelectorAll('#ap-runs .item').length === 8")
 
 
 def test_a_finished_run_hands_its_draft_over_to_be_finished_by_ear(browser, server):

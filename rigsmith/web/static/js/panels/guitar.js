@@ -81,6 +81,12 @@ function render() {
   const stat = (k, v) => el("div", { class: "stat" }, el("div", { class: "k", text: k }), el("div", { class: "v", text: v }));
   const picks = (profile.samples || []).filter((s) => s.technique === "pick");
   const range = picks.length ? `${noteName(Math.min(...picks.map((s) => s.midi)))}-${noteName(Math.max(...picks.map((s) => s.midi)))}` : "--";
+  // The grid runs to the 24th fret; the stat counts to the 12th, as it says,
+  // and mentions anything heard higher up the neck.
+  const grid = profile.coverage.grid || [];
+  const low = grid.reduce((n, row) => n + row.slice(0, 13).filter(Boolean).length, 0);
+  const high = grid.reduce((n, row) => n + row.slice(13).filter(Boolean).length, 0);
+  const covered = `${low}/${grid.length * 13}` + (high ? ` +${high} higher` : "");
   host.append(
     el(
       "div",
@@ -92,7 +98,7 @@ function render() {
         { class: "stat-grid" },
         stat("samples", String((profile.samples || []).length)),
         stat("range", range),
-        stat("covered to fret 12", `${profile.coverage.filled}/${profile.coverage.positions}`),
+        stat("covered to fret 12", covered),
         stat("typical peak", `${(print.median_peak_db ?? -120).toFixed(1)} dBFS`),
         stat("noise floor", `${(print.noise_floor_db ?? -120).toFixed(0)} dBFS`),
         stat("tuning", print.tuning_cents == null ? "--" : Math.abs(print.tuning_cents) < 0.5 ? "in tune" : `${print.tuning_cents > 0 ? "+" : ""}${print.tuning_cents.toFixed(0)} c`),
