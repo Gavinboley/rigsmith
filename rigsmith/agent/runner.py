@@ -111,18 +111,21 @@ def toolset(role, *, allow_writes: bool, extra: list[VirtualTool] | None = None,
     return list(selected) + list(extra or [])
 
 
-def _step(conversation, emit: Emit):
+def _step(conversation, emit: Emit, cancelled=None):
     """A turn, streamed when the provider can: ``partial`` events carry the
     visible reply so far, and the final ``text`` replaces them."""
     import inspect
 
     try:
-        streams = "on_partial" in inspect.signature(conversation.step).parameters
+        parameters = inspect.signature(conversation.step).parameters
     except (TypeError, ValueError):
-        streams = False
-    if streams:
-        return conversation.step(on_partial=lambda text: emit({"kind": "partial", "text": text}))
-    return conversation.step()
+        parameters = {}
+    kwargs = {}
+    if "on_partial" in parameters:
+        kwargs["on_partial"] = lambda text: emit({"kind": "partial", "text": text})
+    if "cancelled" in parameters and cancelled is not None:
+        kwargs["cancelled"] = cancelled
+    return conversation.step(**kwargs)
 
 
 def step_loop(
@@ -142,7 +145,13 @@ def step_loop(
             result.stopped = "cancelled"
             break
         emit({"kind": "status", "text": "thinking" if round_number == 1 else f"round {round_number}"})
-        turn = _step(conversation, emit)
+        from .providers import Stopped
+
+        try:
+            turn = _step(conversation, emit, cancelled)
+        except Stopped:
+            result.stopped = "cancelled"
+            break
         result.rounds = round_number
         for key, value in (turn.usage or {}).items():
             if isinstance(value, (int, float)):
@@ -178,8 +187,14 @@ def step_loop(
                 except Exception as exc:
                     text, ok = f"{type(exc).__name__}: {exc}", False
             else:
-                outcome = tool_registry.call(call.name, call.arguments)
-                text, ok = outcome.text, outcome.ok
+                # Whatever a tool raises becomes its result: a turn that dies
+                # here leaves the model's tool call with no answer in the
+                # history, and every later message in the chat is refused.
+                try:
+                    outcome = tool_registry.call(call.name, call.arguments)
+                    text, ok = outcome.text, outcome.ok
+                except Exception as exc:
+                    text, ok = f"{type(exc).__name__}: {exc}", False
             outcomes.append((call, text, not ok))
             result.calls.append({"name": call.name, "arguments": call.arguments, "ok": ok})
             emit({"kind": "tool_result", "name": call.name, "ok": ok, "text": text[:4000], "id": call.id})

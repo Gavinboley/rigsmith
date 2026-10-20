@@ -83,6 +83,12 @@ def split_reasoning(text: str) -> tuple[str, str]:
     if "</think>" in answer:  # an opening tag the template already consumed
         head, _, answer = answer.partition("</think>")
         reasoning = (reasoning + "\n" + head).strip()
+    if "<think>" in answer:
+        # Opened and never closed - cut off by the token limit, or forgotten.
+        # All of it is thinking: shown as the answer it would leak, and a tool
+        # call the model only rehearsed there would be run.
+        answer, _, unclosed = answer.partition("<think>")
+        reasoning = (reasoning + "\n" + unclosed).strip()
     return reasoning.strip(), answer.strip()
 
 
@@ -238,7 +244,11 @@ class OpenAICompatible:
         return OpenAIConversation(self, system, tools)
 
 
-def _collect_stream(lines, on_partial) -> dict:
+class Stopped(Exception):
+    """The user stopped the turn while the model was still writing."""
+
+
+def _collect_stream(lines, on_partial, cancelled=None) -> dict:
     """Server-sent chat-completion chunks back into one response body.
 
     Content and reasoning are concatenated; tool calls arrive in pieces keyed
@@ -253,6 +263,8 @@ def _collect_stream(lines, on_partial) -> dict:
     finish, usage = "", {}
     shown, last = "", 0.0
     for line in lines:
+        if cancelled and cancelled():
+            raise Stopped()
         line = line.strip()
         if not line.startswith("data:"):
             continue
@@ -308,10 +320,11 @@ class OpenAIConversation:
     def add_user(self, text: str) -> None:
         self.messages.append({"role": "user", "content": text})
 
-    def step(self, on_partial=None) -> Turn:
+    def step(self, on_partial=None, cancelled=None) -> Turn:
         """One model turn. With ``on_partial``, the reply is streamed and the
         callback gets the visible text so far as it grows - a local model
-        writing for a minute should not look like a hung one."""
+        writing for a minute should not look like a hung one. ``cancelled``
+        is asked between chunks, so Stop stops the model mid-reply."""
         model = self.provider.pick_model()
         body = {
             "model": model,
@@ -333,11 +346,11 @@ class OpenAIConversation:
                         response.read()
                         raise Unavailable(f"the model server refused the request ({response.status_code}): {response.text[:300]}")
                     if "text/event-stream" in response.headers.get("content-type", ""):
-                        data = _collect_stream(response.iter_lines(), on_partial)
+                        data = _collect_stream(response.iter_lines(), on_partial, cancelled)
                     else:  # a server (or a test) that answered in one piece
                         response.read()
                         data = response.json()
-        except Unavailable:
+        except (Unavailable, Stopped):
             raise
         except Exception as exc:
             raise Unavailable(f"the model server at {self.provider.base_url} failed: {exc}") from exc
@@ -357,6 +370,10 @@ class OpenAIConversation:
                     arguments = json.loads(arguments) if arguments.strip() else {}
                 except ValueError:
                     arguments = {"_unparsed": arguments}
+            if not isinstance(arguments, dict):
+                # Valid JSON but not an object - a list, a bare string. A tool
+                # takes named arguments; the tool's own error says so.
+                arguments = {"_unparsed": arguments}
             calls.append(ToolCall(raw.get("id") or f"call_{uuid.uuid4().hex[:8]}", function.get("name", ""), arguments))
         if not calls:
             calls, text = parse_text_calls(text, self.known)
@@ -450,7 +467,7 @@ class AnthropicConversation:
     def add_user(self, text: str) -> None:
         self.messages.append({"role": "user", "content": text})
 
-    def step(self, on_partial=None) -> Turn:
+    def step(self, on_partial=None, cancelled=None) -> Turn:
         import time
 
         import anthropic
@@ -471,6 +488,8 @@ class AnthropicConversation:
                 shown, last = "", 0.0
                 with self.client.beta.messages.stream(**params) as stream:
                     for event in stream:
+                        if cancelled and cancelled():
+                            raise Stopped()
                         if getattr(event, "type", "") == "text":
                             shown += event.text
                             now = time.monotonic()

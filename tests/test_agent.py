@@ -371,3 +371,63 @@ def test_a_local_model_gets_a_set_it_can_choose_from():
     assert {q.expect for q in modelcheck.QUESTIONS} <= assistant, "the model check asks for what a local model is given"
     builder = {t.name: t for t in runner.toolset(roles.get("rig-builder"), allow_writes=False, local=True)}
     assert builder["write_rig"].needs_approval, "a smaller set is not a looser one"
+
+
+def test_an_unclosed_think_block_is_all_thinking():
+    """Cut off by the token limit, a <think> block never closes; its text is
+    not the answer, and a tool call rehearsed in it is not run."""
+    leaked = '<think>maybe I should call <tool_call>{"name": "write_rig", "arguments": {"draft_id": "x"}}</tool_call>'
+    reasoning, answer = providers.split_reasoning("Here is what I found." + leaked)
+    assert answer == "Here is what I found." and "write_rig" in reasoning
+    calls, _ = providers.parse_text_calls(answer, {"write_rig"})
+    assert calls == []
+
+
+def test_tool_arguments_that_are_not_an_object_do_not_break_the_chat(workspace):
+    """Arguments of [1, 2, 3] crashed the tool loop after the call was in the
+    history, so no tool reply followed it and every later turn was refused."""
+    odd = {"role": "assistant", "content": "", "tool_calls": [{"id": "c1", "type": "function", "function": {"name": "app_mode", "arguments": "[1, 2, 3]"}}]}
+    transport, seen = scripted([odd, {"role": "assistant", "content": "Done."}])
+    selected = tools.select(["app_mode"])
+    conversation = local(transport).start("system", selected)
+    conversation.add_user("which mode?")
+    result = runner.step_loop(conversation, selected, emit=lambda e: None, approve=lambda c: True)
+    assert result.text == "Done."
+    history = seen[1]["messages"]
+    assert history[-2]["role"] == "assistant" and history[-2]["tool_calls"][0]["id"] == "c1"
+    assert history[-1]["role"] == "tool" and history[-1]["tool_call_id"] == "c1", "the call is answered"
+
+
+def test_a_tool_that_raises_still_answers_its_call(workspace, monkeypatch):
+    from rigsmith.agent import tools as registry
+
+    def boom(name, arguments):
+        raise RuntimeError("the tool fell over")
+
+    monkeypatch.setattr(registry, "call", boom)
+    transport, seen = scripted([call("app_mode"), {"role": "assistant", "content": "Sorry."}])
+    selected = tools.select(["app_mode"])
+    conversation = local(transport).start("system", selected)
+    conversation.add_user("which mode?")
+    result = runner.step_loop(conversation, selected, emit=lambda e: None, approve=lambda c: True)
+    assert result.calls[0]["ok"] is False and result.text == "Sorry."
+    assert seen[1]["messages"][-1]["role"] == "tool" and "fell over" in seen[1]["messages"][-1]["content"]
+
+
+def test_stop_stops_a_local_model_mid_reply():
+    """Stop was only heard between rounds: a local model writing for minutes
+    kept going until it finished."""
+    def delta(**kw):
+        return {"choices": [{"delta": kw, "finish_reason": None}]}
+
+    chunks = [delta(content=f"word{i} ") for i in range(50)]
+    asked = {"n": 0}
+
+    def cancelled():
+        asked["n"] += 1
+        return asked["n"] > 5
+
+    conversation = local(streamed(chunks)).start("system", [])
+    conversation.add_user("talk")
+    result = runner.step_loop(conversation, [], emit=lambda e: None, approve=lambda c: True, cancelled=cancelled)
+    assert result.stopped == "cancelled" and not result.text

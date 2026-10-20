@@ -278,9 +278,11 @@ def send(chat_id: str, text: str) -> dict:
     # has moved on to the next turn can tell a late "done" from its own.
     turn = sum(1 for entry in chat.transcript if entry.get("role") == "user")
 
-    def publish(entry: dict) -> None:
+    kept_kinds = ("text", "tool_call", "tool_result", "approval", "reasoning", "final", "error")
+
+    def publish(entry: dict, *, recorded: bool = False) -> None:
         entry = {"at": _now(), **entry}
-        if entry.get("kind") in ("text", "tool_call", "tool_result", "approval", "reasoning", "final", "error"):
+        if not recorded and entry.get("kind") in kept_kinds:
             _edit(chat_id, lambda current: current.transcript.append(entry))
         events.publish({"type": "chat", "chat_id": chat_id, **entry})
 
@@ -327,16 +329,23 @@ def send(chat_id: str, text: str) -> dict:
             last.append({"kind": "error", "text": f"{type(exc).__name__}: {exc}", "turn": turn})
             raise
         finally:
+            stamped = [{"at": _now(), **entry} for entry in last]
+
             def settle(current):
+                # The turn's last words go into the transcript in the same
+                # edit that frees the chat: whoever sees it free sees them.
+                current.transcript.extend(e for e in stamped if e.get("kind") in kept_kinds)
                 current.busy = False
                 current.job_id = None
 
+            settled = False
             try:
                 _edit(chat_id, settle)
+                settled = True
             finally:
                 # Said even if settling failed, so the error is never lost.
-                for entry in last:
-                    publish(entry)
+                for entry in stamped:
+                    publish(entry, recorded=settled)
 
     job = get_manager().submit(f"chat: {text[:40]}", work)
     _edit(chat_id, lambda current: setattr(current, "job_id", job.id) if current.busy else None)
