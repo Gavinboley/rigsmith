@@ -136,6 +136,18 @@ function renderForm() {
   const showRoute = () => (routeField.hidden = bench.value !== "device");
   bench.addEventListener("change", showRoute);
   showRoute();
+  // At the Core every amp, cab and setting is played through it in real
+  // time, on the part's loudest 16 s: about seven amps, three cabs and the
+  // tuning budget, each ~17.5 s with the settling.
+  const coreTime = el("div", { class: "hint", id: "ap-core-time" });
+  const showCoreTime = () => {
+    const hearings = 7 + 3 + 2 * Math.max(6, Math.floor((Number(budget.value) || 24) / 2));
+    coreTime.textContent = `On the Core: about ${Math.round((hearings * 17.5) / 60)} minutes a part - every amp, cab and setting is played through it in real time, on the part's loudest 16 s.`;
+    coreTime.hidden = bench.value !== "device";
+  };
+  bench.addEventListener("change", showCoreTime);
+  budget.addEventListener("input", showCoreTime);
+  showCoreTime();
   const start = el("button", { class: "btn primary", text: "Start autopilot" });
   start.onclick = () =>
     attempt(async () => {
@@ -170,6 +182,7 @@ function renderForm() {
     el("div", { class: "row" }, query, el("button", { class: "btn", text: "Look up", onclick: search })),
     results,
     el("div", { class: "form-grid", style: "margin-top:12px" }, field("Title", title), field("Artist", artist), field("Your guitar", profile), field("Bench", bench), routeField),
+    coreTime,
     el("div", { class: "form-grid", style: "margin-top:12px" }, zones.mix, zones.stem, zones.midi, zones.take),
     libraryHint,
     el(

@@ -439,3 +439,13 @@ def test_autopilot_demo_starts_on_the_demo_song(runner, monkeypatch):
     assert asked == {"profile_id": None, "bench": "virtual", "route_id": None, "whole_song": True}
     invoke(runner, "autopilot", "demo", "--one-part", "--detach")
     assert asked["whole_song"] is False
+
+
+def test_a_run_on_the_core_says_how_long_it_will_take(runner, monkeypatch):
+    from rigsmith.core import autopilot
+
+    monkeypatch.setattr(autopilot, "start", lambda request: autopilot.Run(run_id="r2", request=request))
+    result = invoke(runner, "autopilot", "run", "Song", "--bench", "device", "--detach")
+    assert "On the Core: about 10 minutes a part" in result.output, result.output
+    result = invoke(runner, "autopilot", "run", "Song", "--detach")
+    assert "On the Core" not in result.output

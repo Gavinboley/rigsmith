@@ -49,6 +49,8 @@ def autopilot_run(title, artist, mix, stem, song_id, parts, profile_id, di, midi
     )
     run = autopilot.start(request)
     click.echo(f"autopilot {run.run_id} started.")
+    if bench == "device":
+        click.echo(f"On the Core: about {autopilot.core_minutes(tune_budget):.0f} minutes a part - every amp, cab and setting is reamped in real time.")
     if not detach:
         _follow(run.run_id)
 

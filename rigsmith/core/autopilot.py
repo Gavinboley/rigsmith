@@ -684,6 +684,14 @@ def _stage_di(run: Run, progress) -> str:
 EXCERPT_S = 16.0
 
 
+def core_minutes(tune_budget: int = 24) -> float:
+    """About how long one part takes at the Core: some seven amps, three
+    cabs and the tuning budget, each reamped on :data:`EXCERPT_S` and
+    settled - ~17.5 s a hearing."""
+    hearings = 7 + 3 + 2 * max(6, tune_budget // 2)
+    return hearings * (EXCERPT_S + 1.5) / 60.0
+
+
 def _heard_on(run: Run):
     """The record's part and the DI as candidates are heard on them, the
     rate, and how they are compared.

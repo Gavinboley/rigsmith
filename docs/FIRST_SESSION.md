@@ -103,7 +103,9 @@ the Core's 1/4" output L back into input 1.
 **Autopilot**: the song, your guitar, bench *device*, the loop route. It
 maps, researches, renders the part on your guitar (moved to the record's
 pickup when the research names the guitar), hears amps and cabs through the
-Core, tunes, and builds a draft.
+Core, tunes, and builds a draft. Every hearing is a reamp in real time, on
+the part's loudest 16 seconds: about ten minutes a part at the default
+budget (the form and the CLI say how long for yours). Leave it running.
 
 ## 7. Listen, then let your ears decide
 

@@ -1216,6 +1216,12 @@ def test_a_loop_route_is_asked_for_only_when_the_core_plays(browser, server):
         page.locator("section[data-panel='autopilot'] label.field", has_text="Bench").locator("select").select_option("device")
         assert route.is_visible()
 
+        # How long a part takes at the Core, with the budget.
+        estimate = page.locator("#ap-core-time")
+        assert estimate.is_visible() and "about 10 minutes a part" in estimate.inner_text()
+        page.fill("section[data-panel='autopilot'] input[aria-label='Tuning budget']", "48")
+        assert "about 17 minutes a part" in estimate.inner_text()
+
         page.click("#tabs .tab[data-panel='tune']")
         route = page.locator("#tune-body label.field", has_text="Loop route")
         route.wait_for(state="attached")
