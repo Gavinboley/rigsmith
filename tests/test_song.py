@@ -298,6 +298,8 @@ def test_a_chorus_is_heard_in_the_pitch_and_a_dry_part_is_not():
     assert describe.sketch(dry, RATE, from_stem=False).modulation == ""
     chorused = describe.sketch(clean.process(modulated_delay(sustained(), 1.5, 3.0, 12.0, 0.45)), RATE, from_stem=False)
     assert chorused.modulation == "chorus", chorused.describe()
+    # Its sweeping notch dips the held notes; that is not a room.
+    assert chorused.space not in ("a plate or hall", "a long wash"), chorused.describe()
     assert 1.2 < chorused.modulation_hz < 1.8 and chorused.wobble_cents > 5
     assert any("chorus" in s for s in chorused.suggestions)
     from rigsmith.tune.candidates import surrounding_blocks
@@ -512,6 +514,12 @@ def test_a_room_is_heard_when_the_next_section_comes_in_loud():
     audio[start : start + len(verse)] += verse[: len(audio) - start]
     read = describe.sketch(audio, RATE, from_stem=False)
     assert read.space in ("a plate or hall", "a long wash"), (read.decay_ms, read.space)
+    # Each note ringing into the last one's tail wobbles the pitch the way a
+    # chorus does; with a long room it is said, not made a pedal.
+    from rigsmith.tune.candidates import surrounding_blocks
+
+    assert read.modulation != "chorus", read.describe()
+    assert "chorus" not in [b["role"] for b in surrounding_blocks(read.to_dict())]
 
 
 def test_a_clean_part_that_is_all_attacks_reads_clean():

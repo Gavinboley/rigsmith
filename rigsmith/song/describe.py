@@ -453,8 +453,10 @@ def _note_spacing_ms(audio, sample_rate) -> float | None:
 #: the stop to count. Within this, the note is still sounding or the next
 #: one has started: between the chords of a part that never rests, a 6 dB
 #: dip and the next chord ringing on at the note's own level read as a
-#: reverb tail - "a long wash" on dry power chords, 1.4-5.3 s.
-STILL_PLAYING_DB = 4.0
+#: reverb tail - "a long wash" on dry power chords, 1.4-5.3 s - and a
+#: chorus's sweeping notch dips a held note 6 dB and leaves it 3.4-4.5 dB
+#: under, which read as a plate (647 ms). A room's tail starts 10-20 dB down.
+STILL_PLAYING_DB = 6.0
 
 
 def _decay(audio, sample_rate) -> float | None:
@@ -679,6 +681,10 @@ def _pitch_wobble(audio, sample_rate, *, n_fft: int = 2048, hop: int = 256) -> d
 #: Below this the pitch is steady. An unaffected part reads under half a cent.
 WOBBLE_CENTS = 3.0
 
+#: The modulation of a part whose pitch wobbles like a chorus under a long
+#: room, which wobbles it the same way (see :func:`sketch`).
+ROOM_OR_CHORUS = "a chorus, or the room's tail"
+
 
 def _pitch_modulation(audio, sample_rate) -> tuple[float | None, str, float | None, float | None]:
     """(rate, label, depth, share) for chorus or vibrato, from :func:`_pitch_wobble`."""
@@ -766,6 +772,13 @@ def sketch(audio, sample_rate: int, *, tempo: float | None = None, from_stem: bo
             result.modulation, result.modulation_hz = label, rate
             if label.startswith("chorus") and stereo.ndim == 1:
                 result.caveats.append("a double-tracked part summed to mono also wobbles like a chorus")
+            # A long room blurs pitch the way a chorus does - each note rings
+            # into the next one's tail - and the wobble alone cannot tell
+            # them apart: dry arpeggios under a 0.8-3 s room read 11-15
+            # cents, a chorus 2-32. Said, but not made a pedal.
+            if label == "chorus" and result.space in ("a plate or hall", "a long wash"):
+                result.modulation = ROOM_OR_CHORUS
+                result.caveats.append("the notes wobble in pitch, but a long room blurs pitch the same way - no chorus is assumed; try one by ear")
 
     # Gated: hard silence *between notes* of a driven part - not a channel
     # with nothing on it, which is just silence.
@@ -816,6 +829,10 @@ def _suggestions(s: ToneSketch) -> list[str]:
             out.append(f"a tremolo{rate}, depth about {s.modulation_depth:.0%}")
         elif s.modulation.startswith("chorus"):
             out.append(f"a chorus{rate}, depth modest (the notes move about {s.wobble_cents:.0f} cents)")
+        elif s.modulation == ROOM_OR_CHORUS:
+            out.append("perhaps a chorus - try one by ear; a long room moves the pitch the same way, so none is assumed")
+        elif s.modulation.startswith("a chorus-like"):
+            out.append("no chorus block - the wobble is on some notes only, which is a hand or the playing, not a pedal")
         elif s.modulation.startswith("vibrato on some"):
             out.append("no vibrato block - the wobble is on some notes only, which is a hand, not a pedal")
         elif s.modulation.startswith("vibrato"):
