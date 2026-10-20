@@ -304,6 +304,15 @@ def _stage_stem(run: Run, progress) -> str:
 def _stage_map(run: Run, progress) -> str:
     from . import songs
 
+    # A map made by this version, of the audio the song still has, is kept:
+    # mapping again gives the same sections and parts, and a four-minute
+    # song took 20-25 s to map. New audio (given to this run, or a stem
+    # just isolated) is mapped; Re-map on the Songs page redraws it anyway.
+    song = songs.get(run.song_id)
+    isolated = run.stages["stem"].state == "done" and run.stages["stem"].summary == "guitar isolated"
+    if song.parts and song.analysis_version == songs.ANALYSIS_VERSION and not (run.request.mix or run.request.stem or isolated):
+        sections = len((song.structure or {}).get("sections", []))
+        return f"kept the song's map: {sections} sections, {len(song.parts)} parts"
     song = songs.analyse(run.song_id, progress=progress)
     return f"{len(song.structure.get('sections', []))} sections, {len(song.parts)} parts; {(song.layers or {}).get('summary', '')}"
 
@@ -1619,7 +1628,12 @@ def _chase_other_parts(run: Run, progress) -> None:
         child = Run(
             run_id=f"{run.run_id}-{position + 1}",
             request=replace(run.request, parts=[part_id], song_id=run.song_id, mix=None, stem=None),
+            song_id=run.song_id,
         )
+        # The song was found and mapped once, by this run; each part's run
+        # starts at its part. Every one of them used to map it again.
+        for name in ("song", "stem", "map"):
+            child.stages[name] = Stage(name, state="skipped", summary=f"as run {run.run_id} found and mapped it")
         child.save()
         child = execute(child.run_id, progress=progress)
         run.part_runs.append(child.run_id)

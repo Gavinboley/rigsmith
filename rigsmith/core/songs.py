@@ -416,12 +416,22 @@ def analyse(song_id: str, *, progress: Progress | None = None, min_presence: flo
     step(0.15, "finding the sections")
     # A tempo somebody corrected outlives the beat tracker's next guess.
     kept = (song.structure or {}).get("tempo") if (song.structure or {}).get("tempo_source") == "hand" else None
+    named = [s for s in (song.structure or {}).get("sections", []) if s.get("name_source") == "hand"]
     shape = structure.analyse(mix_audio, rate)
     if kept:
         shape.tempo = float(kept)
     song.structure = shape.to_dict()
     if kept:
         song.structure["tempo_source"] = "hand"
+    # A section somebody named outlives it too, where the new map has one in
+    # the same place. Its parts keep ids from the map's own name, as a
+    # renamed section's always had, so what was chosen is still found.
+    hand_names: dict[int, str] = {}
+    for index, section in enumerate(shape.sections):
+        match = next((n for n in named if abs(n["start"] - section.start) < 2.0 and abs(n["end"] - section.end) < 2.0), None)
+        if match:
+            hand_names[index] = match["name"]
+            song.structure["sections"][index].update(name=match["name"], name_source="hand")
     song.analysis_version = ANALYSIS_VERSION
 
     stem_audio = mix_audio
@@ -484,7 +494,7 @@ def analyse(song_id: str, *, progress: Progress | None = None, min_presence: flo
             part = Part(
                 part_id=part_id,
                 section=index,
-                section_name=name,
+                section_name=hand_names.get(index, name),
                 layer=layer_id,
                 start=section.start,
                 end=section.end,
@@ -565,6 +575,7 @@ def rename_section(song_id: str, index: int, name: str) -> Song:
     if not 0 <= index < len(sections):
         raise Invalid(f"no section {index}", hint=f"Sections are numbered 0-{len(sections) - 1}.")
     sections[index]["name"] = name
+    sections[index]["name_source"] = "hand"
     for part in song.parts:
         if part.section == index:
             part.section_name = name

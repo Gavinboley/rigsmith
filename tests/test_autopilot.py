@@ -667,3 +667,34 @@ def test_on_the_core_every_gain_range_is_heard_once():
     assert [c.model for c in covered[:4]] == [c.model for c in plain], "the measured field first, as it was"
     assert {c.tier for c in covered} == set(candidates.ORDER)
     assert all("every gain range" in c.reason for c in covered[4:]) and len({c.model for c in covered}) == len(covered)
+
+
+def test_a_run_keeps_the_song_s_map_and_the_names_you_gave_it(workspace):
+    """Every run mapped the song again - and each part's run once more, 20 s
+    apiece on a four-minute song - and a section named by hand went back to
+    the guess each time."""
+    from rigsmith.core import songs
+
+    stem, _ = song(seconds_per_section=6.0)
+    mix_path = save_audio(workspace / "mix.wav", with_drums(stem), RATE)
+    stem_path = save_audio(workspace / "stem.wav", stem, RATE)
+    made = songs.create("Kept", mix=str(mix_path), stem=str(stem_path))
+    songs.analyse(made.song_id)
+    renamed = songs.rename_section(made.song_id, 1, "pre-chorus")
+    ids = [p.part_id for p in renamed.parts]
+
+    # Mapped again, the name stays, and so do the parts' ids.
+    again = songs.analyse(made.song_id)
+    assert again.structure["sections"][1]["name"] == "pre-chorus"
+    assert {p.section_name for p in again.parts if p.section == 1} == {"pre-chorus"}
+    assert [p.part_id for p in again.parts] == ids
+
+    # A run keeps the map; a part's own run starts at its part.
+    request = autopilot.Request(title="Kept", song_id=made.song_id, parts=[ids[0], ids[-1]], research=False, candidates=3, tune_budget=6)
+    autopilot.Run(run_id="k1", request=request).save()
+    run = autopilot.execute("k1")
+    assert run.state == "done", run.describe()
+    assert run.stages["map"].summary.startswith("kept the song's map")
+    child = autopilot.get(run.part_runs[0])
+    assert child.state == "done" and child.stages["map"].state == "skipped"
+    assert songs.get(made.song_id).structure["sections"][1]["name"] == "pre-chorus"
