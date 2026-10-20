@@ -60,6 +60,11 @@ the parts that need the Core, your guitar or your copy of a song say so.
 - Power chords up the neck are read as chords, not as the note an octave
   under them; B standard and other low tunings are read at their own
   octave when the research has not named the tuning.
+- A lead centred between a double-track comes out with less of the rhythm
+  in it, and the sides with less of the lead: the centre is taken as what
+  the two sides share. On the demo song's solo the lead came out 5.5 dB
+  clear of the rhythm, from 3.4, its notes read at 0.55 from 0.44, and its
+  closest amp moved from 0.394 to 0.353; a re-map picks it up.
 - Effects are told apart: a centred lead's delay is found though its layer
   hides it, a chorus is not mistaken for a room nor a room for a chorus,
   and parts that never pause are not given a room they do not have.

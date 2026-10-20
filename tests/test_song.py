@@ -174,6 +174,31 @@ def test_different_parts_left_and_right_are_not_called_a_double():
     assert result.summary.startswith("different parts")
 
 
+def test_a_lead_between_a_double_track_is_split_from_it(tmp_path):
+    """The centre is what both sides share: two takes of one riff share
+    nothing, so a lead between them comes out with less of them in it - and
+    each side with less of the lead. The pan-and-coherence mask it replaced
+    left the left take further from itself (1.9 dB) than the raw channel."""
+    from rigsmith.match.render_offline import load_audio
+
+    def clarity(estimate, truth):
+        scale = np.dot(estimate, truth) / np.dot(truth, truth)
+        return 10 * np.log10(np.sum((scale * truth) ** 2) / np.sum((estimate - scale * truth) ** 2))
+
+    riff = [(i * 0.25, 0.22, [40, 40, 43, 45][i % 4], 0.85) for i in range(48)]
+    left = SimAmp(Type=3, Gain=0.75).process(render_notes(human(riff, 1), seed=1))
+    right = SimAmp(Type=3, Gain=0.75).process(render_notes(human(riff, 2), seed=2))
+    melody = [(i * 0.5, 0.45, [64, 67, 69, 71, 74, 71, 69, 67][i % 8], 0.9) for i in range(24)]
+    lead = 0.7 * SimAmp(Type=2, Gain=0.6).process(render_notes(human(melody, 3), seed=3))
+    n = min(len(left), len(right), len(lead))
+    left, right, lead = left[:n], right[:n], lead[:n]
+    result = layers.analyse(np.stack([left + lead, right + lead], axis=1), RATE, extract_to=tmp_path)
+    got = {layer.layer_id: load_audio(layer.path)[0][:n] for layer in result.layers}
+    assert {"centre", "left", "right"} <= set(got) and "double-tracked" in result.summary
+    assert clarity(got["centre"], lead) > 1.5  # the plain mid: -1.0 dB; the old mask 0.7
+    assert clarity(got["left"], left) > 5.0 > clarity(left + lead, left)  # the old mask 1.9
+
+
 def test_a_mono_file_in_stereo_clothing_is_one_layer():
     a = SimAmp(Type=1).process(render_notes(human([(i * 0.5, 0.45, 40, 0.8) for i in range(20)]), seed=1))
     result = layers.analyse(np.stack([a, a], axis=1), RATE)

@@ -103,7 +103,9 @@ class Part:
 #: music twice in a row is one section, and a last chorus is not an outro.
 #: 6: sections start where the music changes, not up to a second late; a
 #: centred part's echo read from the stem; the room and a chorus told apart.
-ANALYSIS_VERSION = 6
+#: 7: the centre layer is what both sides share, so a lead between a
+#: double-track comes out with less of the rhythm in it, and the sides too.
+ANALYSIS_VERSION = 7
 
 
 @dataclass
@@ -182,7 +184,7 @@ class Song:
             lines.extend("  " + p.describe() for p in self.parts)
         lines.extend(f"  note: {n}" for n in self.notes)
         if self.stale:
-            lines.append(f"  note: mapped by an older analyser - run 'rigsmith song analyse {self.song_id}' again for what the newer one hears - the room's reverb, deep tremolo and its depth, chorus, vibrato, a fairer gain reading, and sections that do not cut a chorus in two")
+            lines.append(f"  note: mapped by an older analyser - run 'rigsmith song analyse {self.song_id}' again for what the newer one hears - the room's reverb, deep tremolo and its depth, chorus, vibrato, a fairer gain reading, sections that do not cut a chorus in two, and a lead between a double-track split out cleaner")
         return "\n".join(lines)
 
     @property
