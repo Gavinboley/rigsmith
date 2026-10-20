@@ -106,7 +106,8 @@ the parts that need the Core, your guitar or your copy of a song say so.
   whole draft - amp, cab, G EQ, boost, the delay at the rig's tempo, the
   room - on the simulated bench, beside the record and scored against it;
   a song rig a scene at a time, each against its own part. A rehearsal
-  before anything is written.
+  before anything is written - and on a finished run, **Hear the draft**
+  and a **hear** by each of its song rig's scenes, without leaving it.
 
 ## The Core
 

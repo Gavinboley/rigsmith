@@ -95,7 +95,8 @@ the run says which parts were moved.
 ## What to trust
 
 The score ranks; your ears decide. A difference smaller than the score can
-resolve is a tie. **Hear it** on the Rig page plays your DI through the
+resolve is a tie. **Hear it** on the Rig page (**Hear the draft** on a
+finished run, and **hear** by each scene of a song rig) plays your DI through the
 whole draft - the boost in front, the EQ and effects after the amp -
 beside the record, before anything is written. The blind A/B plays the
 finalists - three different amps, the best of each - without their names, and

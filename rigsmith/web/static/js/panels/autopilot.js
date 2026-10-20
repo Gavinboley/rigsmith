@@ -265,6 +265,35 @@ function audioLink(label, url) {
   return button;
 }
 
+// The finished draft heard whole - its effects too - beside the part, as
+// Hear it does on the Rig page, without leaving the run; a song rig's scene
+// beside its own part.
+async function hearDraft(draftId, button, scene = null) {
+  const label = button.textContent;
+  button.disabled = true;
+  button.textContent = "Hearing...";
+  await attempt(async () => {
+    const heard = await api.post(`/api/drafts/${encodeURIComponent(draftId)}/hear`, scene ? { scene } : {});
+    $("#ap-heard")?.remove();
+    const players = el("div", { class: "row" });
+    for (const [label, url] of [["the draft", heard.url], ["the part", heard.target_url]]) {
+      if (url) players.append(el("label", { class: "hint heard-player" }, label, el("audio", { controls: true, preload: "none", src: url })));
+    }
+    const skipped = heard.skipped.length ? ` - not heard: ${heard.skipped.join(", ")}` : "";
+    button.closest(".row, .item").after(
+      el(
+        "div",
+        { class: "notice", id: "ap-heard" },
+        el("strong", { text: `${scene ? `${scene}:` : "The draft,"} ${heard.composite != null ? `${heard.composite.toFixed(3)} from the part. ` : "heard. "}` }),
+        `Through ${heard.played.join(", then ")}${skipped}. A rehearsal on the simulated amp.`,
+        players
+      )
+    );
+  });
+  button.disabled = false;
+  button.textContent = label;
+}
+
 function show(run) {
   // A run that just finished - by the poll or by a pushed event, whichever
   // got here first - changes the past-runs list too.
@@ -305,6 +334,9 @@ function show(run) {
       links.append(el("button", { class: "btn small ghost", text: "Finish by ear", title: "Open the draft with the words ready: too boomy, a bit brighter, too much reverb", onclick: () => goTo("rig", { draftId: run.draft_id, focus: "nudge" }) }));
     }
     links.append(el("button", { class: "btn small ghost", text: "Tone sheet", title: "The draft as you would dial it in by hand, and why - printable", onclick: () => window.open(`/api/drafts/${encodeURIComponent(run.draft_id)}/sheet.html`, "_blank") }));
+    if (run.state === "done") {
+      links.append(el("button", { class: "btn small", id: "ap-hear", text: "Hear the draft", title: "Your DI through the whole draft - amp, cab, EQ, delay, room - on the simulated bench, beside the part", onclick: (event) => hearDraft(run.draft_id, event.currentTarget) }));
+    }
   }
   if (run.ab_session) {
     links.append(el("button", { class: "btn small primary", text: "Blind A/B the finalists", onclick: () => goTo("match", { abSession: run.ab_session }) }));
@@ -377,7 +409,8 @@ function show(run) {
         el(
           "div",
           { class: "item clickable", title: "Open the run that found this part's sound", onclick: () => attempt(async () => show(await api.get(`/api/autopilot/${encodeURIComponent(scene.run)}`))) },
-          el("span", { class: "tag a2", text: `FS${scene.footswitch}` }), el("span", { class: "title", text: scene.scene }), el("span", { class: "meta", text: scene.sound }), el("span", { class: "spacer" }), el("span", { class: "meta", text: `run ${scene.run}` })
+          el("span", { class: "tag a2", text: `FS${scene.footswitch}` }), el("span", { class: "title", text: scene.scene }), el("span", { class: "meta", text: scene.sound }), el("span", { class: "spacer" }), el("span", { class: "meta", text: `run ${scene.run}` }),
+          el("button", { class: "btn small ghost", text: "hear", title: `Your DI for this part through the song rig's ${scene.scene} scene, beside the part`, onclick: (event) => { event.stopPropagation(); hearDraft(run.song_rig.draft_id, event.currentTarget, scene.scene); } })
         )
       )),
       ...(run.song_rig.notes || []).map((note) => el("div", { class: "notice", text: note })),

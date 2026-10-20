@@ -1483,6 +1483,34 @@ def test_a_finished_run_hands_its_draft_over_to_be_finished_by_ear(browser, serv
         assert page.input_value("#draft-select") == draft_id
 
 
+def test_a_finished_run_s_draft_is_heard_beside_its_part(browser, server, tmp_path):
+    from rigsmith.core import autopilot, rigs
+
+    draft_id = rigs.create("Heard Run").draft.draft_id
+    rigs.add_block(draft_id, "amp", "82 Lead 800 100W", params={"GainA": 0.6})
+    rigs.add_block(draft_id, "effect", "AIR Reverb", params={"Mode": 1, "Mix": 0.25})
+    di = audio_file(tmp_path, "di.wav", seconds=4.0)
+    record = audio_file(tmp_path, "record.wav", seconds=4.0)
+    blocks = rigs.get(draft_id).rig.blocks
+    rigs.configure_scene(draft_id, "dry", on_slots=[blocks[0].slot], off_slots=[blocks[1].slot], footswitch=1)
+    song_rig = {"draft_id": draft_id, "scenes": [{"scene": "dry", "footswitch": 1, "part": "verse-1-left", "sound": "82 Lead 800 100W", "run": "heard-run"}]}
+    autopilot.Run(run_id="heard-run", request=autopilot.Request(title="Heard Run Song"), state="done", draft_id=draft_id,
+                  di_path=str(di), target_path=str(record), mode="performance", song_rig=song_rig).save()
+    with page_at(browser, server) as page:
+        page.click("#tabs .tab[data-panel='autopilot']")
+        page.click("#ap-runs .item:has-text('Heard Run Song')")
+        page.click("#ap-hear")
+        heard = page.locator("#ap-heard")
+        heard.wait_for(timeout=20000)
+        assert "from the part" in heard.inner_text() and "AIR Reverb" in heard.inner_text()
+        assert heard.locator("audio").count() == 2, "the draft and the part, side by side"
+        assert page.inner_text("#ap-hear") == "Hear the draft"
+        # A song rig's scene, beside its own part.
+        page.click("#ap-current .item:has-text('dry') button:has-text('hear')")
+        page.wait_for_function("document.querySelector('#ap-heard')?.innerText.startsWith('dry:')", timeout=20000)
+        assert page.locator("#ap-heard audio").count() == 2
+
+
 def test_an_edit_on_the_board_can_be_undone_from_the_keyboard(browser, server):
     from rigsmith.core import rigs
 
