@@ -141,6 +141,10 @@ class Run:
     built_amp: dict | None = None
     """The amp as the measurement left it - ``{model, params}`` - so what
     you turned afterwards can be told apart (:mod:`rigsmith.core.habits`)."""
+    left_off: dict = field(default_factory=dict)
+    """``{role: why}`` - blocks the measurement suggested that the build left
+    off (a boost that moved the draft away from the record); a song rig made
+    from the run leaves them out too."""
     built_at: str | None = None
     """The draft's ``updated_at`` when the build finished: a draft saved
     since then has your edits in it, and a rebuild keeps it."""
@@ -1212,6 +1216,8 @@ def _stage_rig(run: Run, *, from_ears: bool = False) -> str:
         )
     for text in notes:
         run.note(text)
+    if any(block["role"] == "boost" for block in before):
+        _judge_boost(run)
     if run.request.ear_habits:
         _start_from_habits(run, best["model"])
     run.built_at = rigs.get(run.draft_id).updated_at
@@ -1240,6 +1246,65 @@ def _stage_rig(run: Run, *, from_ears: bool = False) -> str:
             f"{r['band']} {r['delta_db']:+.1f} dB (try {r['try']})" for r in loudest
         ))
     return f"draft '{run.draft_id}' with {best['model']} and {best['cab']}"
+
+
+#: How much further from the record (the composite, relative) the whole
+#: draft may be with the boost on before it is left off.
+BOOST_TOLERANCE = 0.02
+
+
+def _judge_boost(run: Run) -> None:
+    """Hear the draft with and without the boost a tight high-gain part
+    conventionally has in front, and leave it off when it moves the draft
+    away from the record.
+
+    The amp was tuned with nothing in front of it, so its gain already
+    reaches the record's, and a boost on top can drive it past. On the
+    simulated bench the whole draft is heard both ways
+    (:func:`rigsmith.core.hear.play`, which hears a boost as 6 dB more into
+    the amp) and scored against the record. At the Core it cannot be heard
+    without another pass through the loop, so it goes in off, for you to try.
+    Either way it stays in the chain, where a footswitch can turn it on.
+    """
+    import copy
+
+    from . import hear, rigs
+
+    rig = rigs.get(run.draft_id).rig
+    amp_slot = min((b.slot for b in rig.blocks if b.category.value == "amp"), default=None)
+    boost = next((b for b in sorted(rig.blocks, key=lambda b: b.slot)
+                  if amp_slot is not None and b.slot < amp_slot and b.enabled and hear._is_boost(b.model_id)), None)
+    if boost is None:
+        return
+
+    def leave_off(why: str, note: str) -> None:
+        rigs.toggle_block(run.draft_id, boost.slot, False)
+        run.left_off["boost"] = why
+        run.note(f"{boost.model_id} is in front, off: {note}")
+
+    if run.request.bench != "virtual":
+        leave_off("the amp was tuned on the Core with nothing in front of it",
+                  "the amp was tuned with nothing in front of it, so its gain already reaches the record's - "
+                  "turn it on for a lift, with the amp's gain down")
+        return
+    if not run.di_path or not Path(run.di_path).is_file():
+        return
+    from ..match.render_offline import load_audio
+
+    audio, rate = load_audio(run.di_path)
+    bypassed = copy.deepcopy(rig)
+    next(b for b in bypassed.blocks if b.slot == boost.slot).enabled = False
+    with_it = hear.score(run, hear.play(rig, audio, rate)[0], rate)
+    without = hear.score(run, hear.play(bypassed, audio, rate)[0], rate)
+    if with_it is None or without is None:
+        return
+    if with_it > without * (1 + BOOST_TOLERANCE):
+        leave_off(f"the draft was further from the record with it ({with_it:.3f}, against {without:.3f} without)",
+                  f"the whole draft heard with it was further from the record ({with_it:.3f}, against {without:.3f} without) - "
+                  "the amp's gain already reaches the record's. Turn it on for a lift")
+    else:
+        run.note(f"{boost.model_id} in front stays on: the whole draft heard with it was as close to the record or closer "
+                 f"({with_it:.3f}, against {without:.3f} without)")
 
 
 # --------------------------------------------------------------------------
@@ -1357,7 +1422,9 @@ def song_rig(run_ids: list[str], *, name: str | None = None) -> dict:
     wanted: dict[str, list[dict]] = {}
     tempo = (song.structure or {}).get("tempo")
     for item in parts:
-        item["roles"] = {b["role"]: b for b in surrounding_blocks(item["part"].sketch or {}, tempo=tempo)}
+        # What a part's own build heard and left off stays out of its scene.
+        left_off = item["run"].left_off or {}
+        item["roles"] = {b["role"]: b for b in surrounding_blocks(item["part"].sketch or {}, tempo=tempo) if b["role"] not in left_off}
         item["variant"] = {}
         for role, block in item["roles"].items():
             variants = wanted.setdefault(role, [])

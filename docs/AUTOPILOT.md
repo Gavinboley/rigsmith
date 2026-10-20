@@ -73,6 +73,16 @@ that takes seconds. At the Core every amp, cab and setting is reamped in real
 time, on the part's loudest 16 seconds: about ten minutes a part at the
 default budget - the form says how long for yours.
 
+A tight high-gain part usually has a boost in front, and its draft gets one -
+but the amp was tuned with nothing in front of it, so its gain already
+reaches the record's, and a boost on top drives it past. On the simulated
+bench the whole draft is heard with the boost and without, and the boost
+stays on only if the draft is as close to the record with it: on the demo
+song's driven chorus it was further (0.135, against 0.126 without) and went
+in off. At the Core it goes in off, for you to try. Either way it is in the
+chain where a footswitch can turn it on, and a song rig made from the run
+leaves it out.
+
 ## A whole song's rig
 
 A HeadRush scene switches blocks on and off; it does not hold knob values. So
@@ -86,7 +96,7 @@ the run says which parts were moved.
 
 The score ranks; your ears decide. A difference smaller than the score can
 resolve is a tie. **Hear it** on the Rig page plays your DI through the
-whole draft - the boost, EQ and effects the run added after the amp too -
+whole draft - the boost in front, the EQ and effects after the amp -
 beside the record, before anything is written. The blind A/B plays the finalists without their names, and
 "use what my ears picked" rebuilds the draft from your choice.
 

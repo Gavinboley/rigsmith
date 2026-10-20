@@ -106,35 +106,18 @@ def _in_scene(rig, scene: str | None) -> set[int] | None:
     return {slot for slot, state in found.states.items() if getattr(state, "value", state) == "on"}
 
 
-def render(draft_id: str, *, di: str | None = None, scene: str | None = None) -> Heard:
-    """Play a DI through the draft, offline. ``di`` defaults to the DI of the
-    run that built the draft, else your latest DI take."""
+def play(rig, audio, rate: int, *, scene: str | None = None) -> tuple[np.ndarray, list[str], list[str]]:
+    """``audio`` through ``rig``'s enabled blocks in slot order (only those
+    ``scene`` turns on, when given): ``(out, played, skipped)``."""
     from ..loop.virtual import SimAmp
-    from ..match.metrics import ComparisonMode
-    from ..match.render_offline import load_audio, resample, save_audio
-    from ..match.score import score_candidate
     from ..tune.candidates import DELAY_DIVISIONS, DIVISION_BEATS, RATE_DIVISIONS, VIRTUAL_VOICING, _tier_of, virtual_cab
     from ..tune.eq import GEQ_NAMES, GEQ_RANGE, apply_graphic
-    from . import rigs
 
-    from . import autopilot
-
-    draft = rigs.get(draft_id)
-    rig = draft.rig
-    run = _run_for(draft_id)
-    # A song rig's scene is its own part: its run's DI and its record.
-    if scene and run is not None and (run.song_rig or {}).get("draft_id") == draft_id:
-        owner = next((s["run"] for s in run.song_rig["scenes"] if s["scene"] == scene), None)
-        if owner:
-            run = autopilot.get(owner)
-    di_path = di or (run.di_path if run else None) or _latest_di()
-    if not di_path:
-        raise Invalid("there is no DI to play through it", hint="Record or render one - a part's 'on my guitar', or a DI take.")
-    audio, rate = load_audio(di_path)
     on = _in_scene(rig, scene)
     blocks = sorted((b for b in rig.blocks if b.enabled and (on is None or b.slot in on)), key=lambda b: b.slot)
     beat = _seconds_per_beat(rig.tempo)
-    heard = Heard(path="", di_path=str(di_path))
+    played: list[str] = []
+    skipped: list[str] = []
     x = np.asarray(audio, dtype=np.float64)
     amp_seen = False
     for index, block in enumerate(blocks):
@@ -148,13 +131,13 @@ def render(draft_id: str, *, di: str | None = None, scene: str | None = None) ->
                 amp.set(CabType=virtual_cab(cab.model_id))
             x = amp.process(x, rate)
             amp_seen = True
-            heard.played.append(f"{model} (as the simulated {('clean', 'crunch', 'lead', 'modern')[voicing]} voicing)" + (f" into {cab.model_id}" if cab else ""))
+            played.append(f"{model} (as the simulated {('clean', 'crunch', 'lead', 'modern')[voicing]} voicing)" + (f" into {cab.model_id}" if cab else ""))
         elif kind in ("cab", "ir"):
             continue  # heard with its amp
         elif model == "G EQ" or "EQ" in model.split():
             gains = [float(params.get(name, 0.5)) * 2 * GEQ_RANGE - GEQ_RANGE for name in GEQ_NAMES]
             x = apply_graphic(x, rate, gains)
-            heard.played.append("G EQ")
+            played.append("G EQ")
         elif "Delay" in model:
             if params.get("Sync") is True and isinstance(params.get("DelayTime_Synced"), int) and 0 <= params["DelayTime_Synced"] < len(DELAY_DIVISIONS):
                 seconds = DIVISION_BEATS[DELAY_DIVISIONS[params["DelayTime_Synced"]]] * beat
@@ -162,47 +145,88 @@ def render(draft_id: str, *, di: str | None = None, scene: str | None = None) ->
                 seconds = (20.0 + 780.0 * float(params.get("DelayTime", 0.4))) / 1000.0
             mix = float(params.get("Mix", 0.3))
             x = _echo(x, seconds, mix, float(params.get("Feedback", 0.35)), rate)
-            heard.played.append(f"{model} ({seconds * 1000:.0f} ms, {mix:.0%})")
+            played.append(f"{model} ({seconds * 1000:.0f} ms, {mix:.0%})")
         elif "Reverb" in model:
-            rt60 = ROOM_SECONDS.get(int(params.get("Mode", 1)), 1.6) if "AIR" in model else 1.0
-            mix = float(params.get("Mix", 0.25))
             from scipy.signal import fftconvolve
 
+            rt60 = ROOM_SECONDS.get(int(params.get("Mode", 1)), 1.6) if "AIR" in model else 1.0
+            mix = float(params.get("Mix", 0.25))
             t = np.arange(int(rt60 * 1.2 * rate)) / rate
             ir = np.random.default_rng(0).normal(0, 1, len(t)) * 10 ** (-3 * t / rt60)
             wet = fftconvolve(x, ir / np.sqrt(np.sum(ir**2)))[: len(x)]
             x = (1 - mix) * x + mix * wet / max(float(np.std(wet)), 1e-12) * float(np.std(x))
-            heard.played.append(f"{model} ({rt60:.1f} s, {mix:.0%})")
+            played.append(f"{model} ({rt60:.1f} s, {mix:.0%})")
         elif "Chorus" in model:
             x = _chorus(x, rate, mix=float(params.get("Mix", 0.5)))
-            heard.played.append(model)
+            played.append(model)
         elif "Tremolo" in model:
             if params.get("Sync") is True and isinstance(params.get("Rate_Synced"), int) and 0 <= params["Rate_Synced"] < len(RATE_DIVISIONS):
                 hz = 1.0 / (DIVISION_BEATS[RATE_DIVISIONS[params["Rate_Synced"]]] * beat)
             else:
                 hz = 1.0 + 9.0 * float(params.get("Rate", 0.4))
             x = _tremolo(x, rate, hz, float(params.get("Depth", 0.5)))
-            heard.played.append(f"{model} ({hz:.1f} Hz)")
-        elif not amp_seen and any(word in model for word in ("OD", "Drive", "Boost", "Screamer", "JRC")):
-            x = x * 2.0  # a boost in front: about 6 dB more into the amp
-            heard.played.append(f"{model} (as 6 dB more into the amp)")
+            played.append(f"{model} ({hz:.1f} Hz)")
+        elif not amp_seen and _is_boost(model):
+            x = x * BOOST_GAIN  # a boost in front: about 6 dB more into the amp
+            played.append(f"{model} (as 6 dB more into the amp)")
         else:
-            heard.skipped.append(model)
+            skipped.append(model)
     if not amp_seen:
-        heard.skipped.append("no amp - the DI as it is")
+        skipped.append("no amp - the DI as it is")
+    return x, played, skipped
+
+
+#: A boost in front of the amp, heard as this much more level into it.
+BOOST_GAIN = 2.0
+
+
+def _is_boost(model: str) -> bool:
+    return any(word in model for word in ("OD", "Drive", "Boost", "Screamer", "JRC"))
+
+
+def score(run, audio, rate: int) -> float | None:
+    """``audio`` against the record's part of ``run`` - the way the run compared."""
+    from ..match.metrics import ComparisonMode
+    from ..match.render_offline import load_audio, resample
+    from ..match.score import score_candidate
+
+    if run is None or not run.target_path or not Path(run.target_path).is_file():
+        return None
+    target, target_rate = load_audio(run.target_path)
+    if target_rate != rate:
+        target = resample(target, target_rate, rate)
+    mode = ComparisonMode.PERFORMANCE if run.mode == "performance" else ComparisonMode.DISTRIBUTION
+    mine = audio[: len(target)] if mode is ComparisonMode.PERFORMANCE else audio
+    try:
+        return round(float(score_candidate(target, mine, rate, mode=mode).composite), 4)
+    except Exception:
+        return None
+
+
+def render(draft_id: str, *, di: str | None = None, scene: str | None = None) -> Heard:
+    """Play a DI through the draft, offline. ``di`` defaults to the DI of the
+    run that built the draft, else your latest DI take."""
+    from ..match.render_offline import load_audio, save_audio
+    from . import autopilot, rigs
+
+    rig = rigs.get(draft_id).rig
+    run = _run_for(draft_id)
+    # A song rig's scene is its own part: its run's DI and its record.
+    if scene and run is not None and (run.song_rig or {}).get("draft_id") == draft_id:
+        owner = next((s["run"] for s in run.song_rig["scenes"] if s["scene"] == scene), None)
+        if owner:
+            run = autopilot.get(owner)
+    di_path = di or (run.di_path if run else None) or _latest_di()
+    if not di_path:
+        raise Invalid("there is no DI to play through it", hint="Record or render one - a part's 'on my guitar', or a DI take.")
+    audio, rate = load_audio(di_path)
+    x, played, skipped = play(rig, audio, rate, scene=scene)
     peak = float(np.max(np.abs(x))) or 1.0
     x = x / peak * 0.9 if peak > 0.9 else x
-    path = save_audio(get_settings().audio_dir / "heard" / f"{draft_id}{'-' + scene if scene else ''}.wav", x, rate)
-    heard.path = str(path)
-    if run is not None and run.target_path and Path(run.target_path).is_file() and di is None:
-        target, target_rate = load_audio(run.target_path)
-        if target_rate != rate:
-            target = resample(target, target_rate, rate)
-        mode = ComparisonMode.PERFORMANCE if run.mode == "performance" else ComparisonMode.DISTRIBUTION
-        mine = x[: len(target)] if mode is ComparisonMode.PERFORMANCE else x
-        try:
-            heard.composite = round(float(score_candidate(target, mine, rate, mode=mode).composite), 4)
+    heard = Heard(path="", di_path=str(di_path), played=played, skipped=skipped)
+    heard.path = str(save_audio(get_settings().audio_dir / "heard" / f"{draft_id}{'-' + scene if scene else ''}.wav", x, rate))
+    if di is None:
+        heard.composite = score(run, x, rate)
+        if heard.composite is not None:
             heard.target_path = run.target_path
-        except Exception:
-            pass
     return heard

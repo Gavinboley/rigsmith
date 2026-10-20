@@ -74,6 +74,10 @@ the parts that need the Core, your guitar or your copy of a song say so.
   left in, either one let the wrong voicing win most of the time.
 - **At the Core**, a long part is heard on its loudest 16 seconds, about
   ten minutes a part, and the page says how long before it starts.
+- **A boost is heard, not assumed**: a tight high-gain part's draft has
+  one in front, left on only where the whole draft is heard closer to the
+  record with it - the amp was tuned with nothing there, so its gain
+  already reaches the record's. At the Core it goes in off, for you to try.
 - **A song rig's third sound** goes to the kept amp nearest what its own
   run found; [AUTOPILOT.md](AUTOPILOT.md) says how every choice is made.
 

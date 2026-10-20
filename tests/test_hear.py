@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import copy
+
 import numpy as np
 import pytest
 
@@ -80,3 +82,44 @@ def test_a_scene_is_heard_alone_and_against_its_own_part(workspace):
 def test_with_no_di_anywhere_it_says_what_to_do(workspace):
     with pytest.raises(Invalid, match="no DI"):
         hear.render(_draft())
+
+
+def _boosted():
+    draft_id = rigs.create("Boosted").draft.draft_id
+    for category, model, params in (
+        ("effect", "Green JRC-OD", {}),
+        ("amp", "82 Lead 800 100W", {"GainA": 0.6}),
+        ("cab", "4x12 Green 20W", {}),
+    ):
+        rigs.add_block(draft_id, category, model, params=params)
+    return draft_id
+
+
+def _boost(draft_id):
+    return next(b for b in rigs.get(draft_id).rig.blocks if b.model_id == "Green JRC-OD")
+
+
+@pytest.mark.parametrize("record_boosted", [False, True])
+def test_a_boost_stays_on_only_when_the_draft_is_closer_with_it(workspace, record_boosted):
+    """The boost a tight high-gain part conventionally has goes in front of
+    an amp tuned with nothing there - on top of a gain that already reaches
+    the record's, it can only drive past it."""
+    draft_id = _boosted()
+    di = _di(workspace / "di.wav")
+    audio, rate = load_audio(di)
+    rig = copy.deepcopy(rigs.get(draft_id).rig)
+    next(b for b in rig.blocks if b.model_id == "Green JRC-OD").enabled = record_boosted
+    record = save_audio(workspace / "record.wav", hear.play(rig, audio, rate)[0], rate)
+    run = autopilot.Run(run_id="b1", request=autopilot.Request(title="Boosted"), draft_id=draft_id,
+                        di_path=str(di), target_path=str(record), mode="performance")
+    autopilot._judge_boost(run)
+    assert _boost(draft_id).enabled is record_boosted
+    assert ("boost" in run.left_off) is not record_boosted
+    assert any(("stays on" if record_boosted else "is in front, off") in note for note in run.all_notes()), run.all_notes()
+
+
+def test_at_the_core_a_boost_goes_in_off(workspace):
+    draft_id = _boosted()
+    run = autopilot.Run(run_id="b2", request=autopilot.Request(title="Boosted", bench="device"), draft_id=draft_id)
+    autopilot._judge_boost(run)
+    assert not _boost(draft_id).enabled and "tuned on the Core" in run.left_off["boost"]
