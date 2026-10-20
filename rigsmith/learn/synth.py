@@ -35,6 +35,14 @@ MAX_SHIFT = 3.0
 #: Fade at the end of a note, when the next note on the same string stops it.
 DAMP_S = 0.03
 
+#: How long a note rings past its duration. None: a transcribed duration is
+#: already how long the note sounded on the record (until it fell 45 dB, or
+#: its partials fell away, or the next attack), and a tab's is how long it is
+#: held. Another 0.35 s turned palm-muted chugs legato and smeared a lead's
+#: notes into each other - scored against the part through the same amp, a
+#: DI from transcribed notes came out 0.222 at 0.35 s and 0.142 at none.
+RING_S = 0.0
+
 
 @dataclass
 class NoteEvent:
@@ -185,7 +193,7 @@ def render(
 
     for index, event in enumerate(events):
         target_db = _velocity_to_db(event.velocity, median_db, p95_db)
-        length_s = event.duration + 0.35
+        length_s = event.duration + RING_S
         if stops[index] is not None:
             length_s = min(length_s, stops[index] - event.start + DAMP_S)
         note: np.ndarray | None = None

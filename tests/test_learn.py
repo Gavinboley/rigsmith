@@ -663,6 +663,17 @@ def test_an_arpeggio_is_placed_on_different_strings_and_rings_through():
     assert stops[0] == pytest.approx(beat), "the E3 is stopped where it is picked again"
 
 
+def test_a_palm_muted_chug_stops_where_its_duration_does():
+    """Every note rang 0.35 s past its duration: chugs 70 ms long came out
+    legato, filling the silence the record has between them."""
+    from rigsmith.learn.synth import render
+
+    chugs = [NoteEvent(start=t, duration=0.07, midi=40.0, velocity=0.85) for t in (0.0, 0.3)]
+    audio = render(chugs, None).audio
+    level = lambda a, b: 20 * np.log10(np.sqrt(np.mean(audio[int(a * RATE) : int(b * RATE)] ** 2)) + 1e-12)
+    assert level(0.12, 0.28) < level(0.0, 0.06) - 30, "silence between the chugs"
+
+
 def test_a_run_up_one_string_still_mutes_each_note_with_the_next():
     from rigsmith.learn.synth import _stops
 
