@@ -105,6 +105,7 @@ def test_the_whole_demo_is_a_part_for_each_guitar_and_a_scene_each(workspace):
     assert run.state == "done", run.describe()
     assert len(run.part_ids) >= 2 and len(run.part_runs) == len(run.part_ids) - 1
     assert run.song_rig and len(run.song_rig["scenes"]) == len(run.part_ids)
+    assert run.chasing is None, "nothing is under way once it is done"
     guitars = [run.demo["guitar"]] + [o["guitar"] for o in run.demo.get("others", [])]
     assert len(guitars) == len(run.part_ids) and len(set(guitars)) >= 2, guitars
     assert "...and:" in run.describe()

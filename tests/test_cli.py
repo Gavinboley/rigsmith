@@ -466,3 +466,17 @@ def test_song_choose_takes_a_part_per_sound(runner):
     assert "2 part(s) chosen" in result.output and "chorus-2-left" in result.output and "intro-1-stem" in result.output
     nothing = runner.invoke(main, ["song", "choose", made.song_id])
     assert nothing.exit_code != 0 and "--sounds" in nothing.output
+
+
+def test_following_a_whole_song_says_which_part_is_under_way(runner, monkeypatch):
+    from rigsmith.commands import autopilot as command
+    from rigsmith.core import autopilot
+
+    chasing = autopilot.Run(run_id="w", request=autopilot.Request(title="W"), state="running", chasing={"index": 2, "of": 3, "part": "solo - centre", "run_id": "w-2"})
+    done = autopilot.Run(run_id="w", request=autopilot.Request(title="W"), state="done")
+    seen = iter([chasing, done, done, done])
+    monkeypatch.setattr(autopilot, "start", lambda request: chasing)
+    monkeypatch.setattr(autopilot, "get", lambda run_id: next(seen))
+    monkeypatch.setattr(command.time, "sleep", lambda seconds: None)
+    result = invoke(runner, "autopilot", "run", "W")
+    assert "chasing part 2 of 3: solo - centre (run w-2)" in result.output, result.output

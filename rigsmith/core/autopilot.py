@@ -150,6 +150,9 @@ class Run:
     part_spans: dict = field(default_factory=dict)
     """``{part_id: [layer, start, end]}`` - so the run still finds its part
     after a re-map renames it (:func:`_part`)."""
+    chasing: dict | None = None
+    """While the song's other parts are chased: ``{index, of, part, run_id}``
+    of the one under way - the run's own stages are all done by then."""
     demo: dict | None = None
     """On the demo song, how close the run came to the amp it was made with
     (:func:`rigsmith.core.demo.verdict`); None on any other song."""
@@ -1623,6 +1626,8 @@ def _chase_other_parts(run: Run, progress) -> None:
     """
     from dataclasses import replace
 
+    from . import songs
+
     others = run.part_ids[1:]
     if len(run.part_ids) > MAX_SONG_PARTS:
         run.note(f"{len(run.part_ids)} parts were chosen and a rig has {MAX_SONG_PARTS} footswitches; the first {MAX_SONG_PARTS} were chased")
@@ -1631,6 +1636,13 @@ def _chase_other_parts(run: Run, progress) -> None:
         if progress:
             progress.check()
             progress.update(None, f"part {position + 1} of {len(others) + 1}: {part_id}")
+        try:
+            label = songs.get(run.song_id).part(part_id).label
+        except NotFound:
+            label = part_id
+        run.chasing = {"index": position + 1, "of": len(others) + 1, "part": label, "run_id": f"{run.run_id}-{position + 1}"}
+        run.save()
+        events.publish({"type": "autopilot", "run_id": run.run_id, "state": "running", "chasing": run.chasing})
         child = Run(
             run_id=f"{run.run_id}-{position + 1}",
             request=replace(run.request, parts=[part_id], song_id=run.song_id, mix=None, stem=None),
@@ -1646,6 +1658,7 @@ def _chase_other_parts(run: Run, progress) -> None:
         run.save()
         if child.state != "done":
             run.note(f"the run for {part_id} did not finish ({child.state}) - it is left out of the song rig")
+    run.chasing = None
     finished = [run.run_id] + [r for r in run.part_runs if get(r).state == "done"]
     if len(finished) > 1:
         try:

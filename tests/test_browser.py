@@ -1592,3 +1592,32 @@ def test_a_part_per_sound_is_one_click_on_the_song(browser, server, tmp_path):
         page.click("#choose-sounds")
         page.wait_for_selector(".toast:has-text('Chose 3')")
     assert sorted(p.part_id for p in songs.get(made.song_id).chosen()) == ["chorus-3-left", "intro-1-stem", "solo-4-centre"]
+
+
+def test_a_whole_song_run_says_which_part_it_is_chasing(browser, server):
+    """Once its own stages were done, a whole-song run sat there looking
+    finished while the next part's run did the work."""
+    from rigsmith.core import autopilot
+
+    autopilot.Run(run_id="whole-2", request=autopilot.Request(title="Solo Part"), state="running").save()
+    autopilot.Run(
+        run_id="whole", request=autopilot.Request(title="Whole Song"), state="running",
+        chasing={"index": 2, "of": 3, "part": "solo - centre", "run_id": "whole-2"},
+    ).save()
+    with page_at(browser, server) as page:
+        page.click("#tabs .tab[data-panel='autopilot']")
+        page.click("#ap-runs .item:has-text('Whole Song')")
+        page.wait_for_selector("#ap-chasing:has-text('Chasing part 2 of 3: solo - centre')")
+        page.click("#ap-chasing button")
+        page.wait_for_selector("#ap-current h2:has-text('Solo Part')")
+
+    # Done, each scene opens the run that found its sound.
+    autopilot.Run(
+        run_id="whole", request=autopilot.Request(title="Whole Song"), state="done", results=[{"label": "A", "composite": 0.1, "path": ""}],
+        song_rig={"draft_id": "d", "notes": [], "scenes": [{"footswitch": 2, "scene": "solo - centre", "sound": "82 Lead 800 100W", "run": "whole-2", "part": "solo-2-centre"}]},
+    ).save()
+    with page_at(browser, server) as page:
+        page.click("#tabs .tab[data-panel='autopilot']")
+        page.click("#ap-runs .item:has-text('Whole Song')")
+        page.click("#ap-current .item.clickable:has-text('solo - centre')")
+        page.wait_for_selector("#ap-current h2:has-text('Solo Part')")

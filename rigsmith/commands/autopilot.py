@@ -83,8 +83,12 @@ def _follow(run_id: str) -> None:
     from ..core import autopilot
 
     shown = {}
+    chased = None
     while True:
         current = autopilot.get(run_id)
+        if current.chasing and current.chasing != chased:
+            chased = current.chasing
+            click.echo(f"  chasing part {chased['index']} of {chased['of']}: {chased['part']} (run {chased['run_id']})")
         for name in autopilot.STAGES:
             stage = current.stages[name]
             key = (stage.state, stage.summary)
