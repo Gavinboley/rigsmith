@@ -1192,6 +1192,7 @@ def test_tuning_asks_for_a_part_only_once_there_is_a_song(browser, server):
     made = songs.create("Tuned")
     made.parts = [Part("verse-1-stem", 0, "verse", "stem", 0.0, 15.0)]
     made.save()
+    songs.create("Unmapped")
     with page_at(browser, server) as page:
         page.click("#tabs .tab[data-panel='tune']")
         song, part = page.locator("#tune-body select").nth(0), page.locator("#tune-body select").nth(1)
@@ -1205,6 +1206,10 @@ def test_tuning_asks_for_a_part_only_once_there_is_a_song(browser, server):
         song.select_option(label="a file instead")
         page.wait_for_function("document.querySelectorAll('#tune-body select')[1].disabled")
         assert "unused" not in page.locator("#tune-body .dropzone").get_attribute("class")
+        # A song not mapped yet: no parts to choose, so the drop zone stays.
+        song.select_option(label="Unmapped")
+        page.wait_for_function("document.querySelectorAll('#tune-body select')[1].innerText.includes('no parts yet')")
+        assert part.is_disabled() and "unused" not in page.locator("#tune-body .dropzone").get_attribute("class")
 
 
 def test_a_loop_route_is_asked_for_only_when_the_core_plays(browser, server):

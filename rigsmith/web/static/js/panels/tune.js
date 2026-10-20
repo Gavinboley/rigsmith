@@ -32,15 +32,30 @@ async function fillSongs(select, partSelect) {
     clear(partSelect).append(el("option", { value: "", text: "no song - drop the target" }));
     partSelect.disabled = true;
   };
+  const partIsTarget = (yes) => {
+    form.target?.classList.toggle("unused", yes);
+    form.target?.setAttribute("aria-disabled", String(yes));
+  };
   select.onchange = async () => {
-    form.target?.classList.toggle("unused", Boolean(select.value));
-    form.target?.setAttribute("aria-disabled", String(Boolean(select.value)));
-    if (!select.value) return noSong();
+    if (!select.value) {
+      partIsTarget(false);
+      return noSong();
+    }
     const song = await api.get(`/api/songs/${select.value}`);
     const parts = [...song.parts].sort((a, b) => Number(b.chosen) - Number(a.chosen));
     clear(partSelect);
+    // A song not mapped yet has no parts to offer: the dropped file is still
+    // the target. (Stepped back as soon as a song was chosen, the drop zone
+    // left nothing to choose and nowhere to drop.)
+    if (!parts.length) {
+      partSelect.append(el("option", { value: "", text: "no parts yet - map the song, or drop the target" }));
+      partSelect.disabled = true;
+      partIsTarget(false);
+      return;
+    }
     for (const part of parts) partSelect.append(el("option", { value: part.part_id, text: `${part.chosen ? "* " : ""}${part.label} (${part.sketch?.summary || ""})`, "data-di": part.di_take || "" }));
     partSelect.disabled = false;
+    partIsTarget(true);
     partSelect.onchange?.();
   };
   noSong();
