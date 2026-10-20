@@ -98,6 +98,12 @@ def server(tmp_path, monkeypatch):
     drafts.set_store(None)
 
 
+def _machine_trouble(text: str) -> bool:
+    """A socket the operating system ran out of buffer for, under a loaded
+    suite - the machine's trouble, not the page's."""
+    return "net::ERR_NO_BUFFER_SPACE" in text
+
+
 @contextmanager
 def page_at(browser, url):
     """A page that fails the test if the console reports an error."""
@@ -106,7 +112,7 @@ def page_at(browser, url):
     page.on(
         "console",
         lambda message: problems.append(f"console.{message.type}: {message.text}")
-        if message.type == "error"
+        if message.type == "error" and not _machine_trouble(message.text)
         else None,
     )
     page.on("pageerror", lambda error: problems.append(f"uncaught: {error}"))

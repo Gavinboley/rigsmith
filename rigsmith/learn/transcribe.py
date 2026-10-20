@@ -742,6 +742,31 @@ def _basic_pitch(path: Path) -> list[NoteEvent] | None:
         return to_events(read(produced[0]))
 
 
+#: A chord reading whose chords last longer than this, middling, with the
+#: note-by-note estimate starting notes at twice as many moments, has lost
+#: its attacks - under heavy drive two in eight were found and four chords
+#: came back as two - and the pitch-class similarity judges between them.
+SPARSE_CHORD_S = 1.2
+
+
+def _keep_chords(audio, sample_rate: int, chords: list[NoteEvent], frames: list[NoteEvent]) -> bool:
+    """Whether the chord reading stands over the note-by-note estimate.
+
+    It does, nearly always: voiced from the spectrum, it read every
+    synthetic chord part at least as well, and the similarity that used to
+    choose - blind to octaves - picked the estimate on clean power chords
+    (F1 0.64 against 0.95). Only when its attacks went missing (see
+    ``SPARSE_CHORD_S``) does the similarity choose again.
+    """
+    starts = sorted({round(e.start, 3) for e in chords})
+    spans = np.diff(starts + [len(audio) / sample_rate])
+    if not len(spans) or float(np.median(spans)) <= SPARSE_CHORD_S:
+        return True
+    if len({round(e.start, 2) for e in frames}) < 2 * len(starts):
+        return True
+    return _chroma_similarity(audio, sample_rate, chords) >= _chroma_similarity(audio, sample_rate, frames)
+
+
 #: An echo is taken out before the notes are read when its first repeat
 #: comes back at least this loud against the note. A steady part's note
 #: spacing can stand in the cepstrum like an echo; every dry synthetic part
@@ -770,11 +795,16 @@ def _without_echo(audio: np.ndarray, sample_rate: int) -> tuple[np.ndarray, str 
     from ..song.describe import _delay, power_cepstrum
 
     lag_ms, _, _ = _delay(audio, sample_rate, None)
-    cepstrum = power_cepstrum(audio, sample_rate) if lag_ms else None
-    if cepstrum is None:
+    if not lag_ms:
         return audio, None
     near = int(round(lag_ms / 1000.0 * sample_rate))
-    if 2 * near + 4 >= len(cepstrum) // 2:
+    # Twice the lag has to fit in half the window: a half-note delay at a
+    # slow tempo (from 683 ms) needs the longer one, or it was left in.
+    size = 1 << 17
+    while 2 * near + 4 >= size // 2 and size < 1 << 20:
+        size <<= 1
+    cepstrum = power_cepstrum(audio, sample_rate, size=size)
+    if cepstrum is None or 2 * near + 4 >= len(cepstrum) // 2:
         return audio, None
     lag = near - 3 + int(np.argmax(cepstrum[near - 3 : near + 4]))
     mix = 2.0 * float(cepstrum[lag])
@@ -926,7 +956,7 @@ def transcribe(
         # estimate on clean power chords (F1 0.64 against 0.95, and 0.59
         # against 0.96 in drop C).
         chords = _chords_from_chroma(audio, sample_rate, onsets, min_midi)
-        if chords:
+        if chords and _keep_chords(audio, sample_rate, chords, result.events):
             result.events = chords
             result.notes_text.append("chords read from their pitch classes and voiced as a guitarist would")
         result.events, collapsed = _collapse_single_notes(audio, sample_rate, result.events)
@@ -1043,7 +1073,7 @@ LOWER_ROOT_MARGIN = 0.04
 
 def _bass_notes(audio: np.ndarray, sample_rate: int, start: float, end: float) -> list[float]:
     """Candidates for a chord's root as played: the lowest strong pitch in
-    52-350 Hz just after an attack, and the pitch a fifth below it when one
+    63-350 Hz just after an attack, and the pitch a fifth below it when one
     rings there.
 
     Driven, a power chord's root can ring quieter than its fifth - the amp's
@@ -1062,9 +1092,10 @@ def _bass_notes(audio: np.ndarray, sample_rate: int, start: float, end: float) -
     size = 1 << int(np.ceil(np.log2(max(len(piece), 8192))))
     spectrum = np.abs(np.fft.rfft(piece * np.hanning(len(piece)), size))
     freqs = np.fft.rfftfreq(size, 1 / sample_rate)
-    # From just under A1, the lowest string of the tunings read: a drop-C
-    # C2 at 65 Hz was below the old 70 Hz floor.
-    band = (freqs >= 52.0) & (freqs <= 350.0)
+    # From just under C2: a drop-C low C at 65 Hz was below the old 70 Hz
+    # floor. Not lower: 60 Hz mains hum read as a B1 bass and every chord
+    # over it collapsed to that one note.
+    band = (freqs >= 63.0) & (freqs <= 350.0)
     level, where = spectrum[band], freqs[band]
     if not len(level) or level.max() <= 0:
         return []

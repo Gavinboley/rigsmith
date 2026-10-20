@@ -225,10 +225,12 @@ def power_cepstrum(audio, sample_rate: int, *, size: int = 1 << 17) -> np.ndarra
     ``size`` samples - where an echo shows as a peak at its delay."""
     from scipy.signal import butter, sosfiltfilt
 
+    # Too short for the window - or for the filter, which needs some
+    # samples either side and raised on a near-empty stem.
+    if len(audio) < size // 2:
+        return None
     sos = butter(4, [150.0, min(5000.0, 0.45 * sample_rate)], btype="bandpass", fs=sample_rate, output="sos")
     signal = sosfiltfilt(sos, audio)
-    if len(signal) < size // 2:
-        return None
     window = np.hanning(size)
     total = np.zeros(size)
     count = 0

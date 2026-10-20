@@ -657,6 +657,56 @@ def test_a_driven_arpeggio_under_a_delay_is_still_an_arpeggio():
     assert transcribe(audio, RATE, method="builtin", match_record_pitch=False).mode == "arpeggio"
 
 
+@pytest.mark.parametrize("length", [0, 1, 10, 27])
+def test_a_near_empty_stem_reads_as_no_notes(length):
+    """The echo check filtered the stem before looking at its length, and
+    the filter raised on anything under 28 samples."""
+    assert transcribe(np.zeros(length), RATE, method="builtin", match_record_pitch=False).events == []
+
+
+def test_mains_hum_is_not_taken_for_a_chords_bass():
+    """With the bass looked for from 52 Hz, a 60 Hz hum read as B1 and every
+    chord over it collapsed to that one note."""
+    beat = 60 / 110
+    truth = []
+    for b in range(0, 16, 2):
+        root = [52, 57, 55, 50][(b // 2) % 4]
+        truth += [(b * beat, beat * 1.8, m, 0.7) for m in (root, root + 4, root + 7)]
+    audio = render_notes(truth, seed=5)
+    hum = np.sqrt(2 * np.mean(audio ** 2)) * 0.1 * np.sin(2 * np.pi * 60 * np.arange(len(audio)) / RATE)
+    result = transcribe(audio + hum, RATE, method="builtin", match_record_pitch=False)
+    assert min(round(e.midi) for e in result.events) >= 45, "no note down at the hum"
+    assert len(result.events) >= 0.9 * len(truth)
+
+
+def test_a_long_delay_is_taken_out_too():
+    """Its repeat at twice the lag did not fit half the cepstrum's window,
+    and from 683 ms a delay found was silently left in."""
+    beat = 60 / 110
+    truth = [(b * beat, beat * 0.9, [64, 67, 69, 71, 74, 76, 74, 71][b % 8], 0.9) for b in range(40)]
+    result = transcribe(_with_delay(render_notes(truth, seed=5), 0.7), RATE, method="builtin", match_record_pitch=False)
+    assert any("echo every 700 ms" in note for note in result.notes_text), result.notes_text
+
+
+def test_chords_that_lost_their_attacks_give_way_to_the_note_estimate():
+    """Under heavy drive two of eight chord attacks were found, the chord
+    reading made four chords of eight, and it was kept anyway: 7 of 24 of
+    the chords' pitch classes, against 13 for the note-by-note estimate."""
+    from rigsmith.loop.virtual import SimAmp
+
+    beat = 60 / 90
+    chords = [(48, (0, 4, 7)), (45, (0, 3, 7)), (41, (0, 4, 7)), (43, (0, 4, 7))] * 2
+    truth = [(i * beat, beat, root + iv, 0.78) for i, (root, ivs) in enumerate(chords) for iv in ivs]
+    audio = SimAmp(Type=2, Gain=0.65).process(render_notes(truth, seed=11, tail=0.3))
+    result = transcribe(audio, RATE, method="builtin", match_record_pitch=False)
+    hits = 0
+    for start in sorted({t for t, _, _, _ in truth}):
+        want = {m % 12 for t, _, m, _ in truth if t == start}
+        heard = {round(e.midi) % 12 for e in result.events if e.start <= start + 0.05 and e.start + e.duration >= start + 0.1}
+        hits += len(want & heard)
+    assert hits >= 12, hits
+
+
 def test_drum_bleed_does_not_become_a_chord_on_every_hit():
     """Flux read over every bin took a hi-hat 25 dB under the guitar - a big
     rise where the guitar leaves the spectrum near silent - for an attack:
