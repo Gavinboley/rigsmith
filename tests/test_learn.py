@@ -758,12 +758,29 @@ def test_a_run_up_one_string_still_mutes_each_note_with_the_next():
     assert stops[:3] == [pytest.approx(0.2), pytest.approx(0.4), pytest.approx(0.6)]
 
 
-def test_a_part_auto_misreads_can_be_read_as_an_arpeggio_on_request():
-    """A driven Travis pattern rings like a chord part to the automatic
-    choice; asked for, it is read a note per pick."""
+def test_a_driven_travis_pattern_is_read_note_by_note():
+    """Its thumb and fingers under drive barely show in the flux, and the
+    automatic choice read it as chords (F1 0.40)."""
     from rigsmith.loop.virtual import SimAmp
 
     beat = 60 / 110
+    truth = []
+    for b in range(16):
+        truth.append((b * beat, beat * 0.9, [40, 47][b % 2], 0.8))
+        truth.append((b * beat + beat / 2, beat * 0.9, [64, 67, 66, 64][b % 4], 0.7))
+    audio = SimAmp(Type=2, Gain=0.5).process(render_notes(truth, seed=5))
+    result = transcribe(audio, RATE, method="builtin", match_record_pitch=False)
+    assert result.mode == "arpeggio"
+    hits = sum(any(abs(e.start - t) < 0.05 and abs(e.midi - m) < 0.5 for e in result.events) for t, _, m, _ in truth)
+    assert hits >= 0.8 * len(truth), hits
+
+
+def test_a_part_auto_misreads_can_be_read_as_an_arpeggio_on_request():
+    """Slower, the same driven Travis pattern still rings like a chord part
+    to the automatic choice; asked for, it is read a note per pick."""
+    from rigsmith.loop.virtual import SimAmp
+
+    beat = 60 / 80
     truth = []
     for b in range(16):
         truth.append((b * beat, beat * 0.9, [40, 47][b % 2], 0.8))

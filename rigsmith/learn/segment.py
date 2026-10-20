@@ -212,6 +212,13 @@ ONSET_RISE_DB = 4.0
 NEW_PITCH_DB = 9.0
 NEW_PITCH_SHARE = 0.02
 
+#: The flux threshold for those onsets, as :func:`_pick_peaks`'s
+#: sensitivity. A new pitch arriving is confirmation enough that a softer
+#: peak can be let through: driven, a Travis pattern's thumb and fingers
+#: then read note by note (F1 0.40-0.55 -> 0.90-0.92) and no chord part on
+#: the 99-part grid was taken for an arpeggio.
+PITCH_ONSET_SENSITIVITY = 2.0
+
 #: A part cut from a record usually starts on a downbeat - an attack at its
 #: very first sample, where the rise test has no "before" to rise from, and
 #: every part's first note went missing. Audio that opens within this much
@@ -369,7 +376,7 @@ def pitch_onsets(audio, sample_rate: int) -> PitchOnsets:
     if len(magnitude) < 2:
         return PitchOnsets([], 0.0, 0.0)
     strength = onset_strength(audio, sample_rate)
-    peaks = _pick_peaks(strength, sample_rate)
+    peaks = _pick_peaks(strength, sample_rate, sensitivity=PITCH_ONSET_SENSITIVITY)
     envelope = _envelope_db(audio, sample_rate)
     needed = rise_threshold(envelope)
     top = float(magnitude.max()) or 1.0
