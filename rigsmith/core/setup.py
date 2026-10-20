@@ -87,6 +87,26 @@ def _isolation() -> Step:
     )
 
 
+def _transcription() -> Step:
+    """Reading a part's notes for the DI - built in, or basic-pitch."""
+    from ..learn.transcribe import basic_pitch_command
+
+    command = basic_pitch_command()
+    if command:
+        return Step(
+            "transcription", "Note reading", True,
+            f"basic-pitch reads a part's notes ({' '.join(command)})", "songs", optional=True,
+        )
+    return Step(
+        "transcription", "Note reading", False,
+        "The built-in transcriber reads single notes, riffs, chugs, arpeggios and strummed and power chords. "
+        "For open chords, fingerpicking, drop-tuned chugs among chord stabs or a reverb-soaked arpeggio, "
+        "install basic-pitch (pip install 'rigsmith[transcribe]'; if it will not install on this Python, "
+        "pipx install basic-pitch --python 3.11) - or give a part a tab's MIDI.",
+        "songs", optional=True,
+    )
+
+
 def _loop() -> Step:
     from . import loop
 
@@ -142,7 +162,7 @@ def _brains() -> Step:
 
 
 def checklist() -> list[Step]:
-    return [_guitar(), _song(), _isolation(), _core(), _midi(), _loop(), _brains()]
+    return [_guitar(), _song(), _isolation(), _transcription(), _core(), _midi(), _loop(), _brains()]
 
 
 def render(steps: list[Step]) -> str:
