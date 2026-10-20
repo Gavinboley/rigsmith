@@ -666,10 +666,21 @@ def _heard_on(run: Run):
     from ..match.metrics import ComparisonMode
     from ..match.render_offline import load_audio, resample
 
+    from ..learn.transcribe import _without_echo
+
     target, rate = load_audio(run.target_path)
     di, di_rate = load_audio(run.di_path)
     if di_rate != rate:
         di = resample(di, di_rate, rate)
+    # The amps are heard with no delay after them, so the record's echo is
+    # taken out before they are compared with it - the delay goes on the
+    # draft from the map's measurement. Left in, a 35% dotted eighth had
+    # every amp scored against repeats it could not make: the voicing the
+    # part was made with won 3 times in 9, the knobs were 0.27 out; taken
+    # out, 7 in 9 and 0.19 (with no echo at all, 9 and 0.12).
+    target, echo = _without_echo(target, rate)
+    if echo:
+        run.note(f"the record's echo was taken out before the amps were heard ({echo.split(' was taken out')[0]}) - they are heard without a delay, and the draft has one")
     comparison = ComparisonMode.PERFORMANCE if run.mode == "performance" else ComparisonMode.DISTRIBUTION
     span = int(EXCERPT_S * rate) if run.request.bench == "device" else len(target) + len(di)
 

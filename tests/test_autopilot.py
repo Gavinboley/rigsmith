@@ -721,3 +721,31 @@ def test_on_the_core_a_long_part_is_heard_on_its_loudest_stretch(workspace):
     bench = autopilot.Run(run_id="e2", request=autopilot.Request(title="x"), target_path=str(target_path), di_path=str(di_path), mode="performance")
     heard, heard_di, rate, _ = autopilot._heard_on(bench)
     assert len(heard) == seconds * RATE and bench.excerpt is None
+
+
+def test_the_record_s_echo_is_taken_out_before_the_amps_are_heard(workspace):
+    """Left in, every amp was scored against repeats it could not make: the
+    voicing a delayed part was made with won 3 times in 9."""
+    from scipy.signal import lfilter
+
+    from rigsmith.learn.pluck import render_notes
+    from rigsmith.loop.virtual import SimAmp
+
+    beat = 60 / 110
+    notes = [(b * beat, beat * 0.9, [64, 67, 69, 71, 74, 71, 69, 67][b % 8], 0.9) for b in range(32)]
+    record = SimAmp(Type=2, Gain=0.5).process(render_notes(notes, seed=5))
+    lag = int(0.375 * RATE)
+    b, a = np.zeros(lag + 1), np.zeros(lag + 1)
+    b[0], b[lag], a[0], a[lag] = 1.0, 0.0, 1.0, -0.35
+    wet = lfilter(b, a, record)
+    di = render_notes(notes, seed=9)
+    for name, target, delayed in (("wet", wet, True), ("dry", record, False)):
+        run = autopilot.Run(
+            run_id=f"echo-{name}", request=autopilot.Request(title="x"), mode="performance",
+            target_path=str(save_audio(workspace / f"{name}.wav", target, RATE)), di_path=str(save_audio(workspace / f"{name}-di.wav", di, RATE)),
+        )
+        heard, _, rate, _ = autopilot._heard_on(run)
+        said = any("echo was taken out" in note for note in run.all_notes())
+        assert said is delayed, run.all_notes()
+        if delayed:
+            assert np.abs(heard - target[: len(heard)]).max() > 0.01, "the repeats are gone"

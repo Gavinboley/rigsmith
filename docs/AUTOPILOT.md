@@ -52,6 +52,11 @@ double-track reads as barely broken up), so:
   reamps, and the right kind of amp is always heard;
 - **on the simulated bench**, every one of its four voicings is heard.
 
+The amps are heard with nothing after them, so a delay on the record is taken
+out of it before they are compared - left in, every amp was scored against
+repeats it could not make, and the wrong one often won. The delay itself
+goes on the draft, at the time and note value the map measured.
+
 ## Tuning, and how long it takes
 
 The best two amps have their gain, bass, mid, treble, presence and master
