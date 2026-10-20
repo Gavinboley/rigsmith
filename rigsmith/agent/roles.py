@@ -113,7 +113,11 @@ ROLES: dict[str, Role] = {
         "Get a song from audio to a map: create it from the user's file, "
         "isolate the guitar if there is no stem, analyse it, then show the "
         "user the parts and help them choose. Correct section names when the "
-        "map's guess is plainly wrong.",
+        "map's guess is plainly wrong. Once a chosen part has a DI, check its "
+        "notes (song_part_notes): a lead an octave out, or a chord on every "
+        "pick where the record plays an arpeggio, is put right with "
+        "render_song_part_di and the reading it should have - the part keeps "
+        "it for autopilot.",
         groups=["songs"],
         tools=["job_status", "list_takes"],
     ),
