@@ -128,6 +128,19 @@ def test_a_part_that_opens_on_a_rest_has_no_onset_there():
     assert [round(o, 1) for o in detect_onsets(audio, RATE)] == [0.5, 1.0]
 
 
+def test_silence_noise_and_a_count_in_click_open_on_no_note():
+    """The opening onset took silence, steady noise and a lone click at the
+    start for a part already playing; pure noise came back as four notes."""
+    rng = np.random.default_rng(1)
+    assert detect_onsets(np.zeros(RATE), RATE) == []
+    assert not [o for o in detect_onsets(rng.normal(0.0, 0.01, RATE), RATE) if o < 0.05]
+    music = render_notes([(1.0, 0.4, 52, 0.8), (1.5, 0.4, 55, 0.8)], seed=3)
+    click = music.copy()
+    click[:200] += rng.normal(0.0, 0.5, 200)
+    onsets = detect_onsets(click, RATE)
+    assert onsets and onsets[0] > 0.9, onsets
+
+
 def test_a_compressed_distorted_riff_still_shows_its_onsets():
     notes = riff(24, spacing=0.2375)
     distorted = np.tanh(render_notes(notes, seed=3) * 20) * 0.3
@@ -549,6 +562,18 @@ def test_a_drop_d_power_chord_keeps_its_low_d_beside_e_chords():
     assert sum(low == 38 for low in lows) >= 0.75 * len(lows), lows
 
 
+def test_a_hum_under_a_chord_is_not_taken_for_its_root():
+    """A 73 Hz hum under a chord voiced high was read as a D2 root, a fifth
+    under the guitar's lowest string."""
+    from rigsmith.learn.transcribe import _chords_from_chroma
+
+    chord = render_notes([(0.0, 1.5, m, 0.8) for m in (74, 78, 81)], seed=2)
+    t = np.arange(len(chord)) / RATE
+    hum = 0.3 * np.abs(chord).max() * np.sin(2 * np.pi * 73.4 * t)
+    events = _chords_from_chroma(chord + hum, RATE, [0.0], min_midi=45)
+    assert events and min(e.midi for e in events) >= 43, [e.midi for e in events]
+
+
 def test_a_close_triad_is_voiced_the_way_it_was_played():
     """Every triad came back as a barre from its root - E-G#-B as E-B-E-G#-B."""
     beat = 60 / 110
@@ -786,6 +811,32 @@ def test_a_transcription_no_guitar_could_play_says_so():
     assert "24th fret" in _doubtful_range(harmonics)
     spread = [NoteEvent(start=i * 0.25, duration=0.2, midi=float(m)) for i, m in enumerate([33, 36, 40, 52, 64, 76, 80, 84] * 3)]
     assert "over three octaves" in _doubtful_range(spread)
+
+
+def test_a_note_picked_at_the_end_of_the_clip_still_rings():
+    """With nothing left to measure it by it kept its placeholder 50 ms -
+    audible, once notes stopped ringing on past their durations."""
+    from rigsmith.learn.transcribe import HOP, N_FFT, _ring_out
+
+    frames = int(1.0 / (HOP / RATE)) + 1
+    events = [NoteEvent(start=1.0, duration=0.05, midi=57.0, velocity=0.7)]
+    _ring_out(events, np.ones((frames, N_FFT // 2 + 1)), RATE)
+    assert events[0].duration >= 0.1
+
+
+def test_the_voicing_spectrum_survives_a_low_sample_rate():
+    from rigsmith.learn.transcribe import _semitone_spectrum
+
+    rate = 5000
+    audio = render_notes([(0.0, 1.0, 52, 0.8)], sample_rate=rate, seed=1)
+    _semitone_spectrum(audio, rate, 0.0, 1.0)  # bands past Nyquist used to raise
+
+
+def test_a_nan_sample_is_read_as_silence():
+    audio = np.zeros(RATE)
+    audio[100] = np.nan
+    result = transcribe(audio, RATE, method="builtin", match_record_pitch=False)
+    assert result.events == []
 
 
 def test_a_part_auto_misreads_can_be_read_as_an_arpeggio_on_request():

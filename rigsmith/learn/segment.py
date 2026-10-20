@@ -222,8 +222,18 @@ PITCH_ONSET_SENSITIVITY = 2.0
 #: A part cut from a record usually starts on a downbeat - an attack at its
 #: very first sample, where the rise test has no "before" to rise from, and
 #: every part's first note went missing. Audio that opens within this much
-#: of its own loud level, with no onset in its first 50 ms, starts with one.
+#: of its own loud level, with no onset in its first 50 ms, starts with one -
+#: when it has attacks of its own later and quieter moments
+#: ``OPENING_DYNAMICS_DB`` under the opening (silence, steady noise and room
+#: tone have neither), and the opening holds for 20-60 ms (a count-in click
+#: does not).
 OPENING_DB = 20.0
+OPENING_DYNAMICS_DB = 6.0
+
+#: The first frames' windows hang over the zero padding before the audio,
+#: so anything that opens non-silent shows a rise there - steady noise read
+#: as a note at 0. The opening is left to :func:`_opening` and its tests.
+EDGE_FRAMES = N_FFT // HOP // 2
 
 
 def rise_threshold(envelope: np.ndarray) -> float:
@@ -333,7 +343,7 @@ def detect_onsets(audio, sample_rate: int, *, sensitivity: float = 1.0) -> list[
     if audio.ndim > 1:
         audio = audio.mean(axis=1)
     strength = onset_strength(audio, sample_rate)
-    peaks = _pick_peaks(strength, sample_rate, sensitivity=sensitivity)
+    peaks = [p for p in _pick_peaks(strength, sample_rate, sensitivity=sensitivity) if p >= EDGE_FRAMES]
     envelope = _envelope_db(audio, sample_rate)
     needed = rise_threshold(envelope)
     peaks = [p for p in peaks if _rises(envelope, p, sample_rate, sensitivity=sensitivity, needed=needed)]
@@ -345,9 +355,16 @@ def _opening(audio: np.ndarray, sample_rate: int, envelope: np.ndarray, onsets: 
     """``onsets``, with one at the start when the audio opens already
     playing (see :data:`OPENING_DB`)."""
     span = max(1, int(0.05 * sample_rate / HOP))
-    if (onsets and onsets[0] <= 0.05) or len(envelope) <= span:
+    if not onsets or onsets[0] <= 0.05 or len(envelope) <= 3 * span:
         return onsets
-    if float(envelope[:span].max()) < float(np.percentile(envelope, 90)) - OPENING_DB:
+    opening = float(envelope[:span].max())
+    if opening < float(np.percentile(envelope, 90)) - OPENING_DB:
+        return onsets
+    # Notes decay and phrases breathe; steady noise and room tone do not.
+    if opening < float(np.percentile(envelope, 10)) + OPENING_DYNAMICS_DB:
+        return onsets
+    held = float(np.median(envelope[int(0.02 * sample_rate / HOP) : int(0.06 * sample_rate / HOP) + 1]))
+    if held < opening - OPENING_DB:
         return onsets
     return [refine_onset(audio, sample_rate, 0.0)] + onsets
 
@@ -376,7 +393,7 @@ def pitch_onsets(audio, sample_rate: int) -> PitchOnsets:
     if len(magnitude) < 2:
         return PitchOnsets([], 0.0, 0.0)
     strength = onset_strength(audio, sample_rate)
-    peaks = _pick_peaks(strength, sample_rate, sensitivity=PITCH_ONSET_SENSITIVITY)
+    peaks = [p for p in _pick_peaks(strength, sample_rate, sensitivity=PITCH_ONSET_SENSITIVITY) if p >= EDGE_FRAMES]
     envelope = _envelope_db(audio, sample_rate)
     needed = rise_threshold(envelope)
     top = float(magnitude.max()) or 1.0

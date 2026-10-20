@@ -614,7 +614,11 @@ def _ring_out(events: list[NoteEvent], magnitude: np.ndarray, sample_rate: int, 
         repick = next((e.start for e in events[i + 1 :] if round(e.midi) == round(event.midi)), math.inf)
         stop = min(repick, event.start + RING_CAP_S)
         first = int(event.start / frame_s) + 2
-        if first >= len(magnitude):
+        if first + 3 > len(magnitude):
+            # Picked at the very end of the clip: nothing left to measure it
+            # by, so it rings to the end - and no shorter than a pick does.
+            end = max(len(magnitude) * frame_s, event.start + 0.1)
+            event.duration = round(max(0.005, min(end, stop) - event.start), 4)
             continue
         f0 = midi_to_hz(event.midi + tuning_cents / 100.0)
 
@@ -762,7 +766,9 @@ def transcribe(
     from .instrument import note_to_midi
     from .segment import detect_onsets, segment
 
-    audio = np.asarray(audio, dtype=np.float64)
+    # A NaN sample from a damaged file made a near-silent stem a note as long
+    # as the file; read it as silence.
+    audio = np.nan_to_num(np.asarray(audio, dtype=np.float64), nan=0.0, posinf=0.0, neginf=0.0)
     if audio.ndim > 1:
         audio = audio.mean(axis=1)
     result = Transcription()
@@ -945,6 +951,10 @@ def _chord_template(voicing, *, partials: int = 8, decay: float = 0.75) -> np.nd
 #: lowest strong one must be to be offered as a power chord's root.
 POWER_ROOT_FLOOR = 0.08
 
+#: How far below the stem's inferred lowest string a chord's own heard root
+#: may sit: a drop tuning lowers its bottom string a whole step.
+DROP_STEP = 2
+
 #: How much better the higher candidate root must fit the notes to beat the
 #: lower one. Tuned on synthetic parts (two render seeds): 0.02 gives back
 #: most of the power chords' gain, 0.05 starts costing sevenths, 0.1 triads.
@@ -999,7 +1009,8 @@ def _semitone_spectrum(audio: np.ndarray, sample_rate: int, start: float, end: f
     low, high = VOICING_RANGE
     centres = 440.0 * 2.0 ** ((np.arange(low, high + 1) - 69) / 12.0)
     edges = np.searchsorted(np.fft.rfftfreq(size, 1 / sample_rate), np.concatenate([centres * 2 ** (-0.5 / 12), [centres[-1] * 2 ** (0.5 / 12)]]))
-    found = np.array([spectrum[edges[i] : max(edges[i] + 1, edges[i + 1])].max() for i in range(len(centres))])
+    # A band above Nyquist (a recording at a few kHz) has no bins at all.
+    found = np.array([spectrum[edges[i] : max(edges[i] + 1, edges[i + 1])].max() if edges[i] < len(spectrum) else 0.0 for i in range(len(centres))])
     norm = float(np.linalg.norm(found))
     return found / norm if norm > 0 else None
 
@@ -1089,9 +1100,11 @@ def _chords_from_chroma(audio: np.ndarray, sample_rate: int, onsets, min_midi: i
         # string when E2 is played too: a whole-stem spectrum cannot part
         # D2's lobe from E2's, so every D5 came back an octave up. A root
         # that is itself the lowest strong pitch after the attack - measured
-        # over half a second, where the two part - is the note played, even
-        # below that floor. A fifth below, only offered, is not.
-        heard = bool(played) and played[0] == basses[0] and base >= TUNING_BOTTOMS[-1]
+        # over half a second, where the two part - is the note played, a
+        # drop tuning's whole step below that floor at most: further down it
+        # is hum or a bass bleeding into the stem. A fifth below, only
+        # offered, is not.
+        heard = bool(played) and played[0] == basses[0] and base >= min_midi - DROP_STEP
         while base < min_midi and not heard:
             base += 12
         for tone in _voice(audio, sample_rate, start, end, base, name) or CHORD_VOICINGS[name]:

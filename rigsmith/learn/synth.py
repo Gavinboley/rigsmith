@@ -35,6 +35,9 @@ MAX_SHIFT = 3.0
 #: Fade at the end of a note, when the next note on the same string stops it.
 DAMP_S = 0.03
 
+#: Turned down by more than this to fit, a render says so.
+TRIM_WARN_DB = 1.0
+
 #: How long a note rings past its duration. None: a transcribed duration is
 #: already how long the note sounded on the record (until it fell 45 dB, or
 #: its partials fell away, or the next attack), and a tab's is how long it is
@@ -272,10 +275,13 @@ def render(
     peak = float(np.max(np.abs(out))) if len(out) else 0.0
     if peak > 0.98:
         out *= 0.98 / peak
-        rendered.warnings.append(
-            f"overlapping notes peaked at {20 * np.log10(peak):+.1f} dBFS and were "
-            "scaled down - the part drives an amp a little softer than you would"
-        )
+        # A trim of a fraction of a dB drives the amp no differently; it was
+        # reported as "peaked at +0.0 dBFS" all the same.
+        if 20 * np.log10(peak / 0.98) > TRIM_WARN_DB:
+            rendered.warnings.append(
+                f"overlapping notes peaked {20 * np.log10(peak / 0.98):.1f} dB over full scale and were "
+                "turned down to fit - the part drives an amp a little softer than you would"
+            )
     if profile is None:
         rendered.warnings.append(
             "no profile - every note was played on a synthetic string, not your guitar"
