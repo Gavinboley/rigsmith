@@ -63,6 +63,7 @@ function renderForm() {
   );
   const route = el("select");
   const research = el("input", { type: "checkbox", checked: true });
+  const wholeSong = el("input", { type: "checkbox", id: "ap-whole-song" });
   const budget = el("input", { type: "number", value: 24, min: 6, max: 200, class: "narrow", "aria-label": "Tuning budget" });
   // The record's guitar: by default whatever the research names, so a Strat
   // record is chased with a single-coil DI even when you play a humbucker.
@@ -154,6 +155,7 @@ function renderForm() {
         like_amount: like.amount,
         match_guitar: like.like === "auto",
         ear_habits: !habitsBox.hidden && useHabits.checked,
+        whole_song: wholeSong.checked,
       };
       if (fromSong && fromSong.title === body.title) body.song_id = fromSong.songId;
       if (!body.title) throw new Error("Give the song a title - search for it, or type it");
@@ -174,6 +176,7 @@ function renderForm() {
       "div",
       { class: "row", style: "margin-top:12px" },
       el("label", { class: "check hint" }, research, "research the gear with an agent"),
+      el("label", { class: "check hint", title: "A part for each sound the song has - a clean intro, a driven chorus, a lead - each chased, and one rig with a scene for each" }, wholeSong, "every sound in the song"),
       like.node,
       el("span", { class: "hint" }, "tuning budget"),
       budget,
@@ -307,14 +310,18 @@ function show(run) {
   card.append(links);
   // On the demo song the answer is known, so the run is marked against it.
   if (run.demo) {
-    card.append(
-      el(
-        "div",
-        { class: `notice demo-answer ${run.demo.voicing_right === false ? "warn" : "ok"}`, id: "ap-demo-answer" },
-        el("strong", { text: "The demo's answer. " }),
-        run.demo.summary
-      )
-    );
+    const answers = el("div", { id: "ap-demo-answer" });
+    for (const [index, said] of [run.demo, ...(run.demo.others || [])].entries()) {
+      answers.append(
+        el(
+          "div",
+          { class: `notice demo-answer ${said.voicing_right === false ? "warn" : "ok"}` },
+          el("strong", { text: index ? `And the ${said.guitar} guitar. ` : "The demo's answer. " }),
+          said.summary
+        )
+      );
+    }
+    card.append(answers);
   }
 
   if (run.results?.length) {

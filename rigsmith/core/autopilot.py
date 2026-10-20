@@ -93,6 +93,9 @@ class Request:
     the knobs you keep turning the same way after autopilot, on this bench -
     as one edit after the build, so a single undo steps back to what
     measured closest."""
+    whole_song: bool = False
+    """With no parts named: one part for each sound the song's guitar has
+    (:func:`_sounds`), each chased, and one rig with a scene per sound."""
 
 
 @dataclass
@@ -213,6 +216,7 @@ class Run:
                 lines.append(f"    {row['band']:<9} {row['delta_db']:+5.1f} dB  try {row['try']}")
         if self.demo:
             lines.append(f"  the demo's answer: {self.demo['summary']}")
+            lines.extend(f"  ...and: {other['summary']}" for other in self.demo.get("others", []))
         lines.extend(f"  note: {n}" for n in self.all_notes())
         return "\n".join(lines)
 
@@ -308,7 +312,12 @@ def _stage_parts(run: Run) -> str:
     from . import songs
 
     song = songs.get(run.song_id)
-    wanted = run.request.parts or [p.part_id for p in song.chosen()]
+    wanted = list(run.request.parts)
+    if not wanted and run.request.whole_song:
+        wanted = [p.part_id for p in _sounds(song)]
+        if wanted:
+            run.note(f"the whole song: {len(wanted)} sound(s), a part for each - " + ", ".join(wanted))
+    wanted = wanted or [p.part_id for p in song.chosen()]
     if not wanted:
         wanted = [_most_prominent(song).part_id]
         run.note(f"no part chosen, so the most prominent guitar part was picked: {wanted[0]}")
@@ -338,25 +347,56 @@ def _part(song, run: Run, index: int = 0):
         return heir
 
 
+def _prominence(part) -> float:
+    """How much a part is worth chasing: loud, in a chorus, on a layer of its own."""
+    value = part.presence
+    if part.section_name == "chorus":
+        value += 0.5
+    elif part.section_name in ("verse", "solo"):
+        value += 0.3
+    if part.layer == "stem":
+        value -= 0.2
+    return value
+
+
 def _most_prominent(song):
     """The part most worth chasing when nobody said: a loud, repeated, mid-song part."""
-    names = {s["name"]: 0 for s in (song.structure or {}).get("sections", [])}
-
-    def score(part) -> float:
-        value = part.presence
-        if part.section_name == "chorus":
-            value += 0.5
-        elif part.section_name in ("verse", "solo"):
-            value += 0.3
-        if part.layer == "stem":
-            value -= 0.2
-        return value
-
     playable = [p for p in song.parts if p.end - p.start >= 4] or song.parts
     if not playable:
         raise Invalid("the map has no parts to choose from")
-    del names
-    return max(playable, key=score)
+    return max(playable, key=_prominence)
+
+
+#: Two parts are one sound when they are on one layer (either side of a
+#: double-track counts as one) and their measured gains are within this.
+SAME_SOUND_GAIN = 0.25
+
+
+def _sounds(song) -> list:
+    """One part for each sound the song's guitar has, the most prominent first.
+
+    Songs change sound by section - a clean intro, a driven verse, a lead
+    solo - so the most prominent part of each kind of section is taken, and
+    two that are one sound are kept once. Measured gain alone would split one
+    guitar: the demo song's rhythm read 0.56 to 0.83 across its sections.
+    """
+    playable = [p for p in song.parts if p.end - p.start >= 4] or list(song.parts)
+    by_section: dict[str, list] = {}
+    for part in playable:
+        by_section.setdefault(part.section_name, []).append(part)
+    picks = sorted((max(parts, key=_prominence) for parts in by_section.values()), key=_prominence, reverse=True)
+
+    def layer(part) -> str:
+        return "sides" if part.layer in ("left", "right") else part.layer
+
+    def gain(part) -> float:
+        return float((part.sketch or {}).get("gain") or 0.0)
+
+    kept: list = []
+    for part in picks:
+        if not any(layer(k) == layer(part) and abs(gain(k) - gain(part)) < SAME_SOUND_GAIN for k in kept):
+            kept.append(part)
+    return kept[:MAX_SONG_PARTS]
 
 
 def _stage_research(run: Run, progress) -> str:
@@ -1519,6 +1559,9 @@ def execute(run_id: str, *, progress: Progress | None = None) -> Run:
 
     try:
         run.demo = demo.verdict(run)
+        others = [get(child).demo for child in run.part_runs]
+        if run.demo and any(others):
+            run.demo["others"] = [o for o in others if o]
     except Exception as exc:
         run.demo = None
         run.note(f"the demo's answer could not be compared: {exc}")

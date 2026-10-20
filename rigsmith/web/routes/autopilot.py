@@ -37,6 +37,7 @@ class RunBody(BaseModel):
     match_guitar: bool = True
     use_part_take: bool = True
     ear_habits: bool = False
+    whole_song: bool = False
 
 
 def _payload(run) -> dict:
@@ -84,6 +85,7 @@ class DemoBody(BaseModel):
     profile_id: str | None = None
     bench: str = "virtual"
     route_id: str | None = None
+    whole_song: bool = True
 
 
 @router.post("/demo")
@@ -91,7 +93,7 @@ def start_demo(body: DemoBody) -> dict:
     """Autopilot on the demo song - made the first time - whose answer is known."""
     from ...core import demo
 
-    return _payload(demo.start(profile_id=body.profile_id, bench=body.bench, route_id=body.route_id))
+    return _payload(demo.start(profile_id=body.profile_id, bench=body.bench, route_id=body.route_id, whole_song=body.whole_song))
 
 
 class SongRigBody(BaseModel):

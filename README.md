@@ -11,7 +11,7 @@ pip install -e ".[all]"
 rigsmith ui
 ```
 
-> **Status: everything runs today.** Rig authoring, validation, NAM analysis, tone matching, catalog extraction, USB backup, MIDI, guitar learning, song maps, the hardware loop, the tuner, autopilot, the chat and the web UI are covered by 1131 tests. The Remote Editor protocol has been captured against a real Core and a rig written to it and read back exactly - see [docs/PROTOCOL.md](docs/PROTOCOL.md). What still wants hardware is *measuring*: the loop and the blind A/B need the Core and an interface plugged in - [docs/FIRST_SESSION.md](docs/FIRST_SESSION.md) walks through that first session.
+> **Status: everything runs today.** Rig authoring, validation, NAM analysis, tone matching, catalog extraction, USB backup, MIDI, guitar learning, song maps, the hardware loop, the tuner, autopilot, the chat and the web UI are covered by 1133 tests. The Remote Editor protocol has been captured against a real Core and a rig written to it and read back exactly - see [docs/PROTOCOL.md](docs/PROTOCOL.md). What still wants hardware is *measuring*: the loop and the blind A/B need the Core and an interface plugged in - [docs/FIRST_SESSION.md](docs/FIRST_SESSION.md) walks through that first session.
 
 ---
 
@@ -44,8 +44,10 @@ The Autopilot page's **Getting set up** card lists what to do and links to
 each step; autopilot works before any of it is done, on a synthetic guitar
 and the simulated bench, and says so on every result. With no song to hand,
 **Try the demo song** (`rigsmith autopilot demo`) runs it on one made on the
-spot through known settings of the simulated amp - and ends by saying which
-voicing it chose and how far each knob landed from the real one. To bring in the Core,
+spot - a clean intro, a double-tracked rhythm and a lead, each through known
+settings of the simulated amp - and ends with a rig with a scene for each,
+saying for each part which voicing it chose and how far each knob landed
+from the real one. To bring in the Core,
 put it on the same Wi-Fi network, enable **Global Settings → Wi-Fi →
 HeadRush Remote**, then:
 
@@ -465,7 +467,10 @@ side in the chain, and a scene per part on its own footswitch that turns on
 that part's sound and the effects it measures as having. A HeadRush scene
 switches blocks rather than holding knob values, so parts whose best sound
 did not make the two are moved to the nearest one, and the run says which.
-`rigsmith autopilot song-rig <run> <run> ...` builds one from finished runs.
+`rigsmith autopilot song-rig <run> <run> ...` builds one from finished runs,
+and `--whole-song` (or **every sound in the song** on the page) picks the
+parts itself: the most prominent part of each kind of section, with two
+that are one sound - one layer, a gain within a quarter - chased once.
 
 The effects are set to what was measured rather than left at their
 defaults: a delay synced to the note value its echo is at the song's tempo

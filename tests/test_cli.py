@@ -436,4 +436,6 @@ def test_autopilot_demo_starts_on_the_demo_song(runner, monkeypatch):
     monkeypatch.setattr(demo, "start", lambda **kwargs: asked.update(kwargs) or autopilot.Run(run_id="r1", request=autopilot.Request(title=demo.TITLE)))
     result = invoke(runner, "autopilot", "demo", "--detach")
     assert result.exit_code == 0 and "started on the demo song" in result.output
-    assert asked == {"profile_id": None, "bench": "virtual", "route_id": None}
+    assert asked == {"profile_id": None, "bench": "virtual", "route_id": None, "whole_song": True}
+    invoke(runner, "autopilot", "demo", "--one-part", "--detach")
+    assert asked["whole_song"] is False

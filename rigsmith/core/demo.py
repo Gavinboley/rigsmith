@@ -189,15 +189,17 @@ def make():
     return song
 
 
-def start(*, profile_id: str | None = None, bench: str = "virtual", route_id: str | None = None):
-    """Make the demo if need be, and start autopilot on it."""
+def start(*, profile_id: str | None = None, bench: str = "virtual", route_id: str | None = None, whole_song: bool = True):
+    """Make the demo if need be, and start autopilot on it - the whole song
+    by default: a part for each of its three guitars, each with its answer,
+    and one rig with a scene for each."""
     from . import autopilot
 
     song = make()
     return autopilot.start(
         autopilot.Request(
             title=TITLE, artist=ARTIST, song_id=song.song_id, profile_id=profile_id,
-            bench=bench, route_id=route_id, research=False,
+            bench=bench, route_id=route_id, research=False, whole_song=whole_song,
         )
     )
 

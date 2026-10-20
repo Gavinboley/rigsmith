@@ -33,9 +33,10 @@ def group() -> None:
 @click.option("--keep-my-pickup", is_flag=True, help="Do not move the DI toward the researched guitar.")
 @click.option("--render-di", is_flag=True, help="Render the DI even when the part has your own take lined up.")
 @click.option("--ear-habits", is_flag=True, help="Start the amp from the knobs you keep turning after autopilot ('autopilot habits').")
+@click.option("--whole-song", is_flag=True, help="With no --part: a part for each sound the song has, and one rig with a scene for each.")
 @click.option("--detach", is_flag=True, help="Start it and return; check with 'autopilot show'.")
 @handled
-def autopilot_run(title, artist, mix, stem, song_id, parts, profile_id, di, midi, bench, route_id, candidates, tune_budget, no_research, like, keep_my_pickup, render_di, ear_habits, detach) -> None:
+def autopilot_run(title, artist, mix, stem, song_id, parts, profile_id, di, midi, bench, route_id, candidates, tune_budget, no_research, like, keep_my_pickup, render_di, ear_habits, whole_song, detach) -> None:
     """Chase TITLE's guitar tone, start to finish."""
     from ..core import autopilot
 
@@ -44,6 +45,7 @@ def autopilot_run(title, artist, mix, stem, song_id, parts, profile_id, di, midi
         profile_id=profile_id, di=di, midi=midi, bench=bench, route_id=route_id,
         candidates=candidates, tune_budget=tune_budget, research=not no_research,
         like=like, match_guitar=not keep_my_pickup, use_part_take=not render_di, ear_habits=ear_habits,
+        whole_song=whole_song,
     )
     run = autopilot.start(request)
     click.echo(f"autopilot {run.run_id} started.")
@@ -55,18 +57,20 @@ def autopilot_run(title, artist, mix, stem, song_id, parts, profile_id, di, midi
 @click.option("--profile", "profile_id", help="Your guitar profile; default from settings.")
 @click.option("--bench", type=click.Choice(["virtual", "device"]), default="virtual", show_default=True)
 @click.option("--route", "route_id", help="Loop route for the device bench.")
+@click.option("--one-part", is_flag=True, help="Only the most prominent part, not one for each of its three guitars.")
 @click.option("--detach", is_flag=True, help="Start it and return; check with 'autopilot show'.")
 @handled
-def autopilot_demo(profile_id, bench, route_id, detach) -> None:
+def autopilot_demo(profile_id, bench, route_id, one_part, detach) -> None:
     """Try autopilot on a demo song made here - and see how close it gets.
 
-    The demo's guitars went through known settings of the simulated amp, so
-    the run ends by saying which voicing it chose and how far each knob is
-    from the one the record was made with.
+    The demo's three guitars went through known settings of the simulated
+    amp, so each part's run ends by saying which voicing it chose and how far
+    each knob is from the one the song was made with - and the song gets one
+    rig with a scene for each.
     """
     from ..core import demo
 
-    run = demo.start(profile_id=profile_id, bench=bench, route_id=route_id)
+    run = demo.start(profile_id=profile_id, bench=bench, route_id=route_id, whole_song=not one_part)
     click.echo(f"autopilot {run.run_id} started on the demo song.")
     if not detach:
         _follow(run.run_id)

@@ -1435,17 +1435,25 @@ def test_a_run_on_the_demo_shows_how_close_it_came(browser, server):
     from rigsmith.core import autopilot
 
     said = "The demo's rhythm guitar (chorus - left) went through Sim Modern at gain 70%."
+    lead = "The demo's lead guitar (solo - centre) went through Sim Lead at gain 60%."
     autopilot.Run(
         run_id="demo-1", request=autopilot.Request(title="Demo Song", artist="rigsmith"), state="done",
-        demo={"guitar": "rhythm", "part": "chorus - left", "truth": {}, "found": {}, "voicing_right": True, "summary": said},
+        demo={
+            "guitar": "rhythm", "part": "chorus - left", "truth": {}, "found": {}, "voicing_right": True, "summary": said,
+            "others": [{"guitar": "lead", "part": "solo - centre", "truth": {}, "found": {}, "voicing_right": False, "summary": lead}],
+        },
     ).save()
     with page_at(browser, server) as page:
         page.click("#tabs .tab[data-panel='autopilot']")
         page.wait_for_selector("#ap-demo")
         page.click("#ap-runs .item:has-text('Demo Song')")
-        answer = page.locator("#ap-demo-answer")
-        answer.wait_for()
-        assert said in answer.inner_text() and "ok" in answer.get_attribute("class")
+        answers = page.locator("#ap-demo-answer .demo-answer")
+        answers.first.wait_for()
+        assert answers.count() == 2
+        assert said in answers.nth(0).inner_text() and "ok" in answers.nth(0).get_attribute("class")
+        # Each part of the whole song with its own answer - and one that missed says so.
+        assert "And the lead guitar" in answers.nth(1).inner_text() and "warn" in answers.nth(1).get_attribute("class")
+        assert page.locator("#ap-whole-song").is_visible()
 
 
 def test_a_finished_run_hands_its_draft_over_to_be_finished_by_ear(browser, server):

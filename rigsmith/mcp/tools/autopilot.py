@@ -23,6 +23,7 @@ def run_autopilot(
     research: bool = True,
     like: str | None = None,
     ear_habits: bool = False,
+    whole_song: bool = False,
 ) -> str:
     """Chase a song's guitar tone end to end, in the background.
 
@@ -34,20 +35,26 @@ def run_autopilot(
     The part DI follows the research's guitar (a Strat record gets a single
     coil) unless ``like`` names one. ``ear_habits`` starts the amp from the
     knobs the user keeps turning after autopilot (see ear_habits) - only
-    when they ask for it. Returns a run id; check it with autopilot_status.
+    when they ask for it. ``whole_song`` (with no ``parts``) chases a part
+    for each sound the song has - a clean intro, a driven chorus, a lead -
+    and builds one rig with a scene for each. Returns a run id; check it with
+    autopilot_status.
     """
     run = autopilot.start(
         autopilot.Request(
             title=title, artist=artist, mix=mix_path, stem=stem_path, song_id=song_id,
             parts=list(parts or []), profile_id=profile_id, midi=midi_path, bench=bench,
             route_id=route_id, research=research, like=like, ear_habits=ear_habits,
+            whole_song=whole_song,
         )
     )
     return f"Started autopilot {run.run_id}. Check it with autopilot_status('{run.run_id}')."
 
 
 @tool
-def run_autopilot_demo(profile_id: str | None = None, bench: Literal["virtual", "device"] = "virtual", route_id: str | None = None) -> str:
+def run_autopilot_demo(
+    profile_id: str | None = None, bench: Literal["virtual", "device"] = "virtual", route_id: str | None = None, whole_song: bool = True,
+) -> str:
     """Run autopilot on rigsmith's demo song - for someone with no song file
     to hand, or to check the whole chain works.
 
@@ -55,11 +62,12 @@ def run_autopilot_demo(profile_id: str | None = None, bench: Literal["virtual", 
     a lead solo, a band under them) through known settings of the simulated
     amp, so a finished run says which voicing it chose and how far each knob
     landed from the real one - autopilot_status shows it as "the demo's
-    answer". Returns a run id.
+    answer". ``whole_song`` (the default) chases each of its three guitars
+    and builds one rig with a scene for each. Returns a run id.
     """
     from ...core import demo
 
-    run = demo.start(profile_id=profile_id, bench=bench, route_id=route_id)
+    run = demo.start(profile_id=profile_id, bench=bench, route_id=route_id, whole_song=whole_song)
     return f"Started autopilot {run.run_id} on the demo song. Check it with autopilot_status('{run.run_id}')."
 
 

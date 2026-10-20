@@ -690,7 +690,7 @@ def test_the_demo_song_starts_from_the_page(client, monkeypatch):
     monkeypatch.setattr(demo, "start", fake)
     run = client.post("/api/autopilot/demo", json={"bench": "virtual"}).json()
     assert run["run_id"] == "demo-run" and run["request"]["title"] == demo.TITLE
-    assert asked == {"profile_id": None, "bench": "virtual", "route_id": None}
+    assert asked == {"profile_id": None, "bench": "virtual", "route_id": None, "whole_song": True}
 
 
 def test_a_part_can_be_read_as_an_arpeggio_from_the_song_page(client, monkeypatch, tmp_path):

@@ -22,10 +22,13 @@ the parts that need the Core, your guitar or your copy of a song say so.
   since it was built.
 - **A demo song** to try it all on with no file: made here - a clean intro,
   a double-tracked riff and chorus, a lead solo, a band under them -
-  through known settings of the simulated amp, so the run ends with how
-  close it came: the voicing it chose, and each knob against the real one.
-  `rigsmith autopilot demo`, **Try the demo song** on the Autopilot page,
-  or ask the assistant.
+  through known settings of the simulated amp, so each part's run ends with
+  how close it came: the voicing it chose, and each knob against the real
+  one. `rigsmith autopilot demo`, **Try the demo song** on the Autopilot
+  page, or ask the assistant.
+- **The whole song** in one run: `--whole-song`, or **every sound in the
+  song**, chases the most prominent part of each kind of section - two that
+  are one sound only once - and builds one rig with a scene for each.
 
 ## The song map
 

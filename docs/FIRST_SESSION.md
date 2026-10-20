@@ -20,9 +20,10 @@ the chat - Claude Code signed in, or a local model loaded.
 
 `rigsmith autopilot demo` (or **Try the demo song** on the Autopilot page)
 is a minute's check that the whole chain works on this machine: a short
-song is made here, through known settings of the simulated amp, and the
-run ends with how close it came - the voicing, and each knob against the
-one the song was made with.
+song is made here - a clean intro, a double-tracked rhythm and a lead, each
+through known settings of the simulated amp - and the run chases all three,
+builds one rig with a scene for each, and says for each how close it came:
+the voicing, and each knob against the one the song was made with.
 
 ## 1. Choose who answers
 

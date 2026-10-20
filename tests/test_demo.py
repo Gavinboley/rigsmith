@@ -97,6 +97,37 @@ def test_the_assistant_can_start_the_demo(workspace, monkeypatch):
     assert "run_autopilot_demo" in ROLES["assistant"].tools and "run_autopilot_demo" in ROLES["assistant"].local_tools
 
 
+def test_the_whole_demo_is_a_part_for_each_guitar_and_a_scene_each(workspace):
+    song = demo.make()
+    request = autopilot.Request(title=demo.TITLE, artist=demo.ARTIST, song_id=song.song_id, research=False, candidates=4, tune_budget=8, whole_song=True)
+    autopilot.Run(run_id="w1", request=request).save()
+    run = autopilot.execute("w1")
+    assert run.state == "done", run.describe()
+    assert len(run.part_ids) >= 2 and len(run.part_runs) == len(run.part_ids) - 1
+    assert run.song_rig and len(run.song_rig["scenes"]) == len(run.part_ids)
+    guitars = [run.demo["guitar"]] + [o["guitar"] for o in run.demo.get("others", [])]
+    assert len(guitars) == len(run.part_ids) and len(set(guitars)) >= 2, guitars
+    assert "...and:" in run.describe()
+
+
+def test_a_sound_is_chased_once_however_many_sections_play_it():
+    from types import SimpleNamespace
+
+    def part(part_id, section, layer, gain, presence=1.0):
+        return Part(part_id, 0, section, layer, 0.0, 8.0, presence=presence, sketch={"gain": gain})
+
+    song = SimpleNamespace(parts=[
+        part("intro-1-stem", "intro", "stem", 0.02),
+        part("verse-2-left", "verse", "left", 0.68), part("verse-2-right", "verse", "right", 0.70),
+        part("chorus-3-left", "chorus", "left", 0.56), part("chorus-3-right", "chorus", "right", 0.78),
+        part("solo-4-centre", "solo", "centre", 0.80), part("solo-4-left", "solo", "left", 0.31, presence=0.5),
+    ])
+    picked = [p.part_id for p in autopilot._sounds(song)]
+    # The verse and chorus are one rhythm sound, read 0.56-0.70; the lead and
+    # the clean intro are sounds of their own.
+    assert picked[0] == "chorus-3-left" and set(picked) == {"chorus-3-left", "solo-4-centre", "intro-1-stem"}, picked
+
+
 def test_another_song_s_run_has_no_answer_to_give(workspace):
     run = autopilot.Run(run_id="x", request=autopilot.Request(title="Other"), song_id="other-song", results=[{"label": "x"}], part_ids=["p"])
     assert demo.verdict(run) is None
