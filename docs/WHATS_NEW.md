@@ -53,7 +53,29 @@ the parts that need the Core, your guitar or your copy of a song say so.
 - **Notes** on a rendered part (and on an autopilot run's DI) draws what
   the DI plays as a piano roll; "save as MIDI", fix a note in a tab
   editor, and choose or drop the file back into "on my guitar".
-- A re-map keeps your choices, even where sections moved.
+- A re-map keeps your choices, even where sections moved, and the names
+  you gave sections; a run keeps a song's map rather than redrawing it.
+- Sections start on the downbeat where the music changes, not up to a
+  second late with the next section's start inside them.
+- Power chords up the neck are read as chords, not as the note an octave
+  under them; B standard and other low tunings are read at their own
+  octave when the research has not named the tuning.
+- Effects are told apart: a centred lead's delay is found though its layer
+  hides it, a chorus is not mistaken for a room nor a room for a chorus,
+  and parts that never pause are not given a room they do not have.
+
+## How the amps are judged
+
+- **Every gain range is heard** - every simulated voicing, or at the Core
+  one amp from each range - so a gain read wrong cannot keep the right kind
+  of amp out of the running.
+- **Like with like**: the record's delay is taken out before the amps are
+  compared, and a part in a room has its amps heard through one like it -
+  left in, either one let the wrong voicing win most of the time.
+- **At the Core**, a long part is heard on its loudest 16 seconds, about
+  ten minutes a part, and the page says how long before it starts.
+- **A song rig's third sound** goes to the kept amp nearest what its own
+  run found; [AUTOPILOT.md](AUTOPILOT.md) says how every choice is made.
 
 ## Your guitar and the loop
 
