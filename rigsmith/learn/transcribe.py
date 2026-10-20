@@ -926,6 +926,15 @@ CHORD_VOICING_OPTIONS = {
 #: clean through high gain: 0.04 scored closest against the parts.
 VOICING_NOTE_COST = 0.04
 
+#: How much better a close voicing an octave above the heard root has to fit
+#: than the best voicing on it, to be the one played. A bass bleeding into
+#: the stem rings an octave under a chord, and the bass reading takes it for
+#: the root: close triads and sevenths came back voiced from the bass's note
+#: (F1 0.62-0.76 with a bass 20 dB under the guitar; 0.91-0.97 this way).
+#: Below 0.06 the margin moved real low voicings - open chords, driven
+#: power chords - up an octave.
+OCTAVE_UP_MARGIN = 0.06
+
 #: Harmonics in a voicing's template, and how each falls from the last.
 VOICING_PARTIALS, VOICING_DECAY = 10, 0.8
 
@@ -1040,10 +1049,20 @@ def _voice(audio: np.ndarray, sample_rate: int, start: float, end: float, base: 
     observed = _semitone_spectrum(audio, sample_rate, start, end)
     if observed is None:
         return None
-    return max(
-        CHORD_VOICING_OPTIONS[shape],
-        key=lambda voicing: float(np.dot(observed, _voicing_template([base + tone for tone in voicing]))) - VOICING_NOTE_COST * (len(voicing) - 2),
-    )
+
+    def fit(voicing, root: int) -> float:
+        return float(np.dot(observed, _voicing_template([root + tone for tone in voicing]))) - VOICING_NOTE_COST * (len(voicing) - 2)
+
+    played = max(CHORD_VOICING_OPTIONS[shape], key=lambda voicing: fit(voicing, base))
+    if shape == "5":
+        return played
+    # The heard root may be a bass bleeding into the stem (OCTAVE_UP_MARGIN).
+    close = [v for v in CHORD_VOICING_OPTIONS[shape] if len(v) <= 4 and max(v) <= 12 and v not in ((0, 7), (0, 7, 12))]
+    if close:
+        higher = max(close, key=lambda voicing: fit(voicing, base + 12))
+        if fit(higher, base + 12) >= fit(played, base) + OCTAVE_UP_MARGIN:
+            return tuple(tone + 12 for tone in higher)
+    return played
 
 
 def _chords_from_chroma(audio: np.ndarray, sample_rate: int, onsets, min_midi: int, *, hop_s: float = 0.02) -> list[NoteEvent]:

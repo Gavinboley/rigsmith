@@ -592,6 +592,29 @@ def _drum_bleed(length, level_db, reference, bpm=110, seed=0):
     return out * np.sqrt(np.mean(reference ** 2)) / np.sqrt(np.mean(out ** 2)) * 10 ** (level_db / 20)
 
 
+def test_a_bass_under_close_triads_is_not_taken_for_their_root():
+    """A bass bleeding into the stem rang an octave under each chord, and the
+    chords came back voiced from the bass's note (F1 0.73)."""
+    from rigsmith.loop.virtual import SimAmp
+
+    beat = 60 / 110
+    truth, bass = [], []
+    for b in range(0, 16, 2):
+        root = [52, 57, 55, 50][(b // 2) % 4]
+        truth += [(b * beat, beat * 1.8, m, 0.7) for m in (root, root + 4, root + 7)]
+        bass += [((b + k) * beat, beat * 0.95, root - 12, 0.9) for k in range(2)]
+    audio = SimAmp(Type=2, Gain=0.5).process(render_notes(truth, seed=5))
+    low = render_notes(bass, seed=8, pickup="neck")[: len(audio)]
+    low = np.pad(low, (0, len(audio) - len(low)))
+    low *= np.sqrt(np.mean(audio ** 2)) / np.sqrt(np.mean(low ** 2)) * 10 ** (-20 / 20)
+    result = transcribe(audio + low, RATE, method="builtin", match_record_pitch=False)
+    exact = 0
+    for start in sorted({t for t, _, _, _ in truth}):
+        want = sorted(m for t, _, m, _ in truth if t == start)
+        exact += sorted(round(e.midi) for e in result.events if abs(e.start - start) < 0.06) == want
+    assert exact >= 6, f"{exact} of 8 voiced as played"
+
+
 def test_drum_bleed_does_not_become_a_chord_on_every_hit():
     """Flux read over every bin took a hi-hat 25 dB under the guitar - a big
     rise where the guitar leaves the spectrum near silent - for an attack:
