@@ -698,3 +698,26 @@ def test_a_run_keeps_the_song_s_map_and_the_names_you_gave_it(workspace):
     child = autopilot.get(run.part_runs[0])
     assert child.state == "done" and child.stages["map"].state == "skipped"
     assert songs.get(made.song_id).structure["sections"][1]["name"] == "pre-chorus"
+
+
+def test_on_the_core_a_long_part_is_heard_on_its_loudest_stretch(workspace):
+    """Every hearing at the Core is a reamp in real time: a 48 s chorus took
+    over twenty minutes of them. The simulated bench hears it all."""
+    rng = np.random.default_rng(0)
+    seconds = 40
+    target = rng.normal(0, 0.05, seconds * RATE)
+    target[20 * RATE : 34 * RATE] *= 8  # the loud stretch
+    di = rng.normal(0, 0.05, seconds * RATE + RATE // 2)
+    target_path = save_audio(workspace / "part.wav", target, RATE)
+    di_path = save_audio(workspace / "di.wav", di, RATE)
+
+    core = autopilot.Run(run_id="e1", request=autopilot.Request(title="x", bench="device"), target_path=str(target_path), di_path=str(di_path), mode="performance")
+    heard, heard_di, rate, _ = autopilot._heard_on(core)
+    assert len(heard) == int(autopilot.EXCERPT_S * rate) and len(heard_di) == len(heard) + rate // 2
+    start, end = core.excerpt
+    assert start <= 20.5 and end >= 33.5, core.excerpt
+    assert any("loudest 16 s" in n for n in core.all_notes())
+
+    bench = autopilot.Run(run_id="e2", request=autopilot.Request(title="x"), target_path=str(target_path), di_path=str(di_path), mode="performance")
+    heard, heard_di, rate, _ = autopilot._heard_on(bench)
+    assert len(heard) == seconds * RATE and bench.excerpt is None

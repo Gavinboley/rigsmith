@@ -144,6 +144,9 @@ class Run:
     built_at: str | None = None
     """The draft's ``updated_at`` when the build finished: a draft saved
     since then has your edits in it, and a rebuild keeps it."""
+    excerpt: list[float] | None = None
+    """``[start, end]`` in seconds of the part: the span candidates were
+    heard and tuned on, when the part is longer (see :data:`EXCERPT_S`)."""
     part_spans: dict = field(default_factory=dict)
     """``{part_id: [layer, start, end]}`` - so the run still finds its part
     after a re-map renames it (:func:`_part`)."""
@@ -672,9 +675,62 @@ def _stage_di(run: Run, progress) -> str:
     return f"{part.label} on {profile or 'the synthetic string'} ({result.source}{reading}{confidence})"
 
 
+#: The most of a part, in seconds, that candidates are heard and tuned on at
+#: the Core. Every hearing there is a reamp in real time: a 48 s chorus heard
+#: through seven amps, two cabs and 24 settings is over twenty minutes of
+#: it, and its loudest 16 s are seven. On the simulated bench the whole part
+#: is heard - a four-minute song's three parts took 81 s whole against 35 s
+#: cut, and came out a little closer.
+EXCERPT_S = 16.0
+
+
+def _heard_on(run: Run):
+    """The record's part and the DI as candidates are heard on them, the
+    rate, and how they are compared.
+
+    On the Core, in performance mode the DI is on the record's clock, so the
+    loudest :data:`EXCERPT_S` of the part is cut from both; in distribution
+    mode the DI is any playing, and its loudest stretch is enough to measure.
+    """
+    import numpy as np
+
+    from ..match.metrics import ComparisonMode
+    from ..match.render_offline import load_audio, resample
+
+    target, rate = load_audio(run.target_path)
+    di, di_rate = load_audio(run.di_path)
+    if di_rate != rate:
+        di = resample(di, di_rate, rate)
+    comparison = ComparisonMode.PERFORMANCE if run.mode == "performance" else ComparisonMode.DISTRIBUTION
+    span = int(EXCERPT_S * rate) if run.request.bench == "device" else len(target) + len(di)
+
+    def loudest(audio) -> int:
+        energy = np.concatenate([[0.0], np.cumsum(np.asarray(audio, dtype=np.float64) ** 2)])
+        starts = np.arange(0, len(audio) - span + 1, max(1, rate // 4))
+        return int(starts[int(np.argmax(energy[starts + span] - energy[starts]))])
+
+    if comparison is ComparisonMode.PERFORMANCE:
+        if len(target) > span * 1.25:
+            start = loudest(target)
+            target = target[start : start + span]
+            di = di[start : start + span + rate // 2]
+            if run.excerpt is None:
+                run.note(
+                    f"candidates were heard on the part's loudest {EXCERPT_S:.0f} s ({start / rate:.0f}-{(start + span) / rate:.0f} s) "
+                    "- on the Core every hearing is a reamp in real time"
+                )
+            run.excerpt = [round(start / rate, 3), round((start + span) / rate, 3)]
+        else:
+            di = di[: len(target) + rate // 2]
+    elif len(di) > span * 1.25:
+        start = loudest(di)
+        di = di[start : start + span]
+    return target, di, rate, comparison
+
+
 def _stage_candidates(run: Run, progress) -> str:
     from ..match.metrics import ComparisonMode
-    from ..match.render_offline import load_audio, resample, save_audio
+    from ..match.render_offline import save_audio
     from ..match.score import score_candidate
     from ..rig.catalog import get_catalog
     from ..tune.candidates import VOICING_TIER, stand_in
@@ -730,13 +786,7 @@ def _stage_candidates(run: Run, progress) -> str:
         )
         field_ = kept
 
-    target, rate = load_audio(run.target_path)
-    di, di_rate = load_audio(run.di_path)
-    if di_rate != rate:
-        di = resample(di, di_rate, rate)
-    comparison = ComparisonMode.PERFORMANCE if run.mode == "performance" else ComparisonMode.DISTRIBUTION
-    if comparison is ComparisonMode.PERFORMANCE:
-        di = di[: len(target) + rate // 2]
+    target, di, rate, comparison = _heard_on(run)
 
     render = _bench(run, rate)
     directory = _dir() / run.run_id
@@ -777,7 +827,7 @@ def _stage_cabs(run: Run, progress) -> str:
     and the tuner then starts from the right pair.
     """
     from ..match.metrics import ComparisonMode
-    from ..match.render_offline import load_audio, resample, save_audio
+    from ..match.render_offline import save_audio
     from ..match.score import score_candidate
     from ..rig.catalog import get_catalog
     from ..tune.candidates import Candidate, cab_options, virtual_cab, with_cab
@@ -806,13 +856,7 @@ def _stage_cabs(run: Run, progress) -> str:
     if not options:
         raise _Skip(f"no other cab to try with {amp.model}")
 
-    target, rate = load_audio(run.target_path)
-    di, di_rate = load_audio(run.di_path)
-    if di_rate != rate:
-        di = resample(di, di_rate, rate)
-    comparison = ComparisonMode.PERFORMANCE if run.mode == "performance" else ComparisonMode.DISTRIBUTION
-    if comparison is ComparisonMode.PERFORMANCE:
-        di = di[: len(target) + rate // 2]
+    target, di, rate, comparison = _heard_on(run)
     render = _bench(run, rate)
     heard = []
     for index, (cab, why, cab_index, selector) in enumerate(options):
@@ -915,7 +959,7 @@ def _bench(run: Run, rate: int):
 
 def _stage_tune(run: Run, progress) -> str:
     from ..match.metrics import ComparisonMode
-    from ..match.render_offline import load_audio, resample, save_audio
+    from ..match.render_offline import load_audio, save_audio
     from ..match.score import score_candidate
     from ..match.metrics import band_differences
     from ..tune import eq as match_eq
@@ -926,13 +970,7 @@ def _stage_tune(run: Run, progress) -> str:
 
     if not run.results:
         raise _Skip("nothing to tune")
-    target, rate = load_audio(run.target_path)
-    di, di_rate = load_audio(run.di_path)
-    if di_rate != rate:
-        di = resample(di, di_rate, rate)
-    comparison = ComparisonMode.PERFORMANCE if run.mode == "performance" else ComparisonMode.DISTRIBUTION
-    if comparison is ComparisonMode.PERFORMANCE:
-        di = di[: len(target) + rate // 2]
+    target, di, rate, comparison = _heard_on(run)
     render = _bench(run, rate)
     space = virtual_amp(("GainA", "Bass", "Mid", "Treble", "Presence", "Master"))
     budget = max(6, run.request.tune_budget // 2)
@@ -1047,6 +1085,8 @@ def _remaining(run: Run, best: dict) -> list[dict]:
         return []
     if audio_rate != rate:
         audio = resample(audio, audio_rate, rate)
+    if run.excerpt and run.mode == "performance":
+        target = target[int(run.excerpt[0] * rate) : int(run.excerpt[1] * rate)]
     return remaining(target, audio, rate)
 
 
