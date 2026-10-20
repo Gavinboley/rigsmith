@@ -68,6 +68,8 @@ def test_a_run_on_the_demo_says_how_close_it_came(workspace):
     assert run.state == "done", run.describe()
     said = run.demo
     assert said and said["guitar"] in ("rhythm", "lead", "clean")
+    # Every voicing of the simulated amp was heard, whatever the gain read.
+    assert {r["voicing"] for r in run.results if " + " not in r["label"] and "(tuned" not in r["label"]} == {0, 1, 2, 3}
     assert said["truth"]["Type"] == demo.AMPS[said["guitar"]]["Type"]
     assert isinstance(said["voicing_right"], bool)
     assert "went through Sim" in said["summary"] and run.results[0]["label"] in said["summary"]
@@ -98,3 +100,12 @@ def test_the_assistant_can_start_the_demo(workspace, monkeypatch):
 def test_another_song_s_run_has_no_answer_to_give(workspace):
     run = autopilot.Run(run_id="x", request=autopilot.Request(title="Other"), song_id="other-song", results=[{"label": "x"}], part_ids=["p"])
     assert demo.verdict(run) is None
+
+
+def test_a_voicing_missing_from_the_field_has_a_stand_in():
+    from rigsmith.tune.candidates import VIRTUAL_VOICING, stand_in
+
+    for voicing in range(4):
+        candidate = stand_in(voicing)
+        assert candidate.voicing == voicing and VIRTUAL_VOICING[candidate.tier] == voicing
+        assert candidate.cab and candidate.cab_voicing is not None

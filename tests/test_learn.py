@@ -758,6 +758,45 @@ def test_drop_c_power_chords_read_as_power_chords(amp_type, gain):
     assert exact >= 12, f"{exact} of 16 read as the power chord played"
 
 
+@pytest.mark.parametrize("amp_type, gain", [(0, 0.1), (2, 0.5), (3, 0.85)])
+def test_power_chords_up_the_neck_are_read_as_chords(amp_type, gain):
+    """E5, G5, A5 and D5 on the A and D strings. A root and its fifth share
+    a fundamental an octave under the root, which the salience heard as one
+    note: the part came back as single notes an octave low, or through
+    distortion as almost nothing (F1 0-0.19)."""
+    from rigsmith.loop.virtual import SimAmp
+
+    beat = 60 / 110
+    truth = []
+    for b in range(32):
+        root = (52, 55, 57, 50)[(b // 2) % 4]
+        truth += [(b * beat, beat * 0.9, m, 0.8) for m in (root, root + 7)]
+    audio = SimAmp(Type=amp_type, Gain=gain).process(render_notes(truth, seed=5))
+    result = transcribe(audio, RATE, method="builtin", match_record_pitch=False)
+    assert result.mode == "polyphonic" and any("power chords" in n for n in result.notes_text)
+    hits = sum(any(abs(e.start - t) < 0.05 and abs(e.midi - m) < 0.5 for e in result.events) for t, _, m, _ in truth)
+    assert hits >= 0.6 * len(truth), f"{hits} of {len(truth)}"
+    # Not the common fundamental an octave under every root - driven, a few
+    # attacks still read a note under it (0.10-0.16 of the notes).
+    assert sum(1 for e in result.events if e.midi < 49.5) <= 0.2 * len(result.events)
+
+
+@pytest.mark.parametrize("amp_type, gain", [(2, 0.5), (3, 0.85)])
+def test_a_driven_drop_c_riff_is_not_taken_for_power_chords(amp_type, gain):
+    """Through the cab its low C's fundamental is as faint as a power chord's
+    missing one - but a string sounds its 5th and 7th harmonics, and the
+    riff stays single notes."""
+    from rigsmith.loop.virtual import SimAmp
+
+    beat = 60 / 100
+    truth = [(b * beat + k * beat / 2, beat / 2 * 0.9, [36, 36, 39, 36, 41, 39, 43, 42][(2 * b + k) % 8], 0.85) for b in range(32) for k in range(2)]
+    audio = SimAmp(Type=amp_type, Gain=gain).process(render_notes(truth, seed=5))
+    result = transcribe(audio, RATE, method="builtin", match_record_pitch=False)
+    assert result.mode == "monophonic"
+    right = sum(1 for start, _, midi, _ in truth if [round(e.midi) for e in result.events if abs(e.start - start) < 0.05] == [midi])
+    assert right >= 0.85 * len(truth), right
+
+
 def test_a_three_string_power_chord_keeps_its_octave():
     """Clean, the note-by-note estimate won over the chords and came back
     with stray notes (F1 0.64 against 0.95)."""

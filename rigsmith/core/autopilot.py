@@ -628,6 +628,7 @@ def _stage_candidates(run: Run, progress) -> str:
     from ..match.render_offline import load_audio, resample, save_audio
     from ..match.score import score_candidate
     from ..rig.catalog import get_catalog
+    from ..tune.candidates import VOICING_TIER, stand_in
     from ..tune.candidates import candidates as pick
     from . import songs
 
@@ -655,11 +656,20 @@ def _stage_candidates(run: Run, progress) -> str:
             if candidate.voicing not in seen:
                 seen.add(candidate.voicing)
                 kept.append(candidate)
-        if len(kept) < len(field_):
-            run.note(
-                f"the simulated amp has only four voicings, so {len(kept)} of {len(field_)} candidates "
-                "were heard (one per voicing); the device bench hears every model"
-            )
+        # And all four: hearing one costs a fraction of a second, and a part
+        # measured a step off left the voicing it was made with out of the
+        # field - the demo song's Sim Modern rhythm, read as crunch, was
+        # only ever heard against Crunch and Lead.
+        for voicing in sorted(VOICING_TIER):
+            if voicing not in seen:
+                extra = stand_in(voicing, catalog=get_catalog())
+                if extra is not None:
+                    seen.add(voicing)
+                    kept.append(extra)
+        run.note(
+            f"the simulated amp has four voicings, so the field was one amp for each of them ({len(kept)} heard); "
+            "the device bench hears every model"
+        )
         field_ = kept
 
     target, rate = load_audio(run.target_path)

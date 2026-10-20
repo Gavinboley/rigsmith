@@ -23,12 +23,17 @@ note right):
 |---|---|
 | Single-note riffs, leads, palm-muted chugs | 0.98-1.00 |
 | Strummed triads, sevenths, eighth-note re-strums | 0.84-1.00 |
-| Power chords - E or drop C, two or three strings | 0.46-0.96 (high gain lowest) |
+| Power chords - E or drop C, two or three strings, low or up the neck | 0.46-1.00 (high gain lowest) |
 | Arpeggios and Travis picking, each note left to ring | 0.62-1.00 |
 
 Chords are voiced the way they were played - a two-note E5 as two notes, a
 close triad close, a drop-D low string kept - by reading the octaves after
-each attack, not just the chord's name.
+each attack, not just the chord's name. A power chord up the neck is read as
+the chord: its root and fifth together sound like one note an octave under
+the root, and a part of E5s on the A string used to come back as low E
+single notes, or through distortion as almost nothing. That note has no 5th
+or 7th harmonic of its own - a string always does - which is how it is told
+apart from a low riff in a drop tuning.
 
 ## What a recording does to it, and what is done back
 

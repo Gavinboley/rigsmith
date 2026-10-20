@@ -940,28 +940,27 @@ def transcribe(
         notes = notes if notes is not None else segment(audio, sample_rate)
         result.events = _single_notes(notes, min_midi)
         result.mode = "monophonic"
+        # Power chords up the neck: a root and its fifth share a fundamental
+        # an octave under the root, which the salience hears as one pitch -
+        # so "one note at a time" read E5s on the A string as single notes an
+        # octave low, or through distortion as almost nothing (F1 0-0.19,
+        # against 0.60-1.00 read as chords). A string sounds its 5th and 7th
+        # harmonics; that common fundamental has none of its own.
+        if mode == "auto" and result.events and _odd_harmonics(audio, sample_rate, result.events) < ODD_HARMONICS:
+            chords, said = _read_chords(audio, sample_rate, frames, onsets, energies, min_midi)
+            if _chord_share(chords) >= CHORD_SHARE:
+                result.events = chords
+                result.mode = "polyphonic"
+                result.notes_text.extend(said)
+                result.notes_text.append("power chords: the single notes heard were their common fundamental, an octave under the root, where nothing is played")
     elif arpeggio is not None:
         result.events = arpeggio
         result.mode = "arpeggio"
         result.notes_text.append("one note per attack, each left to ring - read as an arpeggio")
     else:
-        result.events = _notes_from_frames(frames, onsets, sample_rate, energies)
+        result.events, said = _read_chords(audio, sample_rate, frames, onsets, energies, min_midi)
         result.mode = "polyphonic"
-        # The note-by-note estimate hears a chord's common fundamental, an
-        # octave or two below the chord, more often than the chord. The
-        # chords read from their pitch classes and voiced from the spectrum
-        # are kept whenever there are any: on every synthetic chord part they
-        # read at least as well, and the pitch-class similarity that used to
-        # judge between the two - blind to octaves - picked the note-by-note
-        # estimate on clean power chords (F1 0.64 against 0.95, and 0.59
-        # against 0.96 in drop C).
-        chords = _chords_from_chroma(audio, sample_rate, onsets, min_midi)
-        if chords and _keep_chords(audio, sample_rate, chords, result.events):
-            result.events = chords
-            result.notes_text.append("chords read from their pitch classes and voiced as a guitarist would")
-        result.events, collapsed = _collapse_single_notes(audio, sample_rate, result.events)
-        if collapsed:
-            result.notes_text.append(f"{collapsed} attack(s) were one note with distortion's harmonics on it, not a chord")
+        result.notes_text.extend(said)
 
     result.method = "builtin"
     result.confidence = _chroma_similarity(audio, sample_rate, result.events)
@@ -991,6 +990,77 @@ def transcribe(
     if not result.events:
         result.warnings.append("no notes found - is this a guitar stem?")
     return result
+
+
+def _read_chords(audio, sample_rate: int, frames, onsets, energies, min_midi: int) -> tuple[list[NoteEvent], list[str]]:
+    """The part read as chords, and what was said about the reading."""
+    said = []
+    events = _notes_from_frames(frames, onsets, sample_rate, energies)
+    # The note-by-note estimate hears a chord's common fundamental, an
+    # octave or two below the chord, more often than the chord. The chords
+    # read from their pitch classes and voiced from the spectrum are kept
+    # whenever there are any: on every synthetic chord part they read at
+    # least as well, and the pitch-class similarity that used to judge
+    # between the two - blind to octaves - picked the note-by-note estimate
+    # on clean power chords (F1 0.64 against 0.95, and 0.59 against 0.96 in
+    # drop C).
+    chords = _chords_from_chroma(audio, sample_rate, onsets, min_midi)
+    if chords and _keep_chords(audio, sample_rate, chords, events):
+        events = chords
+        said.append("chords read from their pitch classes and voiced as a guitarist would")
+    events, collapsed = _collapse_single_notes(audio, sample_rate, events)
+    if collapsed:
+        said.append(f"{collapsed} attack(s) were one note with distortion's harmonics on it, not a chord")
+    return events, said
+
+
+#: The 5th and 7th harmonics of the notes the single-note reading heard,
+#: against their 4th, 6th and 8th. A string sounds all of them (0.57-0.67
+#: measured, from an open-E riff to drop C and B standard, through crunch and
+#: high gain). The common fundamental of a power chord - an octave under its
+#: root, where nothing is played - has no 5th or 7th harmonic from either
+#: string, only what distortion's intermodulation adds (0.19-0.28), and
+#: clean, next to none. How much is heard at that fundamental itself did not
+#: tell them apart: a cab takes a drop-C riff's away as well.
+ODD_HARMONICS = 0.4
+
+#: ...and the chord reading has to keep at least this share of the attacks as
+#: chords (0.47 and up on the power-chord parts measured).
+CHORD_SHARE = 0.4
+
+
+def _odd_harmonics(audio: np.ndarray, sample_rate: int, events: list[NoteEvent]) -> float:
+    """Median, over the notes, of their 5th and 7th harmonics against their
+    4th, 6th and 8th, just after the attack."""
+    ratios = []
+    for event in events:
+        a = int((event.start + 0.02) * sample_rate)
+        b = int(min(event.start + event.duration, event.start + 0.3) * sample_rate)
+        piece = audio[a:b]
+        if len(piece) < 2048:
+            continue
+        size = 1 << int(np.ceil(np.log2(max(len(piece), 16384))))
+        spectrum = np.abs(np.fft.rfft(piece * np.hanning(len(piece)), size))
+        freqs = np.fft.rfftfreq(size, 1 / sample_rate)
+        f0 = 440.0 * 2 ** ((event.midi - 69) / 12)
+
+        def peak(hz: float) -> float:
+            band = (freqs >= hz * 0.985) & (freqs <= hz * 1.015)
+            return float(spectrum[band].max()) if band.any() else 0.0
+
+        odd = peak(5 * f0) + peak(7 * f0)
+        even = peak(4 * f0) + peak(6 * f0) + peak(8 * f0)
+        ratios.append(odd / max(even, 1e-12))
+    return float(np.median(ratios)) if ratios else 1.0
+
+
+def _chord_share(events: list[NoteEvent]) -> float:
+    """The share of attacks that sound more than one note."""
+    attacks: dict[float, int] = {}
+    for event in events:
+        key = round(event.start, 3)
+        attacks[key] = attacks.get(key, 0) + 1
+    return sum(1 for count in attacks.values() if count >= 2) / len(attacks) if attacks else 0.0
 
 
 #: Chord shapes by name, as the pitch classes they hold above the root.

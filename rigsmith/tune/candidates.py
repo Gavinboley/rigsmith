@@ -49,6 +49,8 @@ ORDER = ("clean", "edge", "crunch", "high", "modern")
 
 #: A simulated amp voicing per tier, for the virtual bench.
 VIRTUAL_VOICING = {"clean": 0, "edge": 1, "crunch": 1, "high": 2, "modern": 3}
+#: The tier each simulated voicing stands for, when a field needs one.
+VOICING_TIER = {0: "clean", 1: "crunch", 2: "high", 3: "modern"}
 
 #: Cabs worth hearing per tier, the usual one first. After the amp, the cab
 #: is the biggest single thing in a guitar tone - a Greenback 4x12 and a V30
@@ -269,6 +271,21 @@ def candidates(
         _, candidate.cab_index, candidate.cab_selector = _lookup(catalog, candidate.cab)
         candidate.cab_voicing = virtual_cab(candidate.cab)
     return found[:count]
+
+
+def stand_in(voicing: int, *, catalog=None) -> Candidate | None:
+    """A model to hear a simulated voicing the field has not got: the first
+    one the catalog knows from the tier that voicing stands for."""
+    tier = VOICING_TIER[voicing]
+    names, cab = TIERS[tier]
+    for name in names:
+        ok, device_index, selector = _lookup(catalog, name)
+        if ok:
+            candidate = Candidate(name, tier, cab, f"the simulated amp's {tier} voicing - all four are heard", device_index, voicing, selector)
+            _, candidate.cab_index, candidate.cab_selector = _lookup(catalog, cab)
+            candidate.cab_voicing = virtual_cab(cab)
+            return candidate
+    return None
 
 
 #: The delay's tempo-synced divisions on the Core, in its own order, and the

@@ -69,12 +69,15 @@ def render(*, seconds_per_section: float | None = None, seed: int = 7) -> tuple[
             elif kind == "riff":
                 for k in range(2):
                     note = (40, 40, 43, 40, 47, 45, 43, 42)[(2 * b + k) % 8]
-                    left.append((when + k * BEAT / 2, BEAT / 2 * 0.9, note, 0.85))
+                    left.append((when + k * BEAT / 2, BEAT / 2 * 0.9, note + rng.normal(0, 0.05), 0.85))
                     right.append((when + k * BEAT / 2 + rng.normal(0, 0.01) + 0.01, BEAT / 2 * 0.9, note + rng.normal(0, 0.05), 0.85))
                     bass.append((when + k * BEAT / 2, BEAT / 2 * 0.8, 28, 0.7))
             elif kind == "chords":
+                # Each string a few cents off, both sides, as a guitar is: a
+                # chord in perfect tune distorts into a sparser spectrum than
+                # any real one, and reads as less gain than it has.
                 for note in (chorus_root, chorus_root + 7, chorus_root + 12):
-                    left.append((when, BEAT * 0.95, note, 0.8))
+                    left.append((when, BEAT * 0.95, note + rng.normal(0, 0.05), 0.8))
                     right.append((when + rng.normal(0, 0.01) + 0.01, BEAT * 0.95, note + rng.normal(0, 0.05), 0.8))
                 bass.append((when, BEAT * 0.9, chorus_root - 12, 0.85))
             else:
