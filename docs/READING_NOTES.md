@@ -94,7 +94,12 @@ These still read poorly, and want basic-pitch or a tab:
 - slow, driven fingerpicking,
 - chugs among chord stabs in a drop tuning (0.1-0.4),
 - a clean arpeggio drenched in a long reverb (read as chords),
-- parts that switch between single notes and chords within a bar.
+- parts that switch between single notes and chords within a bar,
+- a lead centred between a double-tracked rhythm. Where the two takes meet
+  they leak into the centre, and the lead's notes come back mixed with the
+  rhythm's roots (the demo song's solo: 0.48). Reading it as **an
+  arpeggio** - one note per attack, the one it brings - read that solo at
+  0.85; it is worth trying first.
 
 **basic-pitch**, Spotify's transcriber, is used automatically once it can be
 run: `pip install 'rigsmith[transcribe]'`. It runs as its own command, so if
