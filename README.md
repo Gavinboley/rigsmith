@@ -579,7 +579,7 @@ pip install -e ".[all]"     # everything, including the UI and test deps
 pip install -e .            # core only: discovery, protocol capture, rig authoring
 ```
 
-Extras: `ui`, `mcp`, `midi`, `audio`, `match`, `separation`, `browser`, `claude` (the Anthropic SDK, for agents on the API rather than through Claude Code), `tune` (Optuna, for larger tuning budgets), `transcribe` (Spotify's basic-pitch: fingerpicking and the full voicing of ringing open chords, which the built-in transcriber reads poorly - single notes, riffs, palm-muted chugs, arpeggios, strummed and power chords it reads well; used automatically once installed, and not in `all` for its size), `codecs` (FFmpeg through PyAV, so a bought .m4a/AAC song reads as it is, and candidates are re-encoded as AAC to compare fairly against it), `dev`. `rigsmith doctor` tells you which you're missing and why you'd want each.
+Extras: `ui`, `mcp`, `midi`, `audio`, `match`, `separation`, `browser`, `claude` (the Anthropic SDK, for agents on the API rather than through Claude Code), `tune` (Optuna, for larger tuning budgets), `transcribe` (Spotify's basic-pitch: open six-string chords and slow driven fingerpicking, which the built-in transcriber reads less well - single notes, riffs, palm-muted chugs, arpeggios, Travis picking, strummed and power chords it reads well and voices as played; used automatically once installed, and not in `all` for its size), `codecs` (FFmpeg through PyAV, so a bought .m4a/AAC song reads as it is, and candidates are re-encoded as AAC to compare fairly against it), `dev`. `rigsmith doctor` tells you which you're missing and why you'd want each.
 
 ## Documentation
 
