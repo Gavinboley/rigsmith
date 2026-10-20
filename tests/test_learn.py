@@ -687,6 +687,43 @@ def test_an_arpeggio_under_drum_bleed_keeps_its_picks():
     assert hits >= 0.6 * len(truth), hits
 
 
+@pytest.mark.parametrize("amp_type, gain", [(0, 0.1), (2, 0.5)])
+def test_drop_c_power_chords_read_as_power_chords(amp_type, gain):
+    """A C2's fifth and seventh harmonics read as a C7, voiced as five
+    strings; clean, the note-by-note estimate - chosen by a pitch-class
+    similarity blind to octaves - came back instead (F1 0.72)."""
+    from rigsmith.loop.virtual import SimAmp
+
+    beat = 60 / 100
+    truth = []
+    for b in range(16):
+        root = [36, 36, 39, 41, 36, 36, 43, 41][b % 8]
+        truth += [(b * beat, beat * 0.9, m, 0.85) for m in (root, root + 7)]
+    audio = SimAmp(Type=amp_type, Gain=gain).process(render_notes(truth, seed=5))
+    result = transcribe(audio, RATE, method="builtin", match_record_pitch=False)
+    exact = 0
+    for start in sorted({t for t, _, _, _ in truth}):
+        want = sorted(m for t, _, m, _ in truth if t == start)
+        exact += sorted(round(e.midi) for e in result.events if abs(e.start - start) < 0.06) == want
+    assert exact >= 12, f"{exact} of 16 read as the power chord played"
+
+
+def test_a_three_string_power_chord_keeps_its_octave():
+    """Clean, the note-by-note estimate won over the chords and came back
+    with stray notes (F1 0.64 against 0.95)."""
+    beat = 60 / 110
+    truth = []
+    for b in range(16):
+        root = [40, 43, 45, 38][(b // 2) % 4]
+        truth += [(b * beat, beat * 0.9, m, 0.8) for m in (root, root + 7, root + 12)]
+    from rigsmith.loop.virtual import SimAmp
+
+    audio = SimAmp(Type=0, Gain=0.1).process(render_notes(truth, seed=5))
+    result = transcribe(audio, RATE, method="builtin", match_record_pitch=False)
+    hits = sum(any(abs(e.start - t) < 0.05 and abs(e.midi - m) < 0.5 for e in result.events) for t, _, m, _ in truth)
+    assert hits >= 0.85 * len(truth) and len(result.events) <= 1.15 * len(truth), (hits, len(result.events))
+
+
 def test_a_close_triad_is_voiced_the_way_it_was_played():
     """Every triad came back as a barre from its root - E-G#-B as E-B-E-G#-B."""
     beat = 60 / 110

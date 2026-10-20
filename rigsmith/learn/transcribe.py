@@ -915,11 +915,15 @@ def transcribe(
         result.events = _notes_from_frames(frames, onsets, sample_rate, energies)
         result.mode = "polyphonic"
         # The note-by-note estimate hears a chord's common fundamental, an
-        # octave or two below the chord, more often than the chord. Read the
-        # chords from their pitch classes as well, and keep whichever set of
-        # notes follows the stem better.
+        # octave or two below the chord, more often than the chord. The
+        # chords read from their pitch classes and voiced from the spectrum
+        # are kept whenever there are any: on every synthetic chord part they
+        # read at least as well, and the pitch-class similarity that used to
+        # judge between the two - blind to octaves - picked the note-by-note
+        # estimate on clean power chords (F1 0.64 against 0.95, and 0.59
+        # against 0.96 in drop C).
         chords = _chords_from_chroma(audio, sample_rate, onsets, min_midi)
-        if chords and _chroma_similarity(audio, sample_rate, chords) > _chroma_similarity(audio, sample_rate, result.events):
+        if chords:
             result.events = chords
             result.notes_text.append("chords read from their pitch classes and voiced as a guitarist would")
         result.events, collapsed = _collapse_single_notes(audio, sample_rate, result.events)
@@ -968,17 +972,19 @@ CHORD_VOICINGS = {
 }
 #: The ways each shape is played, from the root up, for the spectrum to
 #: choose between (:func:`_voice`): close, octave-doubled, barre, open six
-#: strings - and, for a major or minor chord, the power chord its "third"
-#: may really be, the fifth harmonic of the root.
+#: strings - and, for a major, minor or seventh chord, the power chord its
+#: "third" and "seventh" may really be: the root's fifth and seventh
+#: harmonics. A drop-C power chord's C2 has both strong enough to read as a
+#: C7 (F1 0.72 -> 0.95 driven with the power voicings offered).
 CHORD_VOICING_OPTIONS = {
     "5": [(0, 7), (0, 7, 12)],
     "": [(0, 4, 7), (0, 4, 7, 12), (0, 7, 12, 16), (0, 7, 12, 16, 19), (0, 7, 12, 16, 19, 24), (0, 4, 7, 12, 16, 24), (0, 7), (0, 7, 12)],
     "m": [(0, 3, 7), (0, 3, 7, 12), (0, 7, 12, 15), (0, 7, 12, 15, 19), (0, 7, 12, 15, 19, 24), (0, 7), (0, 7, 12)],
     "sus4": [(0, 5, 7), (0, 7, 12, 17, 19)],
     "sus2": [(0, 2, 7), (0, 7, 12, 14, 19)],
-    "7": [(0, 4, 7, 10), (0, 7, 10, 16, 19)],
-    "m7": [(0, 3, 7, 10), (0, 7, 10, 15, 19)],
-    "maj7": [(0, 4, 7, 11), (0, 7, 11, 16, 19)],
+    "7": [(0, 4, 7, 10), (0, 7, 10, 16, 19), (0, 7), (0, 7, 12)],
+    "m7": [(0, 3, 7, 10), (0, 7, 10, 15, 19), (0, 7), (0, 7, 12)],
+    "maj7": [(0, 4, 7, 11), (0, 7, 11, 16, 19), (0, 7), (0, 7, 12)],
 }
 
 #: What each note of a voicing beyond two costs against the spectrum's fit.
@@ -1034,7 +1040,7 @@ LOWER_ROOT_MARGIN = 0.04
 
 def _bass_notes(audio: np.ndarray, sample_rate: int, start: float, end: float) -> list[float]:
     """Candidates for a chord's root as played: the lowest strong pitch in
-    70-350 Hz just after an attack, and the pitch a fifth below it when one
+    52-350 Hz just after an attack, and the pitch a fifth below it when one
     rings there.
 
     Driven, a power chord's root can ring quieter than its fifth - the amp's
@@ -1053,7 +1059,9 @@ def _bass_notes(audio: np.ndarray, sample_rate: int, start: float, end: float) -
     size = 1 << int(np.ceil(np.log2(max(len(piece), 8192))))
     spectrum = np.abs(np.fft.rfft(piece * np.hanning(len(piece)), size))
     freqs = np.fft.rfftfreq(size, 1 / sample_rate)
-    band = (freqs >= 70.0) & (freqs <= 350.0)
+    # From just under A1, the lowest string of the tunings read: a drop-C
+    # C2 at 65 Hz was below the old 70 Hz floor.
+    band = (freqs >= 52.0) & (freqs <= 350.0)
     level, where = spectrum[band], freqs[band]
     if not len(level) or level.max() <= 0:
         return []
