@@ -14,9 +14,9 @@ the parts that need the Core, your guitar or your copy of a song say so.
   at the song's tempo, so synced delays land on the beat.
 - **Several parts** become one rig with a scene per part, inside the DSP
   budget, with a delay each where the parts want different ones.
-- **The blind test decides**: a blind A/B of the finalists, and "use what
-  my ears picked" rebuilds the draft from your choice - keeping the draft
-  you had already finished by ear beside it.
+- **The blind test decides**: a blind A/B of three different amps, the
+  best of each, and "use what my ears picked" rebuilds the draft from your
+  choice - keeping the draft you had already finished by ear beside it.
 - **The tone sheet** is the rig as you would dial it in by hand, where it
   came from, what still differs from the record, and what you changed
   since it was built.

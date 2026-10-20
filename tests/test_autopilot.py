@@ -116,7 +116,10 @@ def test_a_whole_run_ends_in_a_draft_and_a_listening_test(workspace):
     with pytest.raises(Invalid):
         autopilot.listen_back("t1")  # nothing answered: the names stay hidden
     session = matching.load_ab(rerun.ab_session)
-    favourite = rerun.results[1]["label"]
+    finalists = list(session.blinded.values())
+    models = [next(r["model"] for r in rerun.results if r["label"] == label) for label in finalists]
+    assert len(models) >= 2 and len(set(models)) == len(models), "the finalists are different amps"
+    favourite = next(label for label in finalists if label != rerun.results[0]["label"])
     favoured = next(blind for blind, label in session.blinded.items() if label == favourite)
     for trial in session.trials:
         verdict = "left" if trial.left == favoured else "right" if trial.right == favoured else "tie"
@@ -129,7 +132,7 @@ def test_a_whole_run_ends_in_a_draft_and_a_listening_test(workspace):
     assert rigs.history(edited)["past"], "kept with its history"
     assert any("as you left it" in n for n in after.notes)
     assert after.ear_pick == favourite
-    picked_model = rerun.results[1]["model"]
+    picked_model = next(r["model"] for r in rerun.results if r["label"] == favourite)
     assert any(b.model_id == picked_model for b in rigs.get(after.draft_id).rig.blocks)
     assert any("your ears picked" in n for n in after.notes)
     heard = [m for m in recipes.get(after.recipe_id).measurements if m.kind == "listen"]

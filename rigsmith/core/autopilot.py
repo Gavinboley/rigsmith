@@ -1227,9 +1227,17 @@ def _stage_rig(run: Run, *, from_ears: bool = False) -> str:
             "Run again on the device bench to tune them on the Core itself."
         )
 
+    # The finalists are different amps, the best of each: the blind test
+    # asks which amp, not whether a G EQ is on - on the demo song two of the
+    # three were one amp with and without it. Tuning can let a wrong gain
+    # range edge ahead by a few percent (a part heard through a room, a lead
+    # between layers), and this is where your ears put it right.
     clips = {}
-    for entry in run.results[:3]:
-        clips[entry["label"]] = entry["path"]
+    for entry in run.results:
+        if entry["model"] not in {r["model"] for r in run.results if r["label"] in clips}:
+            clips[entry["label"]] = entry["path"]
+        if len(clips) == FINALISTS:
+            break
     # Rebuilding from a listening test keeps that test - its verdicts are
     # the reason for the rebuild.
     if len(clips) >= 2 and not from_ears:
@@ -1246,6 +1254,10 @@ def _stage_rig(run: Run, *, from_ears: bool = False) -> str:
             f"{r['band']} {r['delta_db']:+.1f} dB (try {r['try']})" for r in loudest
         ))
     return f"draft '{run.draft_id}' with {best['model']} and {best['cab']}"
+
+
+#: How many amps the blind A/B plays, the best result of each.
+FINALISTS = 3
 
 
 #: How much further from the record (the composite, relative) the whole

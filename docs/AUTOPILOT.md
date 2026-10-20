@@ -97,8 +97,16 @@ the run says which parts were moved.
 The score ranks; your ears decide. A difference smaller than the score can
 resolve is a tie. **Hear it** on the Rig page plays your DI through the
 whole draft - the boost in front, the EQ and effects after the amp -
-beside the record, before anything is written. The blind A/B plays the finalists without their names, and
+beside the record, before anything is written. The blind A/B plays the
+finalists - three different amps, the best of each - without their names, and
 "use what my ears picked" rebuilds the draft from your choice.
+
+Where the part was heard through a room or between layers, tuning can let
+the wrong gain range edge ahead by a few percent: on the demo song the solo
+went to the modern amp over the lead one (0.394 against 0.407), the clean
+intro to an edge-of-breakup amp. On sixteen dry parts it never did - tuning
+put the right range first every time, where hearing the amps untuned did so
+fourteen times. The runner-up amp is always in the blind test for this.
 
 Knobs that land away from the record's settings are usually making up for
 what differs from it - your guitar, the cab - not a miss: the closest sound

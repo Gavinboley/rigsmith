@@ -460,7 +460,7 @@ two amps, fit a G EQ to what is left (it goes into the draft only if it
 scores closer), then build a draft rig - with the gate, boost, chorus,
 tremolo, delay and reverb the part measures as having, the boost left off
 unless the draft is heard closer with it - and set up a blind
-A/B of the finalists. A difference smaller than the score can resolve is called a tie,
+A/B of the finalists - three different amps, the best of each. A difference smaller than the score can resolve is called a tie,
 not a win.
 
 Choose several parts (the clean intro, the verse, the solo) and each gets a
