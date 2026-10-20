@@ -109,3 +109,20 @@ def test_a_voicing_missing_from_the_field_has_a_stand_in():
         candidate = stand_in(voicing)
         assert candidate.voicing == voicing and VIRTUAL_VOICING[candidate.tier] == voicing
         assert candidate.cab and candidate.cab_voicing is not None
+
+
+def test_a_knob_well_off_the_song_s_is_explained(workspace):
+    """On the demo the run's 50% gain scored closer than the song's own 70%
+    through the cab it chose - making up for the difference, not a miss."""
+    song = demo.make()
+    song.parts = [Part("solo-4-left", 3, "solo", "left", 15.0, 20.0)]
+    song.save()
+    best = {"label": "92 Treadplate Modern (tuned)", "voicing": 3, "tier": "modern", "cab_voicing": 2,
+            "knobs": {"Amp.GainA": 0.5, "Amp.Bass": 0.6, "Amp.Mid": 0.4, "Amp.Treble": 0.6}}
+    run = autopilot.Run(run_id="v", request=autopilot.Request(title=demo.TITLE), song_id=song.song_id, part_ids=["solo-4-left"], results=[best])
+    said = demo.verdict(run)
+    assert said["guitar"] == "rhythm" and said["voicing_right"] is True
+    assert "gain 50% (-20)" in said["summary"] and "making up for" in said["summary"] and "Sim 4x12 V30" in said["summary"]
+    # Close knobs need no excuse.
+    best["knobs"]["Amp.GainA"] = 0.68
+    assert "making up for" not in demo.verdict(run)["summary"]

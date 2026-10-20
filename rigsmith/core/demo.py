@@ -82,8 +82,11 @@ def render(*, seconds_per_section: float | None = None, seed: int = 7) -> tuple[
                 bass.append((when, BEAT * 0.9, chorus_root - 12, 0.85))
             else:
                 lead.append((when, BEAT * 0.9, (64, 67, 69, 71, 74, 71, 69, 67)[b % 8], 0.9))
-                left.append((when, BEAT * 0.95, chorus_root, 0.6))
-                right.append((when + rng.normal(0, 0.01) + 0.01, BEAT * 0.95, chorus_root, 0.6))
+                # Two takes are never in tune with each other to the cent:
+                # held at one pitch, the solo's roots were as coherent as one
+                # centred part, and each side measured as a clean residue.
+                left.append((when, BEAT * 0.95, chorus_root + rng.normal(0, 0.05), 0.6))
+                right.append((when + rng.normal(0, 0.01) + 0.01, BEAT * 0.95, chorus_root + rng.normal(0, 0.05), 0.6))
                 if b % 2 == 0:
                     bass.append((when, BEAT * 1.8, chorus_root - 12, 0.8))
         t += beats * BEAT
@@ -227,7 +230,7 @@ def _guitar(part, sections: list[dict]) -> str:
 
 def verdict(run) -> dict | None:
     """How close a finished run on the demo came to the amp it was made with."""
-    from ..loop.virtual import SimAmp, VOICINGS
+    from ..loop.virtual import CAB_VOICINGS, SimAmp, VOICINGS
     from . import songs
 
     known = answer(run.song_id)
@@ -264,6 +267,17 @@ def verdict(run) -> dict | None:
         said += "; tuned to " + ", ".join(
             f"{word} {knobs[name]:.0%} ({(knobs[name] - truth[name]) * 100:+.0f})" for name, word in KNOBS if name in knobs
         ) + "."
+        # Measured on the demo: with the cab the run chose, its 50% gain
+        # scored closer than the song's own 70% - the knobs were making up
+        # for the guitar and the cab, not missing.
+        if any(abs(knobs[name] - truth[name]) >= 0.15 for name, _ in KNOBS if name in knobs):
+            cab = best.get("cab_voicing")
+            said += (
+                " A knob well off the song's is usually making up for what differs from its recording - "
+                + "the part played on another guitar"
+                + (f", through the {CAB_VOICINGS[cab][0]} instead of the amp's own cab" if cab in CAB_VOICINGS else "")
+                + ": the closest sound, not the same settings."
+            )
     else:
         said += "; its knobs were not tuned."
     return {"guitar": guitar, "part": part.label, "truth": truth, "found": found, "voicing_right": right, "summary": said}
