@@ -44,8 +44,8 @@ the parts that need the Core, your guitar or your copy of a song say so.
   note, each left to ring; a drum kit or a bass bleeding into a separated
   stem is not taken for notes, and a delay's repeats are taken out before
   the notes are read. Open six-string chords, slow driven fingerpicking,
-  chugs among chord stabs in a drop tuning, and an arpeggio drenched in
-  reverb want basic-pitch (`pip install 'rigsmith[transcribe]'`), used
+  chugs among chord stabs in a drop tuning, and the odd arpeggio drenched
+  in reverb want basic-pitch (`pip install 'rigsmith[transcribe]'`), used
   automatically once installed - or a tab's MIDI.
   [READING_NOTES.md](READING_NOTES.md) has it all in one place. A part read the wrong way can be
   re-read as single notes, chords or an arpeggio ("on my guitar" on its
@@ -60,6 +60,11 @@ the parts that need the Core, your guitar or your copy of a song say so.
 - Power chords up the neck are read as chords, not as the note an octave
   under them; B standard and other low tunings are read at their own
   octave when the research has not named the tuning.
+- A clean arpeggio in a reverb is read as an arpeggio, not as chords: the
+  phantom an octave under each pick no longer counts as a second note. The
+  demo song's intro read 18 notes right of 18 (it was 41 for 18), and its
+  closest amp is the clean one it was made with - 0.204, where the crunch
+  amp it went to before came to 0.308.
 - A lead centred between a double-track comes out with less of the rhythm
   in it, and the sides with less of the lead: the centre is taken as what
   the two sides share. On the demo song's solo the lead came out 5.5 dB

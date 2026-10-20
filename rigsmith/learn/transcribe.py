@@ -692,7 +692,12 @@ def _arpeggio(audio, sample_rate: int, magnitude: np.ndarray, min_midi: int, tun
     for onset, pitches, spectrum, level in zip(onsets, found, spectra, levels):
         if not pitches:
             continue
-        single += len(pitches) == 1
+        # A phantom an octave or a twelfth under the note it came with is
+        # that note, the same check that names the pick. Counted as a second
+        # pitch, it made most attacks of a clean arpeggio in a reverb look
+        # like chords: 32 of 45 such parts read as arpeggios, 41 counted
+        # this way, and still none of 108 chord parts, dry or wet.
+        single += len({round(_higher_note(pitch, spectrum, sample_rate, tuning_cents)) for pitch, _ in pitches}) == 1
         midi = _higher_note(pitches[0][0], spectrum, sample_rate, tuning_cents)
         velocity = float(np.clip(0.75 + (level - typical) / 24, 0.1, 1.0))
         events.append(NoteEvent(start=round(onset, 4), duration=0.05, midi=float(midi), velocity=velocity))

@@ -11,7 +11,7 @@ pip install -e ".[all]"
 rigsmith ui
 ```
 
-> **Status: everything runs today.** Rig authoring, validation, NAM analysis, tone matching, catalog extraction, USB backup, MIDI, guitar learning, song maps, the hardware loop, the tuner, autopilot, the chat and the web UI are covered by 1161 tests. The Remote Editor protocol has been captured against a real Core and a rig written to it and read back exactly - see [docs/PROTOCOL.md](docs/PROTOCOL.md). What still wants hardware is *measuring*: the loop and the blind A/B need the Core and an interface plugged in - [docs/FIRST_SESSION.md](docs/FIRST_SESSION.md) walks through that first session.
+> **Status: everything runs today.** Rig authoring, validation, NAM analysis, tone matching, catalog extraction, USB backup, MIDI, guitar learning, song maps, the hardware loop, the tuner, autopilot, the chat and the web UI are covered by 1162 tests. The Remote Editor protocol has been captured against a real Core and a rig written to it and read back exactly - see [docs/PROTOCOL.md](docs/PROTOCOL.md). What still wants hardware is *measuring*: the loop and the blind A/B need the Core and an interface plugged in - [docs/FIRST_SESSION.md](docs/FIRST_SESSION.md) walks through that first session.
 
 ---
 
@@ -591,7 +591,7 @@ pip install -e ".[all]"     # everything, including the UI and test deps
 pip install -e .            # core only: discovery, protocol capture, rig authoring
 ```
 
-Extras: `ui`, `mcp`, `midi`, `audio`, `match`, `separation`, `browser`, `claude` (the Anthropic SDK, for agents on the API rather than through Claude Code), `tune` (Optuna, for larger tuning budgets), `transcribe` (Spotify's basic-pitch: open six-string chords, slow driven fingerpicking, drop-tuned chugs among chord stabs and reverb-soaked arpeggios, which the built-in transcriber reads less well - single notes, riffs, palm-muted chugs, arpeggios, Travis picking, strummed and power chords it reads well and voices as played; it runs as its own command, so if it will not install on rigsmith's Python, install it apart - `pipx install basic-pitch --python 3.11` - and it is found on the PATH, or set `RIGSMITH_BASIC_PITCH` to its command; used automatically once installed, and not in `all` for its size), `codecs` (FFmpeg through PyAV, so a bought .m4a/AAC song reads as it is, and candidates are re-encoded as AAC to compare fairly against it), `dev`. `rigsmith doctor` tells you which you're missing and why you'd want each.
+Extras: `ui`, `mcp`, `midi`, `audio`, `match`, `separation`, `browser`, `claude` (the Anthropic SDK, for agents on the API rather than through Claude Code), `tune` (Optuna, for larger tuning budgets), `transcribe` (Spotify's basic-pitch: open six-string chords, slow driven fingerpicking, drop-tuned chugs among chord stabs and the odd reverb-soaked arpeggio, which the built-in transcriber reads less well - single notes, riffs, palm-muted chugs, arpeggios, Travis picking, strummed and power chords it reads well and voices as played; it runs as its own command, so if it will not install on rigsmith's Python, install it apart - `pipx install basic-pitch --python 3.11` - and it is found on the PATH, or set `RIGSMITH_BASIC_PITCH` to its command; used automatically once installed, and not in `all` for its size), `codecs` (FFmpeg through PyAV, so a bought .m4a/AAC song reads as it is, and candidates are re-encoded as AAC to compare fairly against it), `dev`. `rigsmith doctor` tells you which you're missing and why you'd want each.
 
 ## Documentation
 

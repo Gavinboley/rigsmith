@@ -956,6 +956,28 @@ def test_an_arpeggio_is_read_note_for_note_and_left_to_ring(amp_type, gain, shar
     assert np.median([e.velocity for e in result.events]) == pytest.approx(0.75, abs=0.03)
 
 
+def test_a_clean_arpeggio_in_a_reverb_is_still_an_arpeggio():
+    """The reverb keeps each note ringing into the next, and the attack's
+    phantom an octave under the note counted as a second pitch: the demo
+    song's clean intro read as chords, 41 notes for 18, and its DI strummed
+    them - the wrong amp came closest to it."""
+    from scipy.signal import fftconvolve
+
+    from rigsmith.loop.virtual import SimAmp
+
+    beat = 60 / 110
+    truth = _arpeggio(beat=beat)
+    dry = SimAmp(Type=0, Gain=0.1).process(render_notes(truth, seed=5))
+    n = int(1.5 * RATE)
+    tail = np.random.default_rng(3).normal(0, 1, n) * np.exp(-6.9 * np.arange(n) / n)
+    wet = fftconvolve(dry, tail)[: len(dry)]
+    audio = dry + 0.3 * wet * np.sqrt(np.mean(dry ** 2) / np.mean(wet ** 2))
+    result = transcribe(audio, RATE, method="builtin", match_record_pitch=False)
+    assert result.mode == "arpeggio", result.describe()
+    hits = sum(any(abs(e.start - t) < 0.05 and abs(e.midi - m) < 0.5 for e in result.events) for t, _, m, _ in truth)
+    assert hits >= 0.8 * len(truth) and len(result.events) <= 1.1 * len(truth), (hits, len(result.events))
+
+
 def test_a_driven_arpeggio_s_picks_are_found_though_the_level_never_rises():
     """The amp holds a driven arpeggio's level flat, and the rise test kept
     one of its 64 picks. The new note's partials arriving give the rest."""

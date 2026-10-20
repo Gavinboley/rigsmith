@@ -25,6 +25,7 @@ note right):
 | Strummed triads, sevenths, eighth-note re-strums | 0.84-1.00 |
 | Power chords - E or drop C, two or three strings, low or up the neck | 0.46-1.00 (high gain lowest) |
 | Arpeggios and Travis picking, each note left to ring | 0.62-1.00 |
+| Clean arpeggios in a long reverb | read as arpeggios 41 times in 45 |
 
 Chords are voiced the way they were played - a two-note E5 as two notes, a
 close triad close, a drop-D low string kept - by reading the octaves after
@@ -93,7 +94,7 @@ These still read poorly, and want basic-pitch or a tab:
 - open six-string chords (0.55-0.70),
 - slow, driven fingerpicking,
 - chugs among chord stabs in a drop tuning (0.1-0.4),
-- a clean arpeggio drenched in a long reverb (read as chords),
+- the odd clean arpeggio in a long reverb - 4 in 45 still read as chords,
 - parts that switch between single notes and chords within a bar,
 - a lead centred between a double-tracked rhythm. Where the two takes meet
   some of them still leak into the centre, and the lead's notes come back

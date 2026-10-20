@@ -102,10 +102,12 @@ beside the record, before anything is written. The blind A/B plays the
 finalists - three different amps, the best of each - without their names, and
 "use what my ears picked" rebuilds the draft from your choice.
 
-Where the part was heard through a room or between layers, tuning can let
-the wrong gain range edge ahead by a few percent: on the demo song the solo
-went to the modern amp over the lead one (0.353 against 0.357), the clean
-intro to an edge-of-breakup amp. On sixteen dry parts it never did - tuning
+Where the part was heard between layers, tuning can let the wrong gain
+range edge ahead by a few percent: on the demo song the solo went to the
+modern amp over the lead one (0.353 against 0.357). A DI playing other notes
+than the record does it too - the demo's clean intro, read as chords in its
+room, went to an edge-of-breakup amp until it was read as the arpeggio it
+is. On sixteen dry parts it never did - tuning
 put the right range first every time, where hearing the amps untuned did so
 fourteen times. The runner-up amp is always in the blind test for this.
 
