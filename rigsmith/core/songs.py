@@ -101,7 +101,9 @@ class Part:
 #: tremolo heard at all, and every tremolo's depth. 4: the room measured
 #: where playing stops, so reverb is read rather than guessed. 5: the same
 #: music twice in a row is one section, and a last chorus is not an outro.
-ANALYSIS_VERSION = 5
+#: 6: sections start where the music changes, not up to a second late; a
+#: centred part's echo read from the stem; the room and a chorus told apart.
+ANALYSIS_VERSION = 6
 
 
 @dataclass

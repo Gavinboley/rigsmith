@@ -884,7 +884,64 @@ def _device_hosts(run: Run) -> set[str] | None:
     return set(check.hosts)
 
 
+#: A reverb's time (to fall 60 dB) per ms of the decay the map measures - the
+#: map times the first 20 dB or so (rooms of 0.8-4 s read 242-1369 ms).
+ROOM_PER_DECAY = 3.3
+
+#: How much of the room the candidates are heard through - the draft's
+#: reverb's own mix.
+ROOM_MIX = 0.25
+
+
+def _room_of(run: Run) -> float | None:
+    """The part's room as a reverb time in seconds, when the map timed one."""
+    from . import songs
+
+    try:
+        part = _part(songs.get(run.song_id), run)
+    except Exception:
+        return None
+    decay = (part.sketch or {}).get("decay_ms")
+    if not decay or float(decay) < 120:
+        return None
+    return ROOM_PER_DECAY * float(decay) / 1000.0
+
+
+def _through_room(audio, rt60: float, rate: int):
+    """``audio`` in a room ``rt60`` seconds long, :data:`ROOM_MIX` of it wet."""
+    import numpy as np
+    from scipy.signal import fftconvolve
+
+    t = np.arange(int(rt60 * 1.2 * rate)) / rate
+    ir = np.random.default_rng(0).normal(0, 1, len(t)) * 10 ** (-3 * t / rt60)
+    wet = fftconvolve(audio, ir / np.sqrt(np.sum(ir**2)))[: len(audio)]
+    return (1 - ROOM_MIX) * audio + ROOM_MIX * wet / max(float(np.std(wet)), 1e-12) * float(np.std(audio))
+
+
 def _bench(run: Run, rate: int):
+    """A function that plays a DI through a candidate amp, on the chosen bench
+    - and, when the map timed the part's room, through a room like it.
+
+    The amps are heard with nothing after them, and a record in a room was
+    scored against them tail and all: a clean lead in a 1.6 s room was
+    heard as a modern high-gain amp. Through a room like the record's, the
+    voicing each part was made with won 7 times in 9 (3 without), and the
+    knobs came out as close as for a dry record. The room is after the amp
+    in the chain, so it is the same added to the Core's reamp.
+    """
+    render = _bench_dry(run, rate)
+    rt60 = _room_of(run)
+    if rt60 is None:
+        return render
+    run.note(f"the amps were heard through a {rt60:.1f} s room like the part's - the record's tail is part of what they were compared with; the draft has the reverb")
+
+    def heard(candidate, di, knobs):
+        return _through_room(render(candidate, di, knobs), rt60, rate)
+
+    return heard
+
+
+def _bench_dry(run: Run, rate: int):
     """A function that plays a DI through a candidate amp, on the chosen bench."""
     if run.request.bench == "virtual":
         from ..loop.virtual import SimAmp

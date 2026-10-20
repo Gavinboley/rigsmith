@@ -749,3 +749,29 @@ def test_the_record_s_echo_is_taken_out_before_the_amps_are_heard(workspace):
         assert said is delayed, run.all_notes()
         if delayed:
             assert np.abs(heard - target[: len(heard)]).max() > 0.01, "the repeats are gone"
+
+
+def test_a_part_in_a_room_has_its_amps_heard_through_one(workspace):
+    """A clean lead in a 1.6 s room was heard as a modern high-gain amp: the
+    record's tail filled what the dry amps left silent."""
+    from rigsmith.core import songs
+    from rigsmith.core.songs import Part
+    from rigsmith.tune.candidates import Candidate
+
+    made = songs.create("Roomy")
+    made.parts = [
+        Part("intro-1-stem", 0, "intro", "stem", 0.0, 8.0, sketch={"decay_ms": 600.0, "space": "a plate or hall"}),
+        Part("verse-2-left", 1, "verse", "left", 8.0, 16.0, sketch={"decay_ms": None, "space": ""}),
+    ]
+    made.save()
+    roomy = autopilot.Run(run_id="r1", request=autopilot.Request(title="Roomy"), song_id=made.song_id, part_ids=["intro-1-stem"])
+    dry = autopilot.Run(run_id="r2", request=autopilot.Request(title="Roomy"), song_id=made.song_id, part_ids=["verse-2-left"])
+    assert autopilot._room_of(roomy) == pytest.approx(autopilot.ROOM_PER_DECAY * 0.6)
+    assert autopilot._room_of(dry) is None
+
+    burst = np.zeros(2 * RATE)
+    burst[: RATE // 4] = np.sin(2 * np.pi * 220 * np.arange(RATE // 4) / RATE)
+    amp = Candidate("Sim", "clean", "1x12", "test", voicing=0)
+    tail = lambda audio: float(np.sqrt(np.mean(audio[RATE:] ** 2)))  # noqa: E731
+    assert tail(autopilot._bench(roomy, RATE)(amp, burst, None)) > 10 * tail(autopilot._bench(dry, RATE)(amp, burst, None))
+    assert any("heard through a 2.0 s room" in note for note in roomy.all_notes())

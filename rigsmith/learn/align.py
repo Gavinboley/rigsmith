@@ -451,16 +451,27 @@ def _contour(audio: np.ndarray, sample_rate: int, hop_s: float = 0.025) -> np.nd
     return 20 * np.log10(np.sqrt((frames**2).mean(axis=1)) + 1e-6)
 
 
+#: How far either side of the placement the loudness is followed, in seconds.
+#: The chroma path places a take to within a frame or two, and a riff in
+#: eighth notes followed 0.75 placed exactly and 0.30 placed 30 ms off - a
+#: take of the part judged too loose to use.
+LEVEL_SEARCH_S = 0.05
+
+
 def _level_agreement(take, record, sample_rate: int, rate: float, offset: float, hop_s: float = 0.025) -> float:
-    """How well the take's loudness contour follows the record's once placed."""
+    """How well the take's loudness contour follows the record's once placed -
+    at the best of the placements within :data:`LEVEL_SEARCH_S` of it."""
     take_c, record_c = _contour(take, sample_rate, hop_s), _contour(record, sample_rate, hop_s)
     if not len(take_c) or not len(record_c):
         return 0.0
-    index = np.round(((np.arange(len(record_c)) * hop_s - offset) / rate) / hop_s).astype(int)
-    valid = (index >= 0) & (index < len(take_c))
-    if valid.sum() < 40 or np.std(take_c[index[valid]]) < 1e-6:
-        return 0.0
-    return float(np.corrcoef(record_c[valid], take_c[index[valid]])[0, 1])
+    best = 0.0
+    for shift in np.arange(-LEVEL_SEARCH_S, LEVEL_SEARCH_S + 1e-9, hop_s / 2):
+        index = np.round(((np.arange(len(record_c)) * hop_s - offset - shift) / rate) / hop_s).astype(int)
+        valid = (index >= 0) & (index < len(take_c))
+        if valid.sum() < 40 or np.std(take_c[index[valid]]) < 1e-6:
+            continue
+        best = max(best, float(np.corrcoef(record_c[valid], take_c[index[valid]])[0, 1]))
+    return best
 
 
 def apply_take(take: np.ndarray, sample_rate: int, alignment: TakeAlignment, length: int, *, record: np.ndarray | None = None) -> np.ndarray:

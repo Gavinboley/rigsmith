@@ -115,6 +115,18 @@ def with_drums(stem):
     return stem + drums[:, None]
 
 
+def test_a_section_starts_where_the_music_changes():
+    """The 2 s smoothing that keeps a fill from reading as a section smeared
+    the change: the demo song's clean intro ended up to 0.8 s late, its part
+    holding the start of the driven verse."""
+    from rigsmith.core import demo
+
+    mix, _, sections = demo.render(seconds_per_section=12.0)
+    found = [s.start for s in structure.analyse(mix, demo.RATE).sections[1:]]
+    for change in (s["start"] for s in sections[1:]):
+        assert min(abs(f - change) for f in found) <= 0.3, (change, found)
+
+
 def test_tempo_and_most_section_changes_are_found():
     stem, truth = song()
     result = structure.analyse(with_drums(stem), RATE)

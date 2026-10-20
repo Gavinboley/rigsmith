@@ -169,6 +169,34 @@ def _level(frames_db: np.ndarray) -> float:
     return float(10 * np.log10(np.mean(10 ** (np.asarray(frames_db) / 10)) + 1e-12))
 
 
+#: Move each section boundary to the sharpest change near it (see :func:`analyse`).
+REFINE_BOUNDARIES = True
+
+#: How far a boundary may move, and the stretch either side compared, in seconds.
+REFINE_REACH_S = 1.5
+REFINE_SPAN_S = 0.6
+
+
+def _sharpest(series: list[np.ndarray], at: int) -> int:
+    """The frame near ``at`` where the features after differ most from those
+    before - each family's difference scaled to its own largest here, then
+    summed."""
+    k = max(1, int(REFINE_SPAN_S / HOP_S))
+    n = len(series[0])
+    lo, hi = max(k, at - int(REFINE_REACH_S / HOP_S)), min(n - k, at + int(REFINE_REACH_S / HOP_S) + 1)
+    if hi <= lo:
+        return at
+    index = np.arange(lo, hi)
+    score = np.zeros(len(index))
+    for x in series:
+        total = np.vstack([np.zeros((1, x.shape[1])), np.cumsum(x, axis=0)])
+        after = (total[index + k] - total[index]) / k
+        before = (total[index] - total[index - k]) / k
+        change = np.linalg.norm(after - before, axis=1)
+        score += change / max(float(change.max()), 1e-12)
+    return int(index[int(np.argmax(score))])
+
+
 def novelty(features: np.ndarray, kernel_s: float = 8.0, hop_s: float = HOP_S) -> np.ndarray:
     """Foote's checkerboard novelty along a self-similarity matrix."""
     n = len(features)
@@ -321,6 +349,15 @@ def analyse(audio: np.ndarray, sample_rate: int, *, min_section_s: float | None 
                 continue
             peaks.append(i)
     edges = [0] + [p for p in peaks if minimum <= p <= n - minimum] + [n]
+    if REFINE_BOUNDARIES:
+        # Each boundary moved to where the music changes most sharply close
+        # by. The 2 s smoothing that keeps a fill from reading as a section
+        # smears the change too: the demo song's clean intro ended 0.6 s
+        # late, its part holding the first of the driven verse - which no
+        # clean amp could be scored against.
+        sharp = [chroma_n, timbre_z[:, 1:], loud[:, None]]
+        refined = [_sharpest(sharp, p) for p in edges[1:-1]]
+        edges = [0] + sorted({p for p in refined if 0 < p < n}) + [n]
 
     segments = []
     for a, b in zip(edges[:-1], edges[1:]):
