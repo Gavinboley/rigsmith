@@ -7,6 +7,13 @@ wrong, every candidate is heard playing a different part from the record,
 and the search tunes the amp to make up for notes. So the notes are worth a
 glance before anything is tuned against them.
 
+How much, measured end to end - a known amp, a DI from the true notes or from
+a wrong reading, tuned, then the tone it found heard on the true notes beside
+the record's: on a clean power-chord part a wrong reading left the tone twice
+as far off; through a driven amp, about a quarter further at most. Wrong notes
+also raise every candidate's score (0.09 to 0.20 on a crunch part), which
+hides how close the best one really is.
+
 ## What it reads well
 
 Measured on synthetic parts, clean through high gain (F1 a note, 1.0 is every
