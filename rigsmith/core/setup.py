@@ -72,6 +72,21 @@ def _midi() -> Step:
     return Step("midi", "MIDI over USB", False, "MIDI is ready; plug the Core in over USB and it shows up here.", "device", optional=True)
 
 
+def _isolation() -> Step:
+    """Pulling the guitar out of a record, so a part is measured on its own."""
+    from ..match.separate import demucs_available
+
+    if demucs_available():
+        return Step("isolation", "Guitar isolation", True, "Demucs is installed - a song's guitar is pulled out of the mix before it is mapped", "songs", optional=True)
+    return Step(
+        "isolation", "Guitar isolation", False,
+        "Install Demucs (pip install 'rigsmith[separation]', a few GB) to pull the guitar out of a record. "
+        "Without it parts are measured from the full mix: guitars panned left and right still come out "
+        "mostly on their own, a centred one shares its layer with the vocals, bass and drums.",
+        "songs", optional=True,
+    )
+
+
 def _loop() -> Step:
     from . import loop
 
@@ -127,7 +142,7 @@ def _brains() -> Step:
 
 
 def checklist() -> list[Step]:
-    return [_guitar(), _song(), _core(), _midi(), _loop(), _brains()]
+    return [_guitar(), _song(), _isolation(), _core(), _midi(), _loop(), _brains()]
 
 
 def render(steps: list[Step]) -> str:
