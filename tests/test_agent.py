@@ -180,6 +180,48 @@ def test_a_dispatched_agent_reports_back(workspace, monkeypatch):
     assert chat.agent_result(run_id) == "done: There are no songs yet."
 
 
+def test_the_song_mapper_can_read_a_parts_notes_and_ask_for_another_reading(workspace, monkeypatch):
+    """The notes view and a part's reading are the mapper's to use: it reads
+    a rendered part's notes, and the re-render offers the readings by name."""
+    from rigsmith.core import songs, takes
+    from rigsmith.core.songs import Part
+    from rigsmith.learn.synth import NoteEvent
+
+    # What a local model is handed: the readings by name.
+    spec = tools.flatten(tools.registry()["render_song_part_di"].schema)["properties"]["reading"]
+    assert set(spec.get("enum", [])) >= {"auto", "mono", "poly", "arpeggio"}
+
+    made = songs.create("Picked")
+    made.parts = [Part("intro-1-stem", 0, "intro", "stem", 0.0, 4.0)]
+    made.save()
+    wav = workspace / "intro-di.wav"
+    import numpy as np
+    import soundfile
+
+    soundfile.write(str(wav), np.zeros(4800), 48000)
+    events = [NoteEvent(start=0.25 * i, duration=0.4, midi=52.0 + (i % 4) * 4) for i in range(8)]
+    wav.with_suffix(".notes.json").write_text(json.dumps({"source": "transcribed", "events": [e.to_dict() for e in events]}), encoding="utf-8")
+    take = takes.add(wav, take_id="intro-di", kind="di", origin="synth", copy=False)
+    song = songs.get(made.song_id)
+    song.part("intro-1-stem").di_take = take.take_id
+    song.part("intro-1-stem").heard_as = "polyphonic"
+    song.save()
+
+    transport, seen = scripted([
+        call("song_part_notes", {"song_id": made.song_id, "part_id": "intro-1-stem"}),
+        {"role": "assistant", "content": "Read as chords, but it is single picks - render it as an arpeggio."},
+    ])
+    monkeypatch.setattr(providers, "from_settings", lambda *a, **k: local(transport))
+    message = chat.dispatch("song-mapper", "check the intro's notes")
+    run_id = message.split("run ")[1].split(".")[0]
+    deadline = time.time() + 10
+    while chat.agent_run(run_id)["state"] == "running" and time.time() < deadline:
+        time.sleep(0.05)
+    assert "arpeggio" in chat.agent_result(run_id)
+    tool_answers = [m for m in seen[-1]["messages"] if m["role"] == "tool"]
+    assert tool_answers and "8 notes from transcribed, heard as polyphonic, E3 to E4" in tool_answers[0]["content"]
+
+
 def test_the_assistant_is_not_handed_device_writes(workspace, monkeypatch):
     transport, _ = scripted([call("write_rig", {"draft_id": "x"}), {"role": "assistant", "content": "I can't do that here."}])
     monkeypatch.setattr(providers, "from_settings", lambda *a, **k: local(transport))
