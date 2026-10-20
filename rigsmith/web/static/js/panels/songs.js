@@ -12,6 +12,7 @@ import { goTo, onArrive } from "../nav.js";
 import { $, attempt, clear, el, prompt, toast } from "../ui.js";
 import { dropZone } from "../upload.js";
 import { ask } from "../chat.js";
+import { noteName, pianoRoll } from "../charts.js";
 
 let songId = null;
 let song = null;
@@ -321,7 +322,8 @@ function partsGrid() {
             { class: "p-di hint" },
             el("span", { class: `tag ${part.di.kind === "yours" ? "a2" : ""}`, text: part.di.kind === "yours" ? "your take" : "rendered DI" }),
             el("span", { text: part.di.kind === "yours" ? " autopilot uses it" : ` on ${part.di.guitar || "the synthetic string"}${readingText(part)}` }),
-            el("button", { class: "btn small ghost", text: "play DI", onclick: (e) => play(part.di.url, e.target) })
+            el("button", { class: "btn small ghost", text: "play DI", onclick: (e) => play(part.di.url, e.target) }),
+            part.di.kind === "yours" ? null : el("button", { class: "btn small ghost", text: "notes", title: "See the notes this DI plays", "aria-expanded": "false", onclick: (e) => showNotes(part, e.currentTarget) })
           )
         : null,
       sketch.suggestions?.length ? el("details", {}, el("summary", { class: "hint", text: "what the measurements suggest" }), el("ul", { class: "hint" }, ...sketch.suggestions.map((s) => el("li", { text: s })))) : null,
@@ -448,6 +450,37 @@ function readingText(part) {
   const heard = HEARD_AS[part.heard_as];
   if (!heard) return "";
   return part.heard_as === "midi" || part.heard_as === "text" ? `, notes from ${heard}` : `, heard as ${heard}`;
+}
+
+/** The notes a rendered DI plays, drawn under it - a wrong transcription
+ * shows before a tone is tuned against it. Clicking again folds it away. */
+async function showNotes(part, button) {
+  const line = button.closest(".p-di");
+  const open = line.nextElementSibling?.classList.contains("p-notes") ? line.nextElementSibling : null;
+  if (open) {
+    open.remove();
+    button.setAttribute("aria-expanded", "false");
+    return;
+  }
+  const notes = await attempt(() => api.get(`/api/songs/${songId}/parts/${encodeURIComponent(part.part_id)}/notes`));
+  if (!notes) return;
+  const pitches = notes.events.map((e) => Math.round(e.midi));
+  const range = pitches.length ? `, ${noteName(Math.min(...pitches))} to ${noteName(Math.max(...pitches))}` : "";
+  const roll = el("div", { class: "p-roll" });
+  const box = el(
+    "div",
+    { class: "p-notes" },
+    roll,
+    el(
+      "div",
+      { class: "hint" },
+      el("span", { text: `${notes.events.length} notes${range}` }),
+      notes.midi_url ? el("a", { href: notes.midi_url, download: "", text: "save as MIDI", title: "Fix a wrong note in a tab editor, then render the part from that MIDI" }) : null
+    )
+  );
+  line.after(box);
+  button.setAttribute("aria-expanded", "true");
+  pianoRoll(roll, notes.events, { duration: notes.duration, label: `The notes of ${part.label}` });
 }
 
 async function renderDi(part) {

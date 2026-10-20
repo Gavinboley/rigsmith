@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from urllib.parse import quote
+
 from fastapi import APIRouter
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from ...core import songs
@@ -195,6 +198,26 @@ def part_di(song_id: str, part_id: str, body: PartDiBody) -> dict:
 
     job = get_manager().submit(f"render {part_id} on {body.profile_id}", run)
     return {"job_id": job.id, "name": job.name}
+
+
+@router.get("/{song_id}/parts/{part_id}/notes")
+def part_notes(song_id: str, part_id: str) -> dict:
+    """The notes a part's rendered DI plays, for drawing over the part."""
+    notes = songs.part_notes(song_id, part_id)
+    midi = notes.pop("midi_path")
+    notes["midi_url"] = f"/api/songs/{quote(song_id)}/parts/{quote(part_id)}/notes.mid" if midi else None
+    return notes
+
+
+@router.get("/{song_id}/parts/{part_id}/notes.mid")
+def part_notes_midi(song_id: str, part_id: str) -> FileResponse:
+    """The same notes as MIDI - for a tab editor, to fix one and render from it."""
+    from ...core.errors import NotFound
+
+    midi = songs.part_notes(song_id, part_id)["midi_path"]
+    if not midi:
+        raise NotFound("no MIDI was kept with this part's DI", hint="Render the part again.")
+    return FileResponse(midi, media_type="audio/midi", filename=f"{song_id}-{part_id}.mid")
 
 
 class TakeBody(BaseModel):

@@ -627,6 +627,28 @@ def test_tone3000_login_is_reachable_from_the_page(client):
         assert "client id" in (job["error"] or "").lower()
 
 
+def test_a_part_s_notes_are_served_with_their_midi(client, monkeypatch, tmp_path):
+    from rigsmith.core import songs
+    from rigsmith.core.errors import NotFound
+
+    midi = tmp_path / "part.mid"
+    midi.write_bytes(b"MThd-not-really")
+    notes = {"part_id": "intro-1-stem", "label": "intro - all guitars", "duration": 4.0, "source": "transcribed",
+             "heard_as": "arpeggio", "events": [{"start": 0.0, "duration": 0.5, "midi": 52.0}], "midi_path": str(midi)}
+    monkeypatch.setattr(songs, "part_notes", lambda song_id, part_id: dict(notes))
+    payload = client.get("/api/songs/a-song/parts/intro-1-stem/notes").json()
+    assert payload["events"][0]["midi"] == 52.0
+    assert "midi_path" not in payload, "the page gets a URL, not a path on disk"
+    response = client.get(payload["midi_url"])
+    assert response.status_code == 200 and response.content == b"MThd-not-really"
+
+    def missing(song_id, part_id):
+        raise NotFound("intro has no DI yet")
+
+    monkeypatch.setattr(songs, "part_notes", missing)
+    assert client.get("/api/songs/a-song/parts/intro-1-stem/notes").status_code == 404
+
+
 def test_a_part_can_be_read_as_an_arpeggio_from_the_song_page(client, monkeypatch, tmp_path):
     from types import SimpleNamespace
 

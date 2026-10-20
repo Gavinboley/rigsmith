@@ -538,6 +538,36 @@ def test_a_part_says_how_its_rendered_notes_were_heard():
     assert _heard_as(SimpleNamespace(source="midi", method=None)) == "midi"
 
 
+def test_a_rendered_part_s_notes_can_be_read_back(workspace):
+    """The notes behind a DI, to draw over the part and to fix in a tab editor."""
+    import json
+
+    from rigsmith.core import takes
+    from rigsmith.core.errors import NotFound
+    from rigsmith.core.songs import Part
+    from rigsmith.learn import midifile
+    from rigsmith.learn.synth import NoteEvent
+    from rigsmith.match.render_offline import save_audio
+
+    made = songs.create("Shown")
+    made.parts = [Part("intro-1-stem", 0, "intro", "stem", 0.0, 4.0)]
+    made.save()
+    with pytest.raises(NotFound):
+        songs.part_notes(made.song_id, "intro-1-stem")
+    wav = workspace / "shown-part.wav"
+    save_audio(wav, render_notes([(0.0, 0.5, 52, 0.8)], seed=1), RATE)
+    events = [NoteEvent(start=0.0, duration=0.5, midi=52.0)]
+    wav.with_suffix(".notes.json").write_text(json.dumps({"source": "transcribed", "events": [e.to_dict() for e in events]}), encoding="utf-8")
+    midifile.write(wav.with_suffix(".mid"), events)
+    take = takes.add(wav, take_id="shown", kind="di", origin="synth", copy=False)
+    song = songs.get(made.song_id)
+    song.part("intro-1-stem").di_take = take.take_id
+    song.save()
+    notes = songs.part_notes(made.song_id, "intro-1-stem")
+    assert [round(e["midi"]) for e in notes["events"]] == [52]
+    assert notes["duration"] == 4.0 and notes["source"] == "transcribed" and notes["midi_path"]
+
+
 def test_a_part_keeps_the_reading_it_was_corrected_to(workspace, monkeypatch):
     """Autopilot renders a part's DI afresh on every run: a part the user
     had read as an arpeggio would have gone back to chords on the next."""

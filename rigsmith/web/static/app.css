@@ -321,7 +321,11 @@ button:focus-visible, summary:focus-visible, [tabindex]:focus-visible { outline:
 .tag.a1   { color: var(--blue);   border-color: #244560; }
 .tag.warn { color: var(--amber);  border-color: var(--amber-dim); }
 .tempo-line { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 4px; }
-.p-di { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
+.p-di { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 4px; }
+.p-notes { margin-top: 6px; }
+.p-notes canvas { display: block; background: var(--bg-sunken); border: 1px solid var(--line-soft); border-radius: 6px; }
+.p-notes .hint { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 4px; }
+.p-notes a { color: var(--amber); }
 .tempo-line .btn.small { padding: 2px 7px; }
 .tag.bad  { color: var(--red);    border-color: #5b2723; }
 

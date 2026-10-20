@@ -28,4 +28,64 @@ export function lineChart(host, spec) {
   return new uPlot(options, data, host);
 }
 
+const NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+
+/** "E2" for 40. */
+export function noteName(midi) {
+  const m = Math.round(midi);
+  return `${NAMES[((m % 12) + 12) % 12]}${Math.floor(m / 12) - 1}`;
+}
+
+/**
+ * Notes as a piano roll: time across, pitch up, a faint line on every E -
+ * a guitar's own landmarks. Brighter is harder.
+ * @param {HTMLElement} host
+ * @param {{start: number, duration: number, midi: number, velocity?: number}[]} events
+ * @param {{duration?: number, height?: number, label?: string}} [opts]
+ */
+export function pianoRoll(host, events, opts = {}) {
+  host.innerHTML = "";
+  if (!events.length) {
+    host.append(el("div", { class: "hint", text: "no notes" }));
+    return null;
+  }
+  const width = Math.max(220, host.clientWidth || 300);
+  const height = opts.height || 96;
+  const ratio = window.devicePixelRatio || 1;
+  const canvas = el("canvas", {
+    width: Math.round(width * ratio),
+    height: Math.round(height * ratio),
+    style: `width:${width}px;height:${height}px`,
+    role: "img",
+    "aria-label": opts.label || `${events.length} notes`,
+  });
+  const pitches = events.map((e) => Math.round(e.midi));
+  const low = Math.min(...pitches) - 1;
+  const high = Math.max(...pitches) + 1;
+  const end = Math.max(opts.duration || 0, ...events.map((e) => e.start + e.duration)) || 1;
+  const row = height / (high - low + 1);
+  const top = (m) => height - (m - low + 1) * row;
+  const ctx = canvas.getContext("2d");
+  ctx.scale(ratio, ratio);
+  ctx.strokeStyle = "#262d36";
+  ctx.lineWidth = 1;
+  for (let m = low; m <= high; m++) {
+    if (((m % 12) + 12) % 12 !== 4) continue;
+    const y = Math.round(top(m) + row / 2) + 0.5;
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(width, y);
+    ctx.stroke();
+  }
+  ctx.fillStyle = COLOURS.amber;
+  for (const e of events) {
+    ctx.globalAlpha = 0.4 + 0.6 * Math.min(1, Math.max(0, e.velocity ?? 0.75));
+    const x = (e.start / end) * width;
+    ctx.fillRect(x, top(Math.round(e.midi)), Math.max(2, (e.duration / end) * width - 1), Math.max(2, row - 1));
+  }
+  ctx.globalAlpha = 1;
+  host.append(canvas);
+  return canvas;
+}
+
 export const COLOURS = { amber: "#f0a020", green: "#48b884", blue: "#5aa3e0", red: "#e0574b", violet: "#a07ae0", dim: "#6b7583" };
