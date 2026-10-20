@@ -31,7 +31,9 @@ the parts that need the Core, your guitar or your copy of a song say so.
   chugs, strummed and power chords read right through gain, and arpeggios
   note for note, each left to ring; fingerpicking and the full voicing of
   open chords want basic-pitch (`pip install 'rigsmith[transcribe]'`), which
-  is used automatically once installed.
+  is used automatically once installed. A part read the wrong way can be
+  re-read as single notes, chords or an arpeggio ("on my guitar" on its
+  card), and keeps that reading for autopilot.
 - A re-map keeps your choices, even where sections moved.
 
 ## Your guitar and the loop

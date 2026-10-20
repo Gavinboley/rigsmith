@@ -518,6 +518,43 @@ def test_two_old_parts_merged_into_one_keep_both_notes():
     assert "first half" in merged[0].note and "second half" in merged[0].note and "r2" in merged[0].note
 
 
+def test_a_reading_follows_its_part_through_a_re_map():
+    from rigsmith.core.songs import Part, carry_over
+
+    before = {"intro-1-left": Part("intro-1-left", 0, "intro", "left", 0.0, 12.0, reading="arpeggio")}
+    renamed = [Part("verse-1-left", 0, "verse", "left", 0.0, 12.2)]
+    carry_over(before, renamed)
+    assert renamed[0].reading == "arpeggio"
+
+
+def test_a_part_keeps_the_reading_it_was_corrected_to(workspace, monkeypatch):
+    """Autopilot renders a part's DI afresh on every run: a part the user
+    had read as an arpeggio would have gone back to chords on the next."""
+    from types import SimpleNamespace
+
+    from rigsmith.core import parts as part_rendering
+    from rigsmith.core.errors import Invalid
+    from rigsmith.core.songs import Part
+
+    seen = []
+
+    def fake_part_di(profile_id, **kwargs):
+        seen.append(kwargs["mode"])
+        return SimpleNamespace(take_id="rendered")
+
+    monkeypatch.setattr(part_rendering, "part_di", fake_part_di)
+    made = songs.create("Picked")
+    made.parts = [Part("intro-1-stem", 0, "intro", "stem", 0.0, 10.0)]
+    made.save()
+    songs.render_part_di(made.song_id, "intro-1-stem", None)
+    songs.render_part_di(made.song_id, "intro-1-stem", None, reading="arpeggio")
+    songs.render_part_di(made.song_id, "intro-1-stem", None)
+    assert seen == ["auto", "arpeggio", "arpeggio"]
+    assert songs.get(made.song_id).part("intro-1-stem").reading == "arpeggio"
+    with pytest.raises(Invalid):
+        songs.render_part_di(made.song_id, "intro-1-stem", None, reading="chug")
+
+
 def test_a_run_finds_its_part_again_after_a_re_map_renames_it(workspace):
     from rigsmith.core import autopilot
     from rigsmith.core.songs import Part

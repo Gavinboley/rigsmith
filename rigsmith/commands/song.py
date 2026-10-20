@@ -216,8 +216,9 @@ def song_target(song_id, part_id) -> None:
 @click.option("--power-chords", is_flag=True)
 @click.option("--like", help="The record's guitar, when it was not yours: strat, p90, paf, a learned guitar...")
 @click.option("--amount", type=click.FloatRange(0, 1), default=1.0, show_default=True, help="How far toward --like.")
+@click.option("--reading", type=click.Choice(["auto", "mono", "poly", "arpeggio"]), help="How to read the stem into notes; kept for the part's later renders.")
 @handled
-def song_di(song_id, part_id, profile_id, midi_path, track, text, power_chords, like, amount) -> None:
+def song_di(song_id, part_id, profile_id, midi_path, track, text, power_chords, like, amount, reading) -> None:
     """Render a part as a DI on your guitar, on the part's own clock."""
     from ..core import songs
 
@@ -225,7 +226,7 @@ def song_di(song_id, part_id, profile_id, midi_path, track, text, power_chords, 
         result = songs.render_part_di(
             song_id, part_id, None if profile_id == "synthetic" else profile_id,
             midi=midi_path, track=track, text=text, power_chords=power_chords,
-            like=like, amount=amount, progress=bar,
+            like=like, amount=amount, reading=reading, progress=bar,
         )
     click.echo(result.render())
 

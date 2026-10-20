@@ -320,7 +320,7 @@ function partsGrid() {
             "div",
             { class: "p-di hint" },
             el("span", { class: `tag ${part.di.kind === "yours" ? "a2" : ""}`, text: part.di.kind === "yours" ? "your take" : "rendered DI" }),
-            el("span", { text: part.di.kind === "yours" ? " autopilot uses it" : ` on ${part.di.guitar || "the synthetic string"}` }),
+            el("span", { text: part.di.kind === "yours" ? " autopilot uses it" : ` on ${part.di.guitar || "the synthetic string"}${READ_AS[part.reading] ? `, read as ${READ_AS[part.reading]}` : ""}` }),
             el("button", { class: "btn small ghost", text: "play DI", onclick: (e) => play(part.di.url, e.target) })
           )
         : null,
@@ -432,12 +432,22 @@ async function useTake(part) {
   });
 }
 
+//: How a part's stem can be read into notes, as the user would say it.
+const READINGS = [
+  { value: "auto", label: "let it decide" },
+  { value: "mono", label: "single notes - a riff or a lead" },
+  { value: "poly", label: "chords" },
+  { value: "arpeggio", label: "an arpeggio - one note per pick, left to ring" },
+];
+const READ_AS = { mono: "single notes", poly: "chords", arpeggio: "an arpeggio" };
+
 async function renderDi(part) {
   const [{ profiles }, pickups] = await Promise.all([api.get("/api/learn/profiles"), api.get("/api/learn/pickups").catch(() => ({ types: [] }))]);
   const answer = await prompt(`Play "${part.label}" on your guitar`, [
     { type: "note", text: "Renders the part's notes on a learned guitar, on the record's clock - then candidates can be scored frame by frame. Give a tab's MIDI path for the right notes; otherwise the stem is transcribed." },
     { name: "profile_id", label: "Guitar", type: "select", value: profiles[0]?.profile_id || "synthetic", options: [...profiles.map((p) => ({ value: p.profile_id, label: p.label || p.profile_id })), { value: "synthetic", label: "the synthetic string" }] },
     { name: "midi", label: "Tab MIDI (path, optional)", placeholder: "C:/tabs/riff.mid" },
+    { name: "reading", label: "Without a tab, read the stem as", type: "select", value: part.reading || "auto", options: READINGS },
     { name: "like", label: "The record's guitar, if it was not yours", type: "select", value: "", options: [{ value: "", label: "same as mine" }, ...pickups.types.map((t) => ({ value: t.name, label: `${t.name} - ${t.description}` }))] },
     { name: "amount", label: "How far toward it (%)", type: "number", value: 100 },
     { name: "power_chords", label: "Put power-chord fifths back", type: "checkbox", value: false },
@@ -445,10 +455,10 @@ async function renderDi(part) {
   if (!answer) return;
   await attempt(async () => {
     const amount = Math.max(0, Math.min(100, Number(answer.amount ?? 100))) / 100;
-    const { job_id } = await api.post(`/api/songs/${songId}/parts/${part.part_id}/di`, { profile_id: answer.profile_id, midi: answer.midi || null, power_chords: answer.power_chords, like: answer.like || null, amount });
+    const { job_id } = await api.post(`/api/songs/${songId}/parts/${part.part_id}/di`, { profile_id: answer.profile_id, midi: answer.midi || null, power_chords: answer.power_chords, like: answer.like || null, amount, reading: answer.reading || null });
     const result = await track(job_id, { onUpdate: progressInto });
     progressInto(null);
-    toast(`Rendered: ${result.events} notes (${result.source})`, { kind: "ok", hint: result.warnings?.[0] });
+    toast(`Rendered: ${result.events} notes (${result.method ? `${result.source} - ${result.method}` : result.source})`, { kind: "ok", hint: result.warnings?.[0] });
     play(result.url);
     await load(songId);
   });

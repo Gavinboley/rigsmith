@@ -627,6 +627,31 @@ def test_tone3000_login_is_reachable_from_the_page(client):
         assert "client id" in (job["error"] or "").lower()
 
 
+def test_a_part_can_be_read_as_an_arpeggio_from_the_song_page(client, monkeypatch, tmp_path):
+    from types import SimpleNamespace
+
+    from rigsmith.core import songs
+
+    seen = {}
+    rendered = tmp_path / "part.wav"
+    rendered.write_bytes(b"RIFF")
+
+    def fake(song_id, part_id, profile_id, **kwargs):
+        seen.update(kwargs)
+        return SimpleNamespace(path=rendered, to_dict=lambda: {"events": 3, "source": "transcribed", "method": "builtin, arpeggio"})
+
+    monkeypatch.setattr(songs, "render_part_di", fake)
+    response = client.post("/api/songs/any/parts/intro-1-stem/di", json={"profile_id": "synthetic", "reading": "arpeggio"})
+    job_id = response.json()["job_id"]
+    for _ in range(100):
+        job = client.get(f"/api/jobs/{job_id}").json()
+        if job["finished"]:
+            break
+        time.sleep(0.05)
+    assert job["state"] == "succeeded", job
+    assert seen["reading"] == "arpeggio"
+
+
 # --------------------------------------------------------------------------
 # picking paths
 # --------------------------------------------------------------------------

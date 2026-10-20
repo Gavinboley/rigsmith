@@ -56,6 +56,10 @@ class Part:
     best: dict | None = None
     """The best candidate so far: label, composite, mode, when."""
     history: list[dict] = field(default_factory=list)
+    reading: str = "auto"
+    """How its stem is read into notes - auto, mono, poly or arpeggio. Set
+    when the user corrects the automatic choice, and kept for every later
+    render of the part, autopilot's included."""
 
     @property
     def region(self) -> str:
@@ -488,6 +492,7 @@ def analyse(song_id: str, *, progress: Progress | None = None, min_presence: flo
                 old = previous[part_id]
                 part.chosen, part.note, part.recipe_id = old.chosen, old.note, old.recipe_id
                 part.di_take, part.best, part.history = old.di_take, old.best, old.history
+                part.reading = old.reading
             parts.append(part)
             step(0.6 + 0.35 * done / max(1, total), f"described {part.label}")
     carry_over(previous, parts)
@@ -509,7 +514,7 @@ def carry_over(previous: dict[str, Part], parts: list[Part]) -> None:
     kept = {p.part_id for p in parts}
     mapped = Song(song_id="", title="", parts=parts)
     for old in previous.values():
-        if old.part_id in kept or not (old.chosen or old.note or old.recipe_id or old.di_take or old.best or old.history):
+        if old.part_id in kept or not (old.chosen or old.note or old.recipe_id or old.di_take or old.best or old.history or old.reading != "auto"):
             continue
         heir = mapped.covering(old.layer, old.start, old.end)
         if heir is None:
@@ -522,6 +527,8 @@ def carry_over(previous: dict[str, Part], parts: list[Part]) -> None:
         if old.recipe_id and heir.recipe_id and old.recipe_id != heir.recipe_id:
             heir.note = f"{heir.note + '; ' if heir.note else ''}also researched as {old.recipe_id}"
         heir.recipe_id = heir.recipe_id or old.recipe_id
+        if heir.reading == "auto":
+            heir.reading = old.reading
         heir.history = (heir.history or []) + [h for h in (old.history or []) if h not in (heir.history or [])]
         if abs(heir.start - old.start) < 0.5 and abs(heir.end - old.end) < 0.5:
             heir.di_take = heir.di_take or old.di_take
@@ -695,14 +702,24 @@ def find_local(title: str, artist: str | None = None, *, roots: list[Path] | Non
     return found[:limit]
 
 
+#: How a part's stem can be read into notes (see :func:`..learn.transcribe.transcribe`).
+READINGS = ("auto", "mono", "poly", "arpeggio")
+
+
 def render_part_di(
     song_id: str, part_id: str, profile_id: str | None, *, midi=None, track=None, text=None, power_chords=False,
-    like: str | None = None, amount: float = 1.0, progress: Progress | None = None,
+    like: str | None = None, amount: float = 1.0, reading: str | None = None, progress: Progress | None = None,
 ):
     """A DI of one part on your guitar, aligned to the part's own clock -
-    moved toward the record's guitar with ``like`` when it was not yours."""
+    moved toward the record's guitar with ``like`` when it was not yours.
+
+    ``reading`` overrides how the stem is read into notes, and is kept on
+    the part for its later renders; left out, the part's own is used.
+    """
     from . import parts as part_rendering
 
+    if reading is not None and reading not in READINGS:
+        raise Invalid(f"no reading called '{reading}'", hint="One of: " + ", ".join(READINGS))
     require_writable("render a part")
     song = get(song_id)
     part = song.part(part_id)
@@ -714,6 +731,7 @@ def render_part_di(
         track=track,
         text=text,
         region=part.region,
+        mode=reading or part.reading,
         power_chords=power_chords,
         label=f"{song.song_id}-{part.part_id}",
         file_as_take=True,
@@ -723,6 +741,8 @@ def render_part_di(
     )
     song = get(song_id)
     song.part(part_id).di_take = result.take_id
+    if reading is not None:
+        song.part(part_id).reading = reading
     song.save()
     return result
 
