@@ -34,6 +34,13 @@ AMPS = {
     "lead": {"Type": 2, "Gain": 0.6, "Mid": 0.7},
     "clean": {"Type": 0, "Gain": 0.1, "Level": 0.3},
 }
+#: What each guitar went through after the amp - so a run on the demo tests
+#: the effects too: whether the map hears them, and whether the draft has
+#: them. The rhythm is dry, so a delay or a room on its draft is one too many.
+EFFECTS = {
+    "lead": {"delay": {"note": "dotted eighth", "beats": 0.75, "mix": 0.3, "feedback": 0.35}},
+    "clean": {"reverb": {"rt60": 1.6, "mix": 0.3}},
+}
 PLAN = (("intro", "clean"), ("verse", "riff"), ("chorus", "chords"), ("solo", "lead"), ("chorus", "chords"))
 #: The knobs a run reports, under the names the simulated amp answers to.
 KNOBS = (("Gain", "gain"), ("Bass", "bass"), ("Mid", "mid"), ("Treble", "treble"))
@@ -65,7 +72,10 @@ def render(*, seconds_per_section: float | None = None, seed: int = 7) -> tuple[
             when = t + b * BEAT
             chorus_root = (45, 48, 43, 50)[(b // 4) % 4]
             if kind == "clean":
-                clean.append((when, 0.9, (52, 55, 59, 64)[b % 4], 0.5))
+                # A rest every bar, the note before it stopped short, so the
+                # room is heard falling away.
+                if b % 4 != 3:
+                    clean.append((when, 0.9 if b % 4 < 2 else 0.4, (52, 55, 59, 64)[b % 4], 0.5))
             elif kind == "riff":
                 for k in range(2):
                     note = (40, 40, 43, 40, 47, 45, 43, 42)[(2 * b + k) % 8]
@@ -100,8 +110,8 @@ def render(*, seconds_per_section: float | None = None, seed: int = 7) -> tuple[
     # The rhythm is double-tracked, one take each side; lead and clean centred.
     L = play(left, AMPS["rhythm"], 1)
     R = play(right, AMPS["rhythm"], 2)
-    C = play(lead, AMPS["lead"], 3)
-    K = play(clean, AMPS["clean"], 4)
+    C = _echo(play(lead, AMPS["lead"], 3), **{k: v for k, v in EFFECTS["lead"]["delay"].items() if k != "note"})
+    K = _room(play(clean, AMPS["clean"], 4), **EFFECTS["clean"]["reverb"], seed=seed)
     stem = np.stack([L + 0.7 * C + K, R + 0.7 * C + K], axis=1)
     stem /= float(np.abs(stem).max()) * 1.1
 
@@ -112,6 +122,28 @@ def render(*, seconds_per_section: float | None = None, seed: int = 7) -> tuple[
     mix = stem * 0.8 + (drums + low)[:, None]
     mix /= float(np.abs(mix).max()) * 1.05
     return mix, stem, sections
+
+
+def _echo(audio: np.ndarray, *, beats: float, mix: float, feedback: float) -> np.ndarray:
+    """A feedback delay, ``beats`` long at the demo's tempo."""
+    from scipy.signal import lfilter
+
+    lag = int(beats * BEAT * RATE)
+    b = np.zeros(lag + 1)
+    a = np.zeros(lag + 1)
+    b[0], b[lag] = 1.0, mix - feedback
+    a[0], a[lag] = 1.0, -feedback
+    return lfilter(b, a, audio)
+
+
+def _room(audio: np.ndarray, *, rt60: float, mix: float, seed: int) -> np.ndarray:
+    """A reverb: decaying noise, ``rt60`` seconds to fall 60 dB."""
+    from scipy.signal import fftconvolve
+
+    t = np.arange(int(rt60 * 1.2 * RATE)) / RATE
+    ir = np.random.default_rng(seed + 13).normal(0, 1, len(t)) * 10 ** (-3 * t / rt60)
+    wet = fftconvolve(audio, ir / np.sqrt(np.sum(ir**2)))[: len(audio)]
+    return (1 - mix) * audio + mix * wet / max(float(np.std(wet)), 1e-12) * float(np.std(audio))
 
 
 def _drums(sections: list[dict], total: int, seed: int) -> np.ndarray:
@@ -185,7 +217,7 @@ def make():
     mix_path = save_audio(folder / "demo-mix.wav", mix, RATE)
     stem_path = save_audio(folder / "demo-stem.wav", stem, RATE)
     song = songs.create(TITLE, artist=ARTIST, mix=mix_path, stem=stem_path, song_id=SONG_ID)
-    (song.directory / ANSWER).write_text(json.dumps({"amps": AMPS, "sections": sections}, indent=2), encoding="utf-8")
+    (song.directory / ANSWER).write_text(json.dumps({"amps": AMPS, "effects": EFFECTS, "sections": sections}, indent=2), encoding="utf-8")
     return song
 
 
@@ -282,4 +314,50 @@ def verdict(run) -> dict | None:
             )
     else:
         said += "; its knobs were not tuned."
-    return {"guitar": guitar, "part": part.label, "truth": truth, "found": found, "voicing_right": right, "summary": said}
+    effects, told = _effects(known.get("effects", {}).get(guitar, {}), part, run)
+    return {"guitar": guitar, "part": part.label, "truth": truth, "found": found, "voicing_right": right, "effects": effects, "summary": said + told}
+
+
+def _effects(made: dict, part, run) -> tuple[dict, str]:
+    """The effects the part went through, against what the map heard on it
+    and what the draft has - and an effect the draft has that it did not."""
+    from ..tune.candidates import DELAY_DIVISIONS, NOTE_TO_DIVISION
+    from . import rigs
+
+    sketch = part.sketch or {}
+    blocks = []
+    if run.draft_id:
+        try:
+            blocks = rigs.get(run.draft_id).rig.blocks
+        except Exception:
+            blocks = []
+    delays = [b for b in blocks if "Delay" in b.model_id]
+    rooms = [b for b in blocks if "Reverb" in b.model_id]
+    result: dict = {}
+    told = []
+    if "delay" in made:
+        note = made["delay"]["note"]
+        heard = sketch.get("delay_note") or (f"{sketch['delay_ms']:.0f} ms" if sketch.get("delay_ms") else None)
+        synced = [DELAY_DIVISIONS[b.params["DelayTime_Synced"]] for b in delays if isinstance(b.params.get("DelayTime_Synced"), int) and 0 <= b.params["DelayTime_Synced"] < len(DELAY_DIVISIONS)]
+        right = NOTE_TO_DIVISION.get(note) in synced
+        result["delay"] = {"made": note, "heard": heard, "draft": synced or (["unsynced"] if delays else []), "right": right}
+        told.append(
+            f"Its {note} delay was " + (f"heard ({heard})" if heard else "not heard")
+            + (f", and the draft's delay is synced to {', '.join(synced)}" if synced else ", and the draft has a delay" if delays else ", and the draft has none")
+            + ("." if right else f" - {NOTE_TO_DIVISION.get(note)} is the {note}.")
+        )
+    elif delays:
+        result["delay"] = {"made": None, "draft": [b.model_id for b in delays], "right": False}
+        told.append("It had no delay, but the draft has one.")
+    if "reverb" in made:
+        space = sketch.get("space") or ""
+        result["reverb"] = {"made": made["reverb"]["rt60"], "heard": space or None, "draft": [b.model_id for b in rooms], "right": bool(rooms) and space not in ("", "dry")}
+        told.append(
+            f"Its reverb ({made['reverb']['rt60']:.1f} s) was "
+            + (f"heard as {space}" if space and space != "dry" else "not heard")
+            + (f"; the draft has {rooms[0].model_id}." if rooms else "; the draft has none.")
+        )
+    elif rooms:
+        result["reverb"] = {"made": None, "draft": [b.model_id for b in rooms], "right": False}
+        told.append("It was dry, but the draft has a reverb.")
+    return result, (" " + " ".join(told)) if told else ""

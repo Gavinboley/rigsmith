@@ -81,7 +81,8 @@ what differs from it - your guitar, the cab - not a miss: the closest sound
 on your guitar is not the record's settings on its guitar.
 
 **The demo song** (Try the demo song, or `rigsmith autopilot demo`) is a song
-made on the spot through known settings of the simulated amp, so each of its
-parts ends with an answer: the voicing autopilot chose and each knob against
-the one the song was made with. It is the quickest check that the whole
+made on the spot through known settings of the simulated amp - and a delay
+on its lead, a room on its clean intro - so each of its parts ends with an
+answer: the voicing autopilot chose, each knob against the one the song was
+made with, and whether its effects were heard and are on the draft. It is the quickest check that the whole
 chain works on your machine.

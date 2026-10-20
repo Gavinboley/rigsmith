@@ -109,6 +109,13 @@ def test_the_whole_demo_is_a_part_for_each_guitar_and_a_scene_each(workspace):
     guitars = [run.demo["guitar"]] + [o["guitar"] for o in run.demo.get("others", [])]
     assert len(guitars) == len(run.part_ids) and len(set(guitars)) >= 2, guitars
     assert "...and:" in run.describe()
+    # Its effects too: the clean intro's room is heard and on the draft, and
+    # the dry rhythm's draft has none.
+    answers = {a["guitar"]: a for a in [run.demo] + run.demo.get("others", [])}
+    if "clean" in answers:
+        assert answers["clean"]["effects"]["reverb"]["right"], answers["clean"]["summary"]
+    if "rhythm" in answers:
+        assert answers["rhythm"]["effects"] == {}, answers["rhythm"]["summary"]
 
 
 def test_a_sound_is_chased_once_however_many_sections_play_it():

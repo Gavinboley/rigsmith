@@ -454,6 +454,66 @@ def test_a_fast_eighth_note_part_is_not_read_at_two_thirds():
     assert abs(tempo / bpm - 1) < 0.02, tempo
 
 
+def test_a_centred_lead_keeps_its_echo_when_its_layer_is_split_out(tmp_path, monkeypatch):
+    """Split out of the stem by masking its spectrum, the lead kept its notes
+    but not the copy of the waveform its dotted-eighth delay is. The stem
+    still has it - in both channels and their sum, not their difference."""
+    from scipy.signal import lfilter
+
+    from rigsmith import config
+    from rigsmith.core import songs
+    from rigsmith.match.render_offline import save_audio
+
+    monkeypatch.setenv("RIGSMITH_WORKSPACE", str(tmp_path / "ws"))
+    monkeypatch.delenv("RIGSMITH_READONLY", raising=False)
+    config.set_settings(config.Settings())
+    try:
+        beat = 0.5
+        lead = [(b * beat, beat * 0.9, [64, 67, 69, 71, 74, 71, 69, 67][b % 8], 0.9) for b in range(24)]
+        roots = [(b * beat, beat * 0.95, [45, 48, 43, 50][(b // 4) % 4], 0.7) for b in range(24)]
+        sung = SimAmp(Type=2, Gain=0.6).process(render_notes(lead, seed=3))
+        lag = int(0.375 * RATE)
+        b, a = np.zeros(lag + 1), np.zeros(lag + 1)
+        b[0], b[lag], a[0], a[lag] = 1.0, 0.3 - 0.35, 1.0, -0.35
+        sung = lfilter(b, a, sung)
+        left = SimAmp(Type=3, Gain=0.7).process(render_notes(human(roots, 1), seed=1))
+        right = SimAmp(Type=3, Gain=0.7).process(render_notes(human(roots, 2), seed=2))
+        n = min(len(sung), len(left), len(right))
+        stem = np.stack([left[:n] + 0.7 * sung[:n], right[:n] + 0.7 * sung[:n]], axis=1)
+        stem /= np.abs(stem).max() * 1.1
+        made = songs.create("Echo", stem=save_audio(tmp_path / "stem.wav", stem, RATE))
+        mapped = songs.analyse(made.song_id)
+        centres = [p for p in mapped.parts if p.layer == "centre"]
+        # (A section under ~8 s is too short to show an echo at all.)
+        assert any(abs((p.sketch.get("delay_ms") or 0) - 375) < 15 for p in centres), [(p.part_id, p.sketch.get("delay_ms")) for p in centres]
+        sides = [p for p in mapped.parts if p.layer in ("left", "right")]
+        assert sides and not any(p.sketch.get("delay_ms") for p in sides), "the dry double-track gets no delay"
+    finally:
+        config.set_settings(None)
+
+
+def test_a_room_is_heard_when_the_next_section_comes_in_loud():
+    """A clean intro whose last half-second was the driven verse coming in:
+    every stop of its own was 25 dB under that, and its room went unheard."""
+    from scipy.signal import fftconvolve
+
+    beat = 0.5
+    notes = [(b * beat, 0.9 if b % 4 < 2 else 0.4, [52, 55, 59, 64][b % 4], 0.5) for b in range(24) if b % 4 != 3]
+    dry = SimAmp(Type=0, Gain=0.1, Level=0.3).process(render_notes(notes, seed=4))
+    rt60 = 1.6
+    t = np.arange(int(rt60 * 1.2 * RATE)) / RATE
+    ir = np.random.default_rng(0).normal(0, 1, len(t)) * 10 ** (-3 * t / rt60)
+    wet = fftconvolve(dry, ir / np.sqrt(np.sum(ir ** 2)))[: len(dry)]
+    intro = 0.7 * dry + 0.3 * wet / np.std(wet) * np.std(dry)
+    verse = SimAmp(Type=3, Gain=0.7).process(render_notes([(k * 0.25, 0.22, 40, 0.9) for k in range(3)], seed=5))
+    audio = np.zeros(int(12.6 * RATE))
+    audio[: min(len(intro), len(audio))] += intro[: len(audio)]
+    start = int(12.0 * RATE)
+    audio[start : start + len(verse)] += verse[: len(audio) - start]
+    read = describe.sketch(audio, RATE, from_stem=False)
+    assert read.space in ("a plate or hall", "a long wash"), (read.decay_ms, read.space)
+
+
 def test_a_clean_part_that_is_all_attacks_reads_clean():
     """A pick's attack is broadband, and clean sixteenth-note chugs and
     arpeggios - all attacks - looked as filled-in as distortion: they read as

@@ -258,6 +258,46 @@ def power_cepstrum(audio, sample_rate: int, *, size: int = 1 << 17) -> np.ndarra
     return total / count if count else None
 
 
+def echoes_by_place(stereo, sample_rate, tempo) -> dict[str, tuple[float | None, float, str | None]]:
+    """An echo found in each of a stereo stem's left, right, mid and side.
+
+    For :func:`layer_echo`: a layer split out of the stem by masking its
+    spectrum keeps a note but not the copy of the waveform an echo is, so a
+    centred lead's dotted-eighth delay went unheard on its layer. The stem
+    itself still has it, and where it shows says whose it is.
+    """
+    x = np.asarray(stereo, dtype=np.float64)
+    if x.ndim < 2 or x.shape[1] < 2:
+        return {}
+    left, right = x[:, 0], x[:, 1]
+    signals = {"left": left, "right": right, "mid": (left + right) / 2, "side": (left - right) / 2}
+    return {name: _delay(signal, sample_rate, tempo) for name, signal in signals.items()}
+
+
+def layer_echo(found: dict, layer: str) -> tuple[float, float, str | None] | None:
+    """The echo of a centred, left or right layer, from :func:`echoes_by_place`.
+
+    A centred part's echo is in both channels and their sum, and not in their
+    difference; a left part's in the left and the difference, not the right.
+    """
+    def at(name: str) -> float | None:
+        return (found.get(name) or (None,))[0]
+
+    def same(a: float | None, b: float | None) -> bool:
+        return a is not None and b is not None and abs(a - b) <= 0.03 * max(a, b)
+
+    if layer == "centre":
+        lag = at("mid")
+        if lag and same(lag, at("left")) and same(lag, at("right")) and not same(lag, at("side")):
+            return found["mid"]  # type: ignore[return-value]
+    elif layer in ("left", "right"):
+        other = "right" if layer == "left" else "left"
+        lag = at(layer)
+        if lag and same(lag, at("side")) and not same(lag, at(other)):
+            return found[layer]  # type: ignore[return-value]
+    return None
+
+
 def _delay(audio, sample_rate, tempo) -> tuple[float | None, float, str | None]:
     """An echo's time, from the power cepstrum.
 
@@ -448,7 +488,11 @@ def _decay(audio, sample_rate) -> float | None:
     frames = len(filtered) // hop
     env = np.sqrt(np.mean(filtered[: frames * hop].reshape(frames, hop) ** 2, axis=1))
     db = np.convolve(20 * np.log10(np.maximum(env, 1e-9)), np.ones(3) / 3, mode="same")
-    peak = float(np.percentile(db, 99))
+    # Loud playing is measured against what most of the part reaches, not its
+    # loudest moments: a clean intro whose last half-second was the driven
+    # verse coming in had every stop of its own 25 dB under that, and its
+    # room went unheard.
+    peak = float(np.percentile(db, 90))
     rt60s: list[float] = []
     dry = usable = 0
     i = 3

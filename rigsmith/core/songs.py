@@ -462,6 +462,7 @@ def analyse(song_id: str, *, progress: Progress | None = None, min_presence: flo
 
     previous = {p.part_id: p for p in song.parts}
     parts: list[Part] = []
+    echoes: dict[int, dict] = {}
     total = len(shape.sections) * len(sources)
     done = 0
     for index, section in enumerate(shape.sections):
@@ -490,6 +491,15 @@ def analyse(song_id: str, *, progress: Progress | None = None, min_presence: flo
                 piece, rate, tempo=shape.tempo, from_stem=bool(song.stem),
                 pitch=not (layer_id == "centre" and doubled),
             )
+            # A layer split out of the stem keeps its notes but not its
+            # echo; the stem has it, and where it sits says whose it is.
+            if layer_id in ("centre", "left", "right") and not sketch.delay_ms:
+                if index not in echoes:
+                    echoes[index] = describe.echoes_by_place(stem_audio[a:b], rate, shape.tempo)
+                echo = describe.layer_echo(echoes[index], layer_id)
+                if echo:
+                    sketch.delay_ms, sketch.delay_strength, sketch.delay_note = echo
+                    sketch.suggestions = describe._suggestions(sketch)
             part_id = f"{slugify(name)}-{index + 1}-{layer_id}"
             part = Part(
                 part_id=part_id,
