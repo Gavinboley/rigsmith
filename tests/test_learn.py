@@ -989,6 +989,22 @@ def test_a_nan_sample_is_read_as_silence():
     assert result.events == []
 
 
+def test_basic_pitch_is_found_wherever_it_is_installed(monkeypatch):
+    """Installed apart - pipx, on a Python it supports - it was never used,
+    because it also had to import in rigsmith's own Python."""
+    import shutil
+
+    from rigsmith.learn import transcribe as module
+
+    monkeypatch.delenv("RIGSMITH_BASIC_PITCH", raising=False)
+    monkeypatch.setattr(shutil, "which", lambda name: None)
+    assert module.basic_pitch_command() is None
+    monkeypatch.setattr(shutil, "which", lambda name: r"C:\pipx\bin\basic-pitch.exe" if name == "basic-pitch" else None)
+    assert module.basic_pitch_command() == [r"C:\pipx\bin\basic-pitch.exe"]
+    monkeypatch.setenv("RIGSMITH_BASIC_PITCH", "py -3.11 -m basic_pitch.predict")
+    assert module.basic_pitch_command() == ["py", "-3.11", "-m", "basic_pitch.predict"]
+
+
 def test_a_part_auto_misreads_can_be_read_as_an_arpeggio_on_request():
     """Slower, the same driven Travis pattern still rings like a chord part
     to the automatic choice; asked for, it is read a note per pick."""

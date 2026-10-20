@@ -116,7 +116,6 @@ def doctor() -> None:
         ("demucs (guitar isolation)", "demucs", "pip install 'rigsmith[separation]' to pull a guitar stem out of a record"),
         ("av (AAC / .m4a songs)", "av", "pip install 'rigsmith[codecs]' to read a bought .m4a as it is"),
         ("optuna (bigger tuning budgets)", "optuna", "pip install 'rigsmith[tune]' - the built-in search covers small budgets"),
-        ("basic-pitch (polyphonic transcription)", "basic_pitch", "pip install 'rigsmith[transcribe]' - reads fingerpicking and full open-chord voicings the built-in transcriber gets wrong; used automatically once installed"),
         ("anthropic (Claude through the API)", "anthropic", "pip install 'rigsmith[claude]' - not needed with Claude Code or a local model"),
         ("neural-amp-modeler (offline NAM)", "nam", "pip install neural-amp-modeler to render captures without hardware"),
         ("playwright (UI tests)", "playwright", "pip install 'rigsmith[browser]' - only needed to run the browser tests"),
@@ -128,6 +127,21 @@ def doctor() -> None:
         except ImportError:
             click.echo(click.style("  --  ", fg="yellow") + label)
             click.echo(f"        {why}")
+
+    # basic-pitch runs as a command, so it counts wherever it is installed.
+    from .learn.transcribe import basic_pitch_command
+
+    command = basic_pitch_command()
+    if command:
+        click.echo(click.style("  ok  ", fg="green") + f"basic-pitch (polyphonic transcription): {' '.join(command)}")
+    else:
+        click.echo(click.style("  --  ", fg="yellow") + "basic-pitch (polyphonic transcription)")
+        click.echo(
+            "        pip install 'rigsmith[transcribe]' - reads open chords, fingerpicking, drop-tuned chugs among"
+            " chord stabs and reverb-soaked arpeggios better than the built-in transcriber; used automatically."
+            " If it will not install on this Python, install it apart (pipx install basic-pitch --python 3.11)"
+            " or point RIGSMITH_BASIC_PITCH at its command."
+        )
 
     click.echo("")
     click.echo("Who answers the chat and the agents:")

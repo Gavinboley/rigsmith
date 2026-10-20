@@ -708,16 +708,19 @@ def _chroma_similarity(audio, sample_rate, events) -> float:
 
 
 def basic_pitch_command() -> list[str] | None:
-    """How to run basic-pitch here, if it can be run at all."""
+    """How to run basic-pitch here, if it can be run at all.
+
+    It runs as its own command, so it need not live in rigsmith's Python:
+    ``RIGSMITH_BASIC_PITCH`` names one, or a ``basic-pitch`` on the PATH is
+    used - installed apart with pipx on a Python it supports, when it will
+    not install on this one. Requiring it to import here as well left such
+    an install unused.
+    """
     configured = os.environ.get("RIGSMITH_BASIC_PITCH")
     if configured:
         return configured.split()
-    try:
-        import basic_pitch  # noqa: F401
-
-        return None if not shutil.which("basic-pitch") else ["basic-pitch"]
-    except ImportError:
-        return None
+    found = shutil.which("basic-pitch")
+    return [found] if found else None
 
 
 def _basic_pitch(path: Path) -> list[NoteEvent] | None:
