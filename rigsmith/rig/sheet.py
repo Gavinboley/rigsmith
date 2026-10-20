@@ -91,6 +91,28 @@ def reading(param: ParamSpec | None, value) -> tuple[str, bool]:
     return "~" + _format(shown, param.unit), True
 
 
+def _known_choice(model: str, name: str, value) -> str | None:
+    """What an index means where the catalog does not list the control's
+    choices, but rigsmith chose the index itself: a synced delay's division
+    and note, a modulation's synced rate, AIR Reverb's modes for a room, a
+    plate or hall and a long wash. A sheet said "Time: 9" for a dotted eighth."""
+    from ..tune.candidates import DELAY_DIVISIONS, NOTE_TO_DIVISION, RATE_DIVISIONS, REVERB_MODES
+
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not float(value).is_integer():
+        return None
+    index = int(value)
+    if name == "DelayTime_Synced" and 0 <= index < len(DELAY_DIVISIONS):
+        division = DELAY_DIVISIONS[index]
+        note = next((n for n, d in NOTE_TO_DIVISION.items() if d == division), None)
+        return division + (f" ({note})" if note else "")
+    if name == "Rate_Synced" and 0 <= index < len(RATE_DIVISIONS):
+        return RATE_DIVISIONS[index]
+    if model == "AIR Reverb" and name == "Mode":
+        heard = next((space for space, mode in REVERB_MODES.items() if mode == index), None)
+        return f"{index} ({heard})" if heard else None
+    return None
+
+
 def _order(name: str) -> tuple[int, str]:
     return (PANEL_ORDER.index(name) if name in PANEL_ORDER else len(PANEL_ORDER), name)
 
@@ -113,6 +135,8 @@ def block_settings(block: Block, spec: ModelSpec | None, module: ModelSpec | Non
         found = [p for p in ((spec.param(name) if spec else None), (module.param(name) if module else None)) if p is not None]
         param = next((p for p in found if p.taper in ("linear", "log")), found[0] if found else None)
         text, guess = reading(param, params[name])
+        if param is None or not param.choices:
+            text = _known_choice(block.model_id, name, params[name]) or text
         if name.endswith("_Synced"):
             text += ", synced to the rig's tempo"
         rows.append((label(name), text))

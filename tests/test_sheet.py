@@ -89,3 +89,16 @@ def test_the_page_is_self_contained():
 def test_a_range_with_one_end_missing_is_still_a_knob_position():
     odd = ParamSpec(name="Odd", kind="float", minimum=0.0, maximum=1.0, display_min=None, display_max=50.0, unit="%")
     assert sheet.reading(odd, 0.4) == ("~40% of travel", True)
+
+
+def test_a_choice_rigsmith_made_is_named_where_the_catalog_has_no_list():
+    """The seed catalog does not list a synced delay's divisions or AIR
+    Reverb's modes, and a sheet said "Time: 9" for a dotted eighth."""
+    rig = Rig(name="Unlisted", tempo=120.0)
+    rig.blocks = [
+        Block(slot=1, category=BlockCategory.EFFECT, model_id="M104 Analog Delay", params={"Sync": True, "DelayTime_Synced": 9, "Mix": 0.3}),
+        Block(slot=2, category=BlockCategory.EFFECT, model_id="AIR Reverb", params={"Mode": 1, "Mix": 0.25}),
+    ]
+    text = sheet.build(rig, Catalog()).markdown()
+    assert "Time: 3/16 (dotted eighth), synced to the rig's tempo" in text, text
+    assert "Mode: 1 (a plate or hall)" in text, text
