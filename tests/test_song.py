@@ -534,6 +534,7 @@ def test_a_part_says_how_its_rendered_notes_were_heard():
     from rigsmith.core.songs import _heard_as
 
     assert _heard_as(SimpleNamespace(source="transcribed", method="builtin, polyphonic")) == "polyphonic"
+    assert _heard_as(SimpleNamespace(source="transcribed", method="builtin, arpeggio, read down to C2")) == "arpeggio"
     assert _heard_as(SimpleNamespace(source="transcribed", method="basic-pitch, polyphonic")) == "basic-pitch"
     assert _heard_as(SimpleNamespace(source="midi", method=None)) == "midi"
 
@@ -566,6 +567,30 @@ def test_a_rendered_part_s_notes_can_be_read_back(workspace):
     notes = songs.part_notes(made.song_id, "intro-1-stem")
     assert [round(e["midi"]) for e in notes["events"]] == [52]
     assert notes["duration"] == 4.0 and notes["source"] == "transcribed" and notes["midi_path"]
+
+
+def test_a_researched_tuning_sets_the_lowest_string_the_notes_are_read_to(workspace, monkeypatch):
+    """Inferred from the stem, a drop-C part of chords and chugs read as E
+    standard and its low C came back an octave up; the recipe knew better."""
+    from types import SimpleNamespace
+
+    from rigsmith.core import parts as part_rendering
+    from rigsmith.core import recipes
+    from rigsmith.core.songs import Part
+
+    seen = []
+    monkeypatch.setattr(part_rendering, "part_di", lambda profile_id, **kwargs: seen.append(kwargs["lowest"]) or SimpleNamespace(take_id="t", source="transcribed", method="builtin, polyphonic"))
+    made = songs.create("Low")
+    made.parts = [Part("verse-1-stem", 0, "verse", "stem", 0.0, 10.0)]
+    made.save()
+    songs.render_part_di(made.song_id, "verse-1-stem", None)
+    recipe_id, _ = recipes.create("Low")
+    recipes.set_instrument(recipe_id, tuning="drop C")
+    songs.update(made.song_id, recipe_id=recipe_id)
+    songs.render_part_di(made.song_id, "verse-1-stem", None)
+    recipes.set_instrument(recipe_id, tuning="something unheard of")
+    songs.render_part_di(made.song_id, "verse-1-stem", None)
+    assert seen == ["auto", "C2", "auto"]
 
 
 def test_a_part_keeps_the_reading_it_was_corrected_to(workspace, monkeypatch):

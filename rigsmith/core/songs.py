@@ -729,6 +729,7 @@ def render_part_di(
     song = get(song_id)
     part = song.part(part_id)
     source = song.layer_files.get(part.layer) if part.layer != "stem" else song.target
+    lowest = researched_lowest(song, part)
     result = part_rendering.part_di(
         profile_id,
         stem=source or song.target,
@@ -737,6 +738,7 @@ def render_part_di(
         text=text,
         region=part.region,
         mode=reading or part.reading,
+        lowest=lowest,
         power_chords=power_chords,
         label=f"{song.song_id}-{part.part_id}",
         file_as_take=True,
@@ -774,14 +776,36 @@ def part_notes(song_id: str, part_id: str) -> dict:
     return {"part_id": part.part_id, "label": part.label, "duration": round(part.end - part.start, 3), "heard_as": part.heard_as, **notes}
 
 
+def researched_lowest(song: Song, part: Part) -> str:
+    """The record's lowest string, as a note, when research named its tuning.
+
+    Inferred from the stem, the floor misses a drop tuning's low string when
+    the part spends most of its time above it - a drop-C part of chords and
+    chugs read as E standard, and its low C came back an octave up. A tuning
+    the recipe states is better evidence than the audio's percentile.
+    ``auto`` when there is none, or the tuning is not one rigsmith reads.
+    """
+    from ..learn.instrument import midi_to_note, tuning
+    from . import recipes
+
+    recipe_id = part.recipe_id or song.recipe_id
+    if not recipe_id:
+        return "auto"
+    try:
+        named = recipes.get(recipe_id).tuning
+        return midi_to_note(tuning(named).lowest) if named else "auto"
+    except Exception:  # a recipe gone, or a tuning written some other way
+        return "auto"
+
+
 def _heard_as(result) -> str | None:
     """``monophonic``, ``polyphonic`` or ``arpeggio`` for notes the built-in
     transcriber found; the notes' source otherwise."""
     source = getattr(result, "source", None)
     if source != "transcribed":
         return source
-    method, _, mode = (getattr(result, "method", None) or "").partition(", ")
-    return mode if method == "builtin" and mode else method or None
+    method, *rest = (getattr(result, "method", None) or "").split(", ")
+    return rest[0] if method == "builtin" and rest else method or None
 
 
 def take_for_part(song_id: str, part_id: str, take: str) -> dict:

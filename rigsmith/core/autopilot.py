@@ -611,8 +611,9 @@ def _stage_di(run: Run, progress) -> str:
         run.note("the DI's pickup was " + (rendered_pickup[1].splitlines()[0] if len(rendered_pickup) > 1 else f"moved toward {like}"))
     confidence = f", notes {result.confidence:.0%} confident" if result.confidence is not None else ""
     method = (result.method or "").split(", ")
-    read_as = {"monophonic": "single notes", "polyphonic": "chords", "arpeggio": "an arpeggio"}.get(method[-1]) if method[0] == "builtin" else None
-    reading = f", read as {read_as}" if read_as else ""
+    read_as = {"monophonic": "single notes", "polyphonic": "chords", "arpeggio": "an arpeggio"}.get(method[1]) if method[0] == "builtin" and len(method) > 1 else None
+    floor = next((piece.replace("read down to ", "") for piece in method if piece.startswith("read down to ")), None)
+    reading = (f", read as {read_as}" if read_as else "") + (f" down to {floor} (the researched tuning)" if floor else "")
     return f"{part.label} on {profile or 'the synthetic string'} ({result.source}{reading}{confidence})"
 
 

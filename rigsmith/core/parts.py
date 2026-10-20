@@ -245,7 +245,7 @@ def part_di(
         step(0.1, "transcribing the stem")
         transcription = transcribe(stem_audio, sample_rate, path=None, mode=mode, lowest=lowest)
         events = transcription.events
-        method = f"{transcription.method}, {transcription.mode}"
+        method = f"{transcription.method}, {transcription.mode}" + (f", read down to {lowest}" if lowest != "auto" else "")
         confidence = round(transcription.confidence, 3)
         warnings.extend(transcription.warnings)
         doubt = _doubtful_range(events)
