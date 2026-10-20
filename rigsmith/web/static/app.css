@@ -93,8 +93,12 @@ html, body {
   .brand-sub { display: none; }
   .status { min-width: 0; overflow-x: auto; scrollbar-width: none; }
   .status > * { flex: none; white-space: nowrap; }
+  #pill-jobs { order: -3; }
   #chat-toggle { order: -2; margin-left: 0; }
   #palette-open { order: -1; }
+  /* The strip fades at its edge, so it reads as one that scrolls. */
+  .status { -webkit-mask-image: linear-gradient(to right, #000 85%, transparent); mask-image: linear-gradient(to right, #000 85%, transparent); padding-right: 24px; }
+  .toasts { left: 12px; right: 12px; bottom: 12px; max-width: none; }
   .chat-drawer { width: 100vw; flex-basis: 100vw; }
   /* Rows of controls wrap rather than push the page sideways. */
   select, input { max-width: 100%; min-width: 0; }
@@ -339,6 +343,8 @@ button:focus-visible, summary:focus-visible, [tabindex]:focus-visible { outline:
 .tempo-line { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 4px; }
 .p-di { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 4px; }
 .p-notes { margin-top: 6px; }
+.file-field { display: flex; gap: 6px; align-items: center; }
+.file-field input { flex: 1 1 auto; min-width: 0; }
 .p-notes canvas { display: block; background: var(--bg-sunken); border: 1px solid var(--line-soft); border-radius: 6px; }
 .p-notes .hint { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 4px; }
 .p-notes a { color: var(--amber); }
@@ -391,6 +397,7 @@ button:focus-visible, summary:focus-visible, [tabindex]:focus-visible { outline:
   border-radius: 8px; padding: 10px 13px; font-size: 13px;
   box-shadow: 0 6px 22px rgba(0,0,0,.5);
   animation: rise .18s ease;
+  cursor: pointer;
 }
 .toast.error { border-left-color: var(--red); }
 .toast.ok    { border-left-color: var(--green); }

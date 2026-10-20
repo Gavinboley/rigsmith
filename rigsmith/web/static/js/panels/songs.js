@@ -10,7 +10,7 @@ import { api } from "../api.js";
 import { track } from "../jobs.js";
 import { goTo, onArrive } from "../nav.js";
 import { $, attempt, clear, el, prompt, toast } from "../ui.js";
-import { dropZone } from "../upload.js";
+import { dropZone, uploadFile } from "../upload.js";
 import { ask } from "../chat.js";
 import { toggleNotes } from "../charts.js";
 
@@ -484,7 +484,7 @@ async function renderDi(part) {
   const answer = await prompt(`Play "${part.label}" on your guitar`, [
     { type: "note", text: "Renders the part's notes on a learned guitar, on the record's clock - then candidates can be scored frame by frame. Give a tab's MIDI path for the right notes; otherwise the stem is transcribed." },
     { name: "profile_id", label: "Guitar", type: "select", value: profiles[0]?.profile_id || "synthetic", options: [...profiles.map((p) => ({ value: p.profile_id, label: p.label || p.profile_id })), { value: "synthetic", label: "the synthetic string" }] },
-    { name: "midi", label: "Tab MIDI (path, optional)", placeholder: "C:/tabs/riff.mid" },
+    { name: "midi", label: "Tab MIDI (optional) - a path, or choose or drop the file", type: "file", accept: ".mid,.midi", placeholder: "C:/tabs/riff.mid", upload: uploadFile },
     { name: "reading", label: "Without a tab, read the stem as", type: "select", value: part.reading || "auto", options: READINGS },
     { name: "like", label: "The record's guitar, if it was not yours", type: "select", value: "", options: [{ value: "", label: "same as mine" }, ...pickups.types.map((t) => ({ value: t.name, label: `${t.name} - ${t.description}` }))] },
     { name: "amount", label: "How far toward it (%)", type: "number", value: 100 },

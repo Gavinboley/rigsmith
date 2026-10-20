@@ -34,6 +34,9 @@ the parts that need the Core, your guitar or your copy of a song say so.
   is used automatically once installed. A part read the wrong way can be
   re-read as single notes, chords or an arpeggio ("on my guitar" on its
   card), and keeps that reading for autopilot.
+- **Notes** on a rendered part (and on an autopilot run's DI) draws what
+  the DI plays as a piano roll; "save as MIDI", fix a note in a tab
+  editor, and choose or drop the file back into "on my guitar".
 - A re-map keeps your choices, even where sections moved.
 
 ## Your guitar and the loop

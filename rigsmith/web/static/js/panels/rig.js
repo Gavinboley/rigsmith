@@ -7,7 +7,7 @@
  */
 
 import { api } from "../api.js";
-import { $, $$, attempt, clear, el, pct, prompt, spotlight, toast } from "../ui.js";
+import { $, $$, attempt, clear, el, pct, prompt, spotlight, toast, when } from "../ui.js";
 import { onArrive, goTo } from "../nav.js";
 
 const SLOTS = 14;
@@ -264,7 +264,7 @@ function renderHistory(history) {
             attempt(async () => {
               const result = await api.post(`/api/drafts/${encodeURIComponent(current.draft_id)}/undo`, {}, { steps: index + 1 });
               apply(result);
-              toast(result.message, { kind: "ok", timeout: 5000 });
+              toast(result.message, { kind: "ok", timeout: 5000, key: "rig-edit" });
             }),
         })
       )
@@ -429,11 +429,25 @@ async function refreshDrafts(selectId = null) {
 
   known = drafts;
   const select = clear($("#draft-select"));
+  // Autopilot names a draft after its song and part, so ten runs on one
+  // part made ten identical lines; those say when each was last changed.
+  // Two made in the same minute say their ids as well.
+  const named = (draft) => draft.rig?.name ?? draft.name;
+  const tally = (label) => {
+    const counts = {};
+    for (const draft of drafts) counts[label(draft)] = (counts[label(draft)] || 0) + 1;
+    return counts;
+  };
+  const byName = tally(named);
+  const stamp = (draft) => (byName[named(draft)] > 1 && draft.updated_at ? when(draft.updated_at) : "");
+  const both = (draft) => `${named(draft)}\u0000${stamp(draft)}`;
+  const byBoth = tally(both);
   for (const draft of drafts) {
+    const extra = [`${draft.blocks} blocks`, stamp(draft), byBoth[both(draft)] > 1 ? draft.draft_id : ""].filter(Boolean);
     select.append(
       el("option", {
         value: draft.draft_id,
-        text: `${draft.rig?.name ?? draft.name} (${draft.blocks} blocks)`,
+        text: `${named(draft)} (${extra.join(", ")})`,
       })
     );
   }
@@ -565,7 +579,7 @@ export function init() {
     attempt(async () => {
       const result = await api.post(`/api/drafts/${encodeURIComponent(current.draft_id)}/undo`, {}, { redo });
       apply(result);
-      toast(result.message, { kind: "ok", timeout: 4000 });
+      toast(result.message, { kind: "ok", timeout: 4000, key: "rig-edit" });
     });
   $("#undo-draft").onclick = () => step(false);
   $("#redo-draft").onclick = () => step(true);
@@ -611,7 +625,7 @@ export function init() {
     attempt(async () => {
       const result = await api.post(`/api/drafts/${encodeURIComponent(current.draft_id)}/nudge`, { how, live: $("#nudge-live").checked });
       apply(result);
-      toast(result.message, { kind: "ok", timeout: 6000 });
+      toast(result.message, { kind: "ok", timeout: 6000, key: "rig-edit" });
     });
   for (const button of document.querySelectorAll("#nudge-row [data-nudge]")) button.onclick = () => nudge(button.dataset.nudge);
   $("#nudge-text").onkeydown = (event) => {
@@ -639,7 +653,7 @@ export function init() {
     attempt(async () => {
       const result = await api.get(`/api/drafts/${encodeURIComponent(current.draft_id)}/compare/${encodeURIComponent(other)}`);
       $("#findings").prepend(el("div", { class: "finding info mono", style: "white-space:pre-wrap", text: result.rendered }));
-      toast(`Compared: ${result.summary}`, { kind: "ok", timeout: 4000 });
+      toast(`Compared: ${result.summary}`, { kind: "ok", timeout: 4000, key: "rig-edit" });
     });
   };
 

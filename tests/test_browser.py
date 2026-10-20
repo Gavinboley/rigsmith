@@ -1138,6 +1138,59 @@ def test_a_play_button_still_says_stop_after_the_page_redraws(browser, server, t
         page.wait_for_function(f"document.querySelector(\"{mix}\").textContent === 'play the mix'")
 
 
+def test_a_tab_s_midi_can_be_chosen_in_the_render_dialog(browser, server, tmp_path):
+    """"Save as MIDI", fix a note, and hand the file back - not its path typed out."""
+    from rigsmith.core import songs
+    from rigsmith.core.songs import Part
+    from rigsmith.learn import midifile
+    from rigsmith.learn.synth import NoteEvent
+
+    made = songs.create("Tabbed")
+    made.structure = {"tempo": 120.0, "duration": 10.0, "sections": [{"start": 0.0, "end": 10.0, "label": "A", "name": "verse"}]}
+    made.parts = [Part("verse-1-stem", 0, "verse", "stem", 0.0, 10.0)]
+    made.save()
+    tab = midifile.write(tmp_path / "fixed.mid", [NoteEvent(start=0.0, duration=0.5, midi=52.0)])
+    with page_at(browser, server) as page:
+        page.click("#tabs .tab[data-panel='songs']")
+        page.click("section[data-panel='songs'] button:has-text('on my guitar')")
+        page.wait_for_selector("#modal[open] #f-midi")
+        page.set_input_files("#modal input[type=file][data-for='midi']", str(tab))
+        page.wait_for_function("document.querySelector('#f-midi').value.includes('uploads')")
+        assert page.input_value("#f-midi").endswith("fixed.mid")
+        page.click("#modal button:has-text('Cancel')")
+
+
+def test_toasts_from_one_flow_replace_each_other_and_never_pile_up(browser, server):
+    """Nudge, nudge, undo, redo left five toasts over the History buttons."""
+    with page_at(browser, server) as page:
+        page.evaluate("""async () => {
+            const { toast } = await import('/static/js/ui.js');
+            for (let i = 0; i < 4; i++) toast(`edit ${i}`, { key: 'rig-edit', timeout: 60000 });
+        }""")
+        assert page.locator("#toasts .toast").count() == 1
+        assert page.inner_text("#toasts .toast") == "edit 3"
+        page.evaluate("""async () => {
+            const { toast } = await import('/static/js/ui.js');
+            for (let i = 0; i < 5; i++) toast(`note ${i}`, { timeout: 60000 });
+        }""")
+        assert page.locator("#toasts .toast").count() == 3
+        page.locator("#toasts .toast").first.click()
+        assert page.locator("#toasts .toast").count() == 2, "a click dismisses one"
+
+
+def test_drafts_with_one_name_can_be_told_apart_in_the_picker(browser, server):
+    """Ten autopilot runs on one part made ten identical lines."""
+    from rigsmith.core import rigs
+
+    for _ in range(3):
+        rigs.create("Going Under - verse")
+    with page_at(browser, server) as page:
+        page.click("#tabs .tab[data-panel='rig']")
+        page.wait_for_selector("#draft-select option", state="attached")
+        labels = page.eval_on_selector_all("#draft-select option", "options => options.map(o => o.textContent)")
+        assert len(labels) == 3 and len(set(labels)) == 3, labels
+
+
 def test_no_page_scrolls_sideways_on_a_phone(browser, server):
     """The status pills made every page 563 px wide at 390."""
     with page_at(browser, server) as page:

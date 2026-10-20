@@ -43,15 +43,23 @@ export function spotlight(target) {
 
 /* ------------------------------------------------------------------ toasts */
 
-export function toast(message, { kind = "", hint = null, timeout = 6000 } = {}) {
+//: Toasts on screen at once. Nudge, nudge, undo, redo stacked five over
+//: the very History buttons the next step needed.
+const MAX_TOASTS = 3;
+
+/** A note in the corner. ``key`` replaces an earlier toast with the same
+ * key - one flow, one toast; a click dismisses one early. */
+export function toast(message, { kind = "", hint = null, timeout = 6000, key = null } = {}) {
   const host = $("#toasts");
+  if (key) host.querySelectorAll(`.toast[data-key="${CSS.escape(key)}"]`).forEach((old) => old.remove());
   const node = el(
     "div",
-    { class: `toast ${kind}` },
+    { class: `toast ${kind}`, "data-key": key, title: "click to dismiss", onclick: () => node.remove() },
     el("div", { text: message }),
     hint ? el("span", { class: "hint", text: hint }) : null
   );
   host.append(node);
+  while (host.children.length > MAX_TOASTS) host.firstElementChild.remove();
   setTimeout(() => {
     node.style.opacity = "0";
     setTimeout(() => node.remove(), 200);
@@ -105,6 +113,33 @@ export function prompt(title, fields, { okLabel = "OK" } = {}) {
           type: "checkbox",
           checked: Boolean(field.value),
         })
+      );
+    } else if (field.type === "file") {
+      // A path on disk, typed - or a file chosen or dropped here, uploaded,
+      // and its path filled in. ``field.upload(file)`` does the uploading.
+      const input = el("input", { id: `f-${field.name}`, name: field.name, type: "text", value: field.value ?? "", placeholder: field.placeholder ?? "" });
+      const picker = el("input", { type: "file", accept: field.accept || "", hidden: true, "data-for": field.name });
+      const status = el("div", { class: "hint", "aria-live": "polite" });
+      const take = async (file) => {
+        if (!file || !field.upload) return;
+        status.textContent = `uploading ${file.name}...`;
+        try {
+          const result = await field.upload(file);
+          input.value = result.path;
+          status.textContent = `${result.name} - uploaded`;
+        } catch (error) {
+          status.textContent = error.message;
+        }
+      };
+      picker.addEventListener("change", () => take(picker.files[0]));
+      input.addEventListener("dragover", (event) => event.preventDefault());
+      input.addEventListener("drop", (event) => {
+        event.preventDefault();
+        take(event.dataTransfer?.files?.[0]);
+      });
+      body.append(
+        el("div", { class: "file-field" }, input, el("button", { type: "button", class: "btn small", text: "choose...", onclick: () => picker.click() }), picker),
+        status
       );
     } else if (field.type === "select") {
       body.append(
