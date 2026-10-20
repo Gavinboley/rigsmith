@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import asdict, dataclass, field
+from typing import NamedTuple
 
 import numpy as np
 
@@ -200,6 +201,17 @@ def _pick_peaks(strength: np.ndarray, sample_rate: int, *, sensitivity: float = 
 #: the level climbing at least this much over the 40 ms before it.
 ONSET_RISE_DB = 4.0
 
+#: Under distortion a note picked on another string while the last one
+#: rings barely moves the level - the amp holds it flat - so the rise test
+#: threw away every attack of a driven arpeggio but two in 128. What does
+#: change is the spectrum: the new note's partials land in bins that were
+#: quiet. Asked for (:func:`pitch_onsets`), an onset is confirmed by that
+#: too - when this share of the live energy after it sits in bins that
+#: jumped by at least ``NEW_PITCH_DB``. Measured: a driven arpeggio's
+#: attacks bring 0.04 and up, a decaying note's own flux brings none.
+NEW_PITCH_DB = 9.0
+NEW_PITCH_SHARE = 0.02
+
 
 def rise_threshold(envelope: np.ndarray) -> float:
     """How much a level has to climb to count as an attack, for this material.
@@ -314,6 +326,73 @@ def detect_onsets(audio, sample_rate: int, *, sensitivity: float = 1.0) -> list[
     peaks = [p for p in peaks if _rises(envelope, p, sample_rate, sensitivity=sensitivity, needed=needed)]
     coarse = [max(0.0, (p - 1) * HOP / sample_rate) for p in peaks]
     return [refine_onset(audio, sample_rate, t) for t in coarse]
+
+
+class PitchOnsets(NamedTuple):
+    times: list[float]
+    pitch_only: float
+    """Share of the onsets that only a new pitch confirmed: near 1 for a
+    driven arpeggio, near 0 for anything strummed."""
+    new_share: float
+    """Median :func:`new_pitch_share` at the onsets: 1 where every attack
+    changes chord, near 0 where a chord is struck again, between for an
+    arpeggio - one new note among ringing ones."""
+
+
+def pitch_onsets(audio, sample_rate: int) -> PitchOnsets:
+    """Onsets confirmed by a rise in level *or* by a new pitch arriving.
+
+    For parts where notes ring over each other - arpeggios, let-ring
+    picking - where an attack under distortion shows only as new partials.
+    """
+    audio = np.asarray(audio, dtype=np.float64)
+    if audio.ndim > 1:
+        audio = audio.mean(axis=1)
+    magnitude = _frames(audio)
+    if len(magnitude) < 2:
+        return PitchOnsets([], 0.0, 0.0)
+    strength = onset_strength(audio, sample_rate)
+    peaks = _pick_peaks(strength, sample_rate)
+    envelope = _envelope_db(audio, sample_rate)
+    needed = rise_threshold(envelope)
+    level = 20 * np.log10(np.maximum(magnitude, float(magnitude.max()) * 1e-5))
+    kept, shares, pitch_only = [], [], 0
+    for peak in peaks:
+        share = new_pitch_share(level, peak)
+        if _rises(envelope, peak, sample_rate, sensitivity=1.0, needed=needed):
+            kept.append(peak)
+        elif share >= NEW_PITCH_SHARE:
+            kept.append(peak)
+            pitch_only += 1
+        else:
+            continue
+        shares.append(share)
+    if not kept:
+        return PitchOnsets([], 0.0, 0.0)
+    coarse = [max(0.0, (p - 1) * HOP / sample_rate) for p in kept]
+    onsets = [refine_onset(audio, sample_rate, t) for t in coarse]
+    return PitchOnsets(onsets, pitch_only / len(kept), float(np.median(shares)))
+
+
+def new_pitch_share(level_db: np.ndarray, frame: int) -> float:
+    """How much of the energy after ``frame`` is in bins that were quiet.
+
+    "Before" is the loudest each bin was over the 40 ms up to the attack, so
+    a partial that was already ringing - however it beats - is not new.
+    "After" starts once the analysis window has cleared the attack itself.
+    """
+    reach = N_FFT // HOP // 2
+    before = level_db[max(0, frame - 3 * reach) : max(1, frame - reach)]
+    after = level_db[frame + reach : frame + reach + 6]
+    if not len(after) or not len(before):
+        return 0.0
+    before = before.max(axis=0)
+    after = after.mean(axis=0)
+    live = after > after.max() - 40.0
+    new = live & (after - before > NEW_PITCH_DB)
+    power = 10 ** (after / 10)
+    total = float(power[live].sum())
+    return float(power[new].sum()) / total if total > 0 else 0.0
 
 
 def refine_onset(audio: np.ndarray, sample_rate: int, coarse: float) -> float:

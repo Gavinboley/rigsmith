@@ -155,6 +155,7 @@ def render_part(
     file_as_take: bool = True,
     like: str | None = None,
     amount: float = 1.0,
+    mode: Literal["auto", "mono", "poly", "arpeggio"] = "auto",
 ) -> str:
     """Render a song's part as a DI on the user's guitar, on the record's clock.
 
@@ -165,8 +166,10 @@ def render_part(
     region of the stem. Runs in the background; returns a job id.
 
     Prefer a tab's MIDI for chord-heavy distorted parts - transcription is
-    reliable on single-note parts and approximate on distorted chords, and
-    the result says how much of the stem its notes explain. ``like`` moves
+    reliable on single-note parts and arpeggios and approximate on distorted
+    chords, and the result says how much of the stem its notes explain.
+    ``mode`` overrides how the stem is read when the result says it guessed
+    wrong (``arpeggio``: one note per pick, left to ring). ``like`` moves
     the DI toward the record's guitar when it was not the user's (a type such
     as strat or p90, or another learned guitar), by ``amount``.
     """
@@ -185,6 +188,7 @@ def render_part(
             file_as_take=file_as_take,
             like=like,
             amount=amount,
+            mode=mode,
             progress=progress,
         ),
     )
@@ -192,7 +196,7 @@ def render_part(
 
 
 @tool
-def transcribe_stem(stem: str, region: str | None = None, mode: Literal["auto", "mono", "poly"] = "auto") -> str:
+def transcribe_stem(stem: str, region: str | None = None, mode: Literal["auto", "mono", "poly", "arpeggio"] = "auto") -> str:
     """Estimate the notes of a guitar stem: what sounds when.
 
     Reports how much of the stem's pitched energy the notes explain. Below

@@ -210,7 +210,7 @@ def learn_replay(profile_id, source) -> None:
 @click.option("--track", type=int, help="MIDI track number.")
 @click.option("--notes", "text", help="Typed notes instead.")
 @click.option("--region", help="start:end of the record, or 'auto'.")
-@click.option("--mode", type=click.Choice(["auto", "mono", "poly"]), default="auto", show_default=True)
+@click.option("--mode", type=click.Choice(["auto", "mono", "poly", "arpeggio"]), default="auto", show_default=True, help="How to read a stem: auto decides; arpeggio is one note per pick, left to ring.")
 @click.option("--power-chords", is_flag=True, help="Put fifths back on a transcribed rhythm part.")
 @click.option("--transpose", type=int, default=0)
 @click.option("--label")
@@ -278,7 +278,7 @@ def learn_swap(source, like, amount, profile_id, label, as_take) -> None:
 @group.command("transcribe")
 @click.argument("stem")
 @click.option("--region")
-@click.option("--mode", type=click.Choice(["auto", "mono", "poly"]), default="auto", show_default=True)
+@click.option("--mode", type=click.Choice(["auto", "mono", "poly", "arpeggio"]), default="auto", show_default=True, help="How to read a stem: auto decides; arpeggio is one note per pick, left to ring.")
 @click.option("--lowest", default="auto", show_default=True, help="Lowest string, e.g. E2, or auto.")
 @click.option("--midi-out", type=click.Path(path_type=Path), help="Write the notes as MIDI.")
 @handled

@@ -6,11 +6,14 @@ playing them back on your guitar gives a DI whose notes, register and rhythm
 match the record. The record's tone is then the only thing left differing -
 which is the whole point.
 
-Two estimators, chosen per passage:
+Three estimators, chosen per passage:
 
-* **Monophonic** - leads, single-note riffs, arpeggios. The onset segmenter
-  from :mod:`.segment` with its autocorrelation pitch, which is accurate to a
-  few cents on one note at a time.
+* **Monophonic** - leads and single-note riffs. The onset segmenter from
+  :mod:`.segment` with its autocorrelation pitch, which is accurate to a few
+  cents on one note at a time.
+* **Arpeggio** - notes picked one at a time and left to ring over each
+  other. At every attack, the spectrum after it less the one before: what
+  is left is the note that just arrived, and the salience below reads it.
 * **Polyphonic** - chords and power-chord rhythm. Iterative harmonic-sum
   salience after Klapuri (2006): score every candidate fundamental by the
   weighted energy at its harmonics, take the best, remove its harmonics from
@@ -500,6 +503,171 @@ def _single_notes(notes, min_midi: int) -> list[NoteEvent]:
     return events
 
 
+# --------------------------------------------------------------------------
+# arpeggios
+# --------------------------------------------------------------------------
+
+#: What makes a part an arpeggio, each tested on its own share of the
+#: attacks. Most attacks bring one new pitch alone (``SINGLE``) - or, driven,
+#: show only as a new pitch (``PITCH_ONLY``) - and some of what sounds after
+#: an attack is new but not all of it (``NEW_SHARE``: all is a chord change,
+#: none is a chord struck again), and the pick changes note from one attack
+#: to the next (``CHANGE``: a re-struck power chord keeps its root).
+#: Measured over arpeggios up and down, open-chord picking, a minor pattern
+#: and a Travis pattern at 80, 110 and 150 BPM through a clean, a crunch and
+#: a high-gain amp, against triads, sevenths, open six-string chords, power
+#: chords and eighth-note re-strums: arpeggios at single 0.53-0.96 clean or
+#: pitch-only 0.33-1.00 driven, new share 0.14-0.70, change 0.91-1.00; no
+#: chord part met all three (the near misses: single 0.55 with new share
+#: 1.00, pitch-only 0.53 with new share 0.05, change 0.55).
+ARPEGGIO_SINGLE = 0.5
+ARPEGGIO_PITCH_ONLY = 0.3
+ARPEGGIO_NEW_SHARE = (0.12, 0.85)
+ARPEGGIO_CHANGE = 0.85
+
+#: An attack is read from 85 ms just after it, against the 85 ms before.
+ATTACK_WINDOW = 4096
+
+#: A pick whose partials between the multiples of k carry under this share
+#: of what the multiples carry is the note k times higher. Distortion's
+#: difference tones put energy under a new note, at a pitch whose
+#: "harmonics" are the real note's: half of a driven arpeggio came back an
+#: octave or a twelfth low.
+OCTAVE_EVIDENCE = 0.5
+
+#: A ringing note has stopped once its partials fall this far below its
+#: attack; none rings longer than ``RING_CAP_S``.
+RING_DROP_DB = 12.0
+RING_CAP_S = 4.0
+
+
+def _attack_spectra(audio: np.ndarray, sample_rate: int, onsets) -> np.ndarray:
+    """At each onset, what arrived: the spectrum after it less the one before."""
+    hann = np.hanning(ATTACK_WINDOW)
+    lead = int(0.01 * sample_rate)
+    gap = int(0.005 * sample_rate)
+
+    def spectrum(start: int) -> np.ndarray | None:
+        if start < 0:
+            return None
+        piece = audio[start : start + ATTACK_WINDOW]
+        if len(piece) < ATTACK_WINDOW:
+            piece = np.pad(piece, (0, ATTACK_WINDOW - len(piece)))
+        return np.abs(np.fft.rfft(piece * hann, n=N_FFT))
+
+    rows = []
+    for onset in onsets:
+        at = int(onset * sample_rate)
+        after = spectrum(at + lead)
+        before = spectrum(at - gap - ATTACK_WINDOW)
+        rows.append(after if before is None else np.maximum(after - before, 0.0))
+    return np.array(rows) if rows else np.zeros((0, N_FFT // 2 + 1))
+
+
+def _partials(spectrum: np.ndarray, f0: float, bin_hz: float, count: int = 12) -> np.ndarray:
+    """The largest bin near each of a pitch's first ``count`` harmonics."""
+    amplitudes = []
+    for h in range(1, count + 1):
+        centre = h * f0
+        if centre > MAX_HZ:
+            break
+        idx = int(round(centre / bin_hz))
+        half = max(1, int(round(PARTIAL_TOLERANCE * centre / bin_hz)))
+        amplitudes.append(float(spectrum[max(1, idx - half) : idx + half + 1].max()))
+    return np.array(amplitudes)
+
+
+def _higher_note(midi: int, spectrum: np.ndarray, sample_rate: int, tuning_cents: float = 0.0, max_midi: int = 88) -> int:
+    """Move a pick up an octave, a twelfth or two when its partials say so.
+
+    A real note has energy at all of its harmonics; a difference tone under
+    a B3 that the salience took for an E2 has it at the E2's 3rd, 6th, 9th -
+    the B3's own - and little between.
+    """
+    bin_hz = sample_rate / N_FFT
+    compressed = np.sqrt(spectrum)
+    for _ in range(3):
+        amplitudes = _partials(compressed, midi_to_hz(midi + tuning_cents / 100.0), bin_hz)
+        numbers = np.arange(1, len(amplitudes) + 1)
+        for k, step in ((2, 12), (3, 19), (4, 24)):
+            on = numbers % k == 0
+            if midi + step > max_midi or not on.any() or on.all():
+                continue
+            if float(amplitudes[~on].mean()) < OCTAVE_EVIDENCE * float(amplitudes[on].mean()):
+                midi += step
+                break
+        else:
+            break
+    return midi
+
+
+def _ring_out(events: list[NoteEvent], magnitude: np.ndarray, sample_rate: int, tuning_cents: float = 0.0) -> None:
+    """Let each note ring until its partials fall away, it is picked again,
+    or the cap - an arpeggio's notes sound over each other, and a DI that
+    cut each one at the next attack would play a different part."""
+    frame_s = HOP / sample_rate
+    smear = N_FFT / 2 / sample_rate
+    bin_hz = sample_rate / N_FFT
+    floor = 10 ** (-RING_DROP_DB / 20)
+    for i, event in enumerate(events):
+        following = events[i + 1].start if i + 1 < len(events) else event.start + RING_CAP_S
+        repick = next((e.start for e in events[i + 1 :] if round(e.midi) == round(event.midi)), math.inf)
+        stop = min(repick, event.start + RING_CAP_S)
+        first = int(event.start / frame_s) + 2
+        if first >= len(magnitude):
+            continue
+        f0 = midi_to_hz(event.midi + tuning_cents / 100.0)
+
+        def level(frame: int) -> float:
+            return float(_partials(magnitude[frame], f0, bin_hz, count=4).sum())
+
+        peak = max(level(f) for f in range(first, min(len(magnitude), first + 3)))
+        last = first
+        frame = first
+        while frame < len(magnitude) and frame * frame_s < stop and level(frame) >= peak * floor:
+            last = frame
+            frame += 1
+        # The analysis window still holds a note half a window after it stops.
+        end = max((last + 1) * frame_s - smear, min(following, event.start + 0.1))
+        event.duration = round(max(0.05, min(end, stop) - event.start), 4)
+
+
+def _arpeggio(audio, sample_rate: int, magnitude: np.ndarray, min_midi: int, tuning_cents: float) -> tuple[list[NoteEvent], bool]:
+    """One note per attack - the pitch that arrived with it - left to ring.
+
+    Returns the notes, and whether the part sounds like an arpeggio (see
+    ``ARPEGGIO_SINGLE``).
+    """
+    from .segment import pitch_onsets
+
+    found_onsets = pitch_onsets(audio, sample_rate)
+    onsets = found_onsets.times
+    if not onsets:
+        return [], False
+    spectra = _attack_spectra(audio, sample_rate, onsets)
+    found = salience_frames(spectra, sample_rate, min_midi=min_midi, tuning_cents=tuning_cents)
+    energies = np.sqrt((spectra ** 2).sum(axis=1))
+    loudest = float(energies.max()) or 1.0
+    events, single = [], 0
+    for onset, pitches, spectrum, energy in zip(onsets, found, spectra, energies):
+        if not pitches:
+            continue
+        single += len(pitches) == 1
+        midi = _higher_note(pitches[0][0], spectrum, sample_rate, tuning_cents)
+        velocity = float(np.clip(0.45 + 0.55 * math.sqrt(energy / loudest), 0.1, 1.0))
+        events.append(NoteEvent(start=round(onset, 4), duration=0.05, midi=float(midi), velocity=velocity))
+    _ring_out(events, magnitude, sample_rate, tuning_cents)
+    picks = [round(e.midi) for e in events]
+    change = sum(a != b for a, b in zip(picks, picks[1:])) / (len(picks) - 1) if len(picks) > 1 else 0.0
+    low, high = ARPEGGIO_NEW_SHARE
+    arpeggio = (
+        (single / len(onsets) >= ARPEGGIO_SINGLE or found_onsets.pitch_only >= ARPEGGIO_PITCH_ONLY)
+        and low <= found_onsets.new_share <= high
+        and change >= ARPEGGIO_CHANGE
+    )
+    return events, arpeggio
+
+
 def _chroma_similarity(audio, sample_rate, events) -> float:
     """How well the notes explain the stem's pitched energy, 0-1.
 
@@ -574,8 +742,9 @@ def transcribe(
     """Notes from a guitar stem.
 
     Args:
-        mode: ``mono``, ``poly`` or ``auto`` (decide from how many pitches
-            sound at once).
+        mode: ``mono``, ``poly``, ``arpeggio`` (one note per attack, left to
+            ring) or ``auto`` (decide from how many pitches sound at once,
+            and how many each attack brings).
         lowest: Nothing below this is a note: the tuning's lowest string, or
             ``auto`` to infer it from the stem (see :func:`infer_lowest`).
         method: ``builtin``, ``basic-pitch``, or ``auto`` (basic-pitch when
@@ -652,10 +821,22 @@ def transcribe(
                 if periodic >= 0.8:
                     chosen = "mono"
 
+    # Several pitches ringing, but each attack bringing one: an arpeggio.
+    # Read as chords it came back a chord on every pick (F1 0.02-0.38).
+    arpeggio = None
+    if chosen == "arpeggio" or (mode == "auto" and chosen == "poly"):
+        picked, sounds_like_one = _arpeggio(audio, sample_rate, magnitude, min_midi, result.tuning_cents)
+        if chosen == "arpeggio" or (picked and sounds_like_one):
+            arpeggio = picked
+
     if chosen == "mono":
         notes = notes if notes is not None else segment(audio, sample_rate)
         result.events = _single_notes(notes, min_midi)
         result.mode = "monophonic"
+    elif arpeggio is not None:
+        result.events = arpeggio
+        result.mode = "arpeggio"
+        result.notes_text.append("one note per attack, each left to ring - read as an arpeggio")
     else:
         result.events = _notes_from_frames(frames, onsets, sample_rate, energies)
         result.mode = "polyphonic"

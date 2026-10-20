@@ -556,6 +556,93 @@ def test_a_drop_d_riff_keeps_its_low_d():
     assert lows >= 0.85 * sum(1 for n in truth if n[2] == 38), "the low D is a real note, not cut off as an echo"
 
 
+def _arpeggio(bars=4, beat=60 / 110):
+    truth = []
+    for b in range(bars * 4):
+        root = [52, 57, 55, 50][(b // 4) % 4]
+        truth += [(b * beat + k * beat / 4, beat * 0.8, m, 0.7) for k, m in enumerate((root, root + 4, root + 7, root + 12))]
+    return truth
+
+
+@pytest.mark.parametrize("amp_type, gain, share", [(0, 0.1, 0.9), (2, 0.5, 0.85)])
+def test_an_arpeggio_is_read_note_for_note_and_left_to_ring(amp_type, gain, share):
+    """Read as chords, every pick of an arpeggio came back as the whole
+    chord (F1 0.02-0.38). One note per attack, left to ring, is what was
+    played - and a DI that cut each note at the next pick would play a
+    different part."""
+    from rigsmith.loop.virtual import SimAmp
+
+    beat = 60 / 110
+    truth = _arpeggio(beat=beat)
+    audio = SimAmp(Type=amp_type, Gain=gain).process(render_notes(truth, seed=5))
+    result = transcribe(audio, RATE, method="builtin", match_record_pitch=False)
+    assert result.mode == "arpeggio", result.describe()
+    hits = sum(any(abs(e.start - t) < 0.05 and abs(e.midi - m) < 0.5 for e in result.events) for t, _, m, _ in truth)
+    assert hits >= share * len(truth), hits
+    assert len(result.events) <= 1.1 * len(truth), "one note per pick, not a chord"
+    # Each note was held for 0.8 of a beat, over the next three picks.
+    assert np.median([e.duration for e in result.events]) >= 0.6 * beat
+
+
+def test_a_driven_arpeggio_s_picks_are_found_though_the_level_never_rises():
+    """The amp holds a driven arpeggio's level flat, and the rise test kept
+    one of its 64 picks. The new note's partials arriving give the rest."""
+    from rigsmith.learn.segment import pitch_onsets
+    from rigsmith.loop.virtual import SimAmp
+
+    truth = _arpeggio()
+    audio = SimAmp(Type=2, Gain=0.5).process(render_notes(truth, seed=5))
+    found = pitch_onsets(audio, RATE)
+    starts = [t for t, _, _, _ in truth]
+    heard = sum(any(abs(o - s) < 0.03 for o in found.times) for s in starts)
+    assert heard >= 0.9 * len(starts), heard
+    assert found.pitch_only >= 0.5, "nearly all of them only by the new pitch"
+
+
+@pytest.mark.parametrize("kind, bpm, amp_type, gain, seed", [
+    ("strum", 150, 3, 0.85, 23),   # eighth-note re-strums: picks found by pitch, but nothing new
+    ("power", 80, 0, 0.1, 11),     # a clean re-struck power chord reads as one pitch per attack
+    ("triads", 150, 0, 0.1, 23),   # so does a clean triad, now and then
+])
+def test_strummed_chords_are_not_taken_for_an_arpeggio(kind, bpm, amp_type, gain, seed):
+    from rigsmith.loop.virtual import SimAmp
+
+    beat = 60 / bpm
+    truth = []
+    for b in range(16):
+        if kind == "strum":
+            root = [52, 57, 55, 50][(b // 4) % 4]
+            for k in range(2):
+                truth += [(b * beat + k * beat / 2 + j * 0.008, beat / 2 * 0.9, m, 0.7) for j, m in enumerate((root, root + 4, root + 7))]
+        elif kind == "power":
+            root = [40, 43, 45, 38][(b // 2) % 4]
+            truth += [(b * beat, beat * 0.9, m, 0.8) for m in (root, root + 7, root + 12)]
+        elif b % 2 == 0:
+            root = [52, 57, 55, 50][(b // 2) % 4]
+            truth += [(b * beat, beat * 1.8, m, 0.7) for m in (root, root + 4, root + 7)]
+    audio = SimAmp(Type=amp_type, Gain=gain).process(render_notes(truth, seed=seed))
+    result = transcribe(audio, RATE, method="builtin", match_record_pitch=False)
+    assert result.mode == "polyphonic"
+
+
+def test_a_part_auto_misreads_can_be_read_as_an_arpeggio_on_request():
+    """A driven Travis pattern rings like a chord part to the automatic
+    choice; asked for, it is read a note per pick."""
+    from rigsmith.loop.virtual import SimAmp
+
+    beat = 60 / 110
+    truth = []
+    for b in range(16):
+        truth.append((b * beat, beat * 0.9, [40, 47][b % 2], 0.8))
+        truth.append((b * beat + beat / 2, beat * 0.9, [64, 67, 66, 64][b % 4], 0.7))
+    audio = SimAmp(Type=2, Gain=0.5).process(render_notes(truth, seed=5))
+    result = transcribe(audio, RATE, method="builtin", match_record_pitch=False, mode="arpeggio")
+    assert result.mode == "arpeggio"
+    hits = sum(any(abs(e.start - t) < 0.05 and abs(e.midi - m) < 0.5 for e in result.events) for t, _, m, _ in truth)
+    assert hits >= 0.55 * len(truth), hits
+    assert len(result.events) <= 1.1 * len(truth)
+
+
 @pytest.mark.parametrize("intervals, driven", [
     ((0, 5, 7), False),          # a sus4: its fourth sits beside its fifth
     ((0, 5, 7), True),

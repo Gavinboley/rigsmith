@@ -116,7 +116,7 @@ def doctor() -> None:
         ("demucs (guitar isolation)", "demucs", "pip install 'rigsmith[separation]' to pull a guitar stem out of a record"),
         ("av (AAC / .m4a songs)", "av", "pip install 'rigsmith[codecs]' to read a bought .m4a as it is"),
         ("optuna (bigger tuning budgets)", "optuna", "pip install 'rigsmith[tune]' - the built-in search covers small budgets"),
-        ("basic-pitch (polyphonic transcription)", "basic_pitch", "pip install 'rigsmith[transcribe]' - reads arpeggios and ringing chord parts the built-in transcriber gets wrong; used automatically once installed"),
+        ("basic-pitch (polyphonic transcription)", "basic_pitch", "pip install 'rigsmith[transcribe]' - reads fingerpicking and full open-chord voicings the built-in transcriber gets wrong; used automatically once installed"),
         ("anthropic (Claude through the API)", "anthropic", "pip install 'rigsmith[claude]' - not needed with Claude Code or a local model"),
         ("neural-amp-modeler (offline NAM)", "nam", "pip install neural-amp-modeler to render captures without hardware"),
         ("playwright (UI tests)", "playwright", "pip install 'rigsmith[browser]' - only needed to run the browser tests"),
