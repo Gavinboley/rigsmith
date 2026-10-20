@@ -107,9 +107,12 @@ function connectLive() {
         // Said at once, not at the next list of jobs a few seconds later.
         if (["succeeded", "failed", "cancelled"].includes(message.state) && runningJobs.delete(message.job_id)) showRunning();
         const name = jobNames.get(message.job_id) || "a background job";
-        if (message.state === "succeeded") {
+        // A chat turn says how it went in the chat itself; with the chat
+        // open, a toast repeating it only covered the box to type in.
+        const inChat = name.startsWith("chat: ") && chat.isOpen();
+        if (message.state === "succeeded" && !inChat) {
           toast(`Finished: ${name}`, { kind: "ok" });
-        } else if (message.state === "failed") {
+        } else if (message.state === "failed" && !inChat) {
           toast(`${name} failed: ${message.message}`, { kind: "error", timeout: 10000 });
         }
       }

@@ -140,8 +140,14 @@ function renderEntry(entry) {
       finishCard(card, entry);
       return card;
     }
-    case "error":
-      return addMessage("error", entry.text);
+    case "error": {
+      // The same failure again - no model answering, every time something is
+      // asked - is its first line, not the whole advice once more.
+      const seen = [...log().querySelectorAll(".msg.error")].some((node) => node.dataset.text === entry.text);
+      const node = addMessage("error", seen ? `${entry.text.split("\n")[0]} (as above)` : entry.text);
+      node.dataset.text = entry.text;
+      return node;
+    }
     case "status":
       return null;
     default:

@@ -1541,6 +1541,13 @@ def test_with_no_model_the_chat_still_offers_what_needs_none(browser, server):
         page.locator("#chat-text").press("Enter")
         page.locator("#chat-log .offline button:has-text('Measure knob curves')").click(timeout=15000)
         page.wait_for_selector("#catalog-calibrate.spotlight")
+        # The second "no model" is a line, not the advice again - and with the
+        # chat open, no toast repeats it over the box to type in.
+        errors = page.locator("#chat-log .msg.error")
+        assert errors.count() == 2
+        assert "Start LM Studio" in errors.nth(0).inner_text()
+        assert errors.nth(1).inner_text().endswith("(as above)") and "Start LM Studio" not in errors.nth(1).inner_text()
+        assert page.locator(".toast", has_text="chat:").count() == 0
 
 
 def test_a_rig_can_be_compared_with_another(browser, server):
