@@ -355,7 +355,8 @@ def pitch_onsets(audio, sample_rate: int) -> PitchOnsets:
     peaks = _pick_peaks(strength, sample_rate)
     envelope = _envelope_db(audio, sample_rate)
     needed = rise_threshold(envelope)
-    level = 20 * np.log10(np.maximum(magnitude, float(magnitude.max()) * 1e-5))
+    top = float(magnitude.max()) or 1.0
+    level = 20 * np.log10(np.maximum(magnitude, top * 1e-5))
     kept, shares, pitch_only = [], [], 0
     for peak in peaks:
         share = new_pitch_share(level, peak)
@@ -370,7 +371,9 @@ def pitch_onsets(audio, sample_rate: int) -> PitchOnsets:
     if not kept:
         return PitchOnsets([], 0.0, 0.0)
     coarse = [max(0.0, (p - 1) * HOP / sample_rate) for p in kept]
-    onsets = [refine_onset(audio, sample_rate, t) for t in coarse]
+    # Refined one by one, two close onsets could swap; the notes read from
+    # them are rung out in order.
+    onsets = sorted(refine_onset(audio, sample_rate, t) for t in coarse)
     return PitchOnsets(onsets, pitch_only / len(kept), float(np.median(shares)))
 
 

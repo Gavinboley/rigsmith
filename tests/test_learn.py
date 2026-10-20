@@ -625,6 +625,28 @@ def test_strummed_chords_are_not_taken_for_an_arpeggio(kind, bpm, amp_type, gain
     assert result.mode == "polyphonic"
 
 
+def test_a_note_picked_again_at_once_stops_where_it_is_picked_again():
+    """The 50 ms floor on a note's length ran it past its own re-pick 30 ms
+    later - two of the same note sounding at once on one string."""
+    from rigsmith.learn.transcribe import N_FFT, _ring_out
+
+    events = [NoteEvent(start=1.0, duration=0.05, midi=57.0, velocity=0.7), NoteEvent(start=1.03, duration=0.05, midi=57.0, velocity=0.7)]
+    _ring_out(events, np.ones((200, N_FFT // 2 + 1)), RATE)
+    assert events[0].start + events[0].duration <= events[1].start + 1e-9
+    assert events[0].duration > 0
+
+
+def test_silence_has_no_pitch_onsets_and_raises_no_warning():
+    import warnings
+
+    from rigsmith.learn.segment import pitch_onsets
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        found = pitch_onsets(np.zeros(2 * RATE), RATE)
+    assert found.times == [] and found.pitch_only == 0.0
+
+
 def test_a_part_auto_misreads_can_be_read_as_an_arpeggio_on_request():
     """A driven Travis pattern rings like a chord part to the automatic
     choice; asked for, it is read a note per pick."""

@@ -628,8 +628,9 @@ def _ring_out(events: list[NoteEvent], magnitude: np.ndarray, sample_rate: int, 
             last = frame
             frame += 1
         # The analysis window still holds a note half a window after it stops.
-        end = max((last + 1) * frame_s - smear, min(following, event.start + 0.1))
-        event.duration = round(max(0.05, min(end, stop) - event.start), 4)
+        end = max((last + 1) * frame_s - smear, min(following, event.start + 0.1), event.start + 0.05)
+        # Picked again sooner than that: it stops there, however short.
+        event.duration = round(max(0.005, min(end, stop) - event.start), 4)
 
 
 def _arpeggio(audio, sample_rate: int, magnitude: np.ndarray, min_midi: int, tuning_cents: float) -> tuple[list[NoteEvent], bool]:
