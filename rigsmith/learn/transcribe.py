@@ -647,15 +647,20 @@ def _arpeggio(audio, sample_rate: int, magnitude: np.ndarray, min_midi: int, tun
         return [], False
     spectra = _attack_spectra(audio, sample_rate, onsets)
     found = salience_frames(spectra, sample_rate, min_midi=min_midi, tuning_cents=tuning_cents)
-    energies = np.sqrt((spectra ** 2).sum(axis=1))
-    loudest = float(energies.max()) or 1.0
+    # How hard each note was picked, against the part's typical pick - which
+    # plays at 0.75, as single notes do (see _single_notes). Scaled from the
+    # loudest instead, every pick sat near 0.9, and a DI picked that much
+    # harder renders brighter: driven, it scored 0.126 against the part where
+    # the right notes score 0.095; centred, 0.098.
+    levels = 20 * np.log10(np.sqrt((spectra ** 2).sum(axis=1)) + 1e-12)
+    typical = float(np.median(levels))
     events, single = [], 0
-    for onset, pitches, spectrum, energy in zip(onsets, found, spectra, energies):
+    for onset, pitches, spectrum, level in zip(onsets, found, spectra, levels):
         if not pitches:
             continue
         single += len(pitches) == 1
         midi = _higher_note(pitches[0][0], spectrum, sample_rate, tuning_cents)
-        velocity = float(np.clip(0.45 + 0.55 * math.sqrt(energy / loudest), 0.1, 1.0))
+        velocity = float(np.clip(0.75 + (level - typical) / 24, 0.1, 1.0))
         events.append(NoteEvent(start=round(onset, 4), duration=0.05, midi=float(midi), velocity=velocity))
     _ring_out(events, magnitude, sample_rate, tuning_cents)
     picks = [round(e.midi) for e in events]

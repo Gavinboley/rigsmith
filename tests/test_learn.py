@@ -640,6 +640,8 @@ def test_an_arpeggio_is_read_note_for_note_and_left_to_ring(amp_type, gain, shar
     assert len(result.events) <= 1.1 * len(truth), "one note per pick, not a chord"
     # Each note was held for 0.8 of a beat, over the next three picks.
     assert np.median([e.duration for e in result.events]) >= 0.6 * beat
+    # Picked evenly: a typical pick, as single notes are, not near the top.
+    assert np.median([e.velocity for e in result.events]) == pytest.approx(0.75, abs=0.03)
 
 
 def test_a_driven_arpeggio_s_picks_are_found_though_the_level_never_rises():
