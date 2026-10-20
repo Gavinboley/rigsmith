@@ -110,6 +110,24 @@ def test_onsets_land_on_the_attack_not_a_frame_early():
     assert max(errors) < 0.003
 
 
+@pytest.mark.parametrize("amp_type, gain", [(0, 0.1), (3, 0.85)])
+def test_a_part_that_opens_on_an_attack_keeps_its_first_note(amp_type, gain):
+    """A part cut from a record starts on its downbeat, and the rise test
+    had no "before" there: every part's first note went missing."""
+    from rigsmith.loop.virtual import SimAmp
+
+    notes = [(0.0, 0.4, 52, 0.8), (0.545, 0.4, 55, 0.8)]
+    audio = SimAmp(Type=amp_type, Gain=gain).process(render_notes(notes, seed=3))
+    onsets = detect_onsets(audio, RATE)
+    assert onsets and onsets[0] < 0.01, onsets
+    assert len(onsets) == 2
+
+
+def test_a_part_that_opens_on_a_rest_has_no_onset_there():
+    audio = render_notes([(0.5, 0.4, 52, 0.8), (1.0, 0.4, 55, 0.8)], seed=3)
+    assert [round(o, 1) for o in detect_onsets(audio, RATE)] == [0.5, 1.0]
+
+
 def test_a_compressed_distorted_riff_still_shows_its_onsets():
     notes = riff(24, spacing=0.2375)
     distorted = np.tanh(render_notes(notes, seed=3) * 20) * 0.3

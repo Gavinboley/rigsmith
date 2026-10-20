@@ -212,6 +212,12 @@ ONSET_RISE_DB = 4.0
 NEW_PITCH_DB = 9.0
 NEW_PITCH_SHARE = 0.02
 
+#: A part cut from a record usually starts on a downbeat - an attack at its
+#: very first sample, where the rise test has no "before" to rise from, and
+#: every part's first note went missing. Audio that opens within this much
+#: of its own loud level, with no onset in its first 50 ms, starts with one.
+OPENING_DB = 20.0
+
 
 def rise_threshold(envelope: np.ndarray) -> float:
     """How much a level has to climb to count as an attack, for this material.
@@ -325,7 +331,18 @@ def detect_onsets(audio, sample_rate: int, *, sensitivity: float = 1.0) -> list[
     needed = rise_threshold(envelope)
     peaks = [p for p in peaks if _rises(envelope, p, sample_rate, sensitivity=sensitivity, needed=needed)]
     coarse = [max(0.0, (p - 1) * HOP / sample_rate) for p in peaks]
-    return [refine_onset(audio, sample_rate, t) for t in coarse]
+    return _opening(audio, sample_rate, envelope, [refine_onset(audio, sample_rate, t) for t in coarse])
+
+
+def _opening(audio: np.ndarray, sample_rate: int, envelope: np.ndarray, onsets: list[float]) -> list[float]:
+    """``onsets``, with one at the start when the audio opens already
+    playing (see :data:`OPENING_DB`)."""
+    span = max(1, int(0.05 * sample_rate / HOP))
+    if (onsets and onsets[0] <= 0.05) or len(envelope) <= span:
+        return onsets
+    if float(envelope[:span].max()) < float(np.percentile(envelope, 90)) - OPENING_DB:
+        return onsets
+    return [refine_onset(audio, sample_rate, 0.0)] + onsets
 
 
 class PitchOnsets(NamedTuple):
@@ -373,7 +390,7 @@ def pitch_onsets(audio, sample_rate: int) -> PitchOnsets:
     coarse = [max(0.0, (p - 1) * HOP / sample_rate) for p in kept]
     # Refined one by one, two close onsets could swap; the notes read from
     # them are rung out in order.
-    onsets = sorted(refine_onset(audio, sample_rate, t) for t in coarse)
+    onsets = _opening(audio, sample_rate, envelope, sorted(refine_onset(audio, sample_rate, t) for t in coarse))
     return PitchOnsets(onsets, pitch_only / len(kept), float(np.median(shares)))
 
 
