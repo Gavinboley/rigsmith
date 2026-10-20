@@ -842,3 +842,10 @@ button.pill { cursor: pointer; font: inherit; font-size: 11px; }
 .rem-bar.audible { background: var(--amber); }
 .rem-db { font-size: 12px; text-align: right; }
 .rem-try { font-size: 12px; }
+/* On a phone the advice had no width left - a word a line, rows a screen
+   tall - so it takes its own line under the band. */
+@media (max-width: 640px) {
+  .rem-row { grid-template-columns: 64px minmax(0, 1fr) 44px; row-gap: 2px; }
+  .rem-try { grid-column: 1 / -1; padding-left: 74px; }
+  .rem-try:empty { display: none; }
+}

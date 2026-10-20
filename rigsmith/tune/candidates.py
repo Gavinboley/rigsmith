@@ -102,6 +102,21 @@ def virtual_cab(name: str) -> int:
     return 1
 
 
+#: How each tier is said in a candidate's reason.
+TIER_WORDS = {"clean": "clean", "edge": "edge-of-breakup", "crunch": "crunch", "high": "high-gain", "modern": "modern high-gain"}
+
+
+def _a(word: str) -> str:
+    """The article for ``word``: an edge-of-breakup amp, a crunch amp."""
+    return "an" if word[:1].lower() in "aeiou" else "a"
+
+
+def _amp(tier: str) -> str:
+    """'an edge-of-breakup amp'."""
+    words = TIER_WORDS.get(tier, tier)
+    return f"{_a(words)} {words} amp"
+
+
 def tier_for(gain: float) -> str:
     """Where a measured gain (0-1) lands."""
     if gain < 0.2:
@@ -250,7 +265,7 @@ def candidates(
             break
         ok, device_index = known(name)
         if ok and name not in seen:
-            found.append(Candidate(name, tier, cab, f"the part measures as {tier}", device_index, VIRTUAL_VOICING[tier], selector_of(name)))
+            found.append(Candidate(name, tier, cab, f"the part measures as {TIER_WORDS.get(tier, tier).replace('-', ' ')}", device_index, VIRTUAL_VOICING[tier], selector_of(name)))
             seen.add(name)
     # Neighbours take turns - one from each tier either side before a second
     # from either - so a measurement that is off by a step in *either*
@@ -263,7 +278,7 @@ def candidates(
             for name in names[depth:]:
                 ok, device_index = known(name)
                 if ok and name not in seen:
-                    found.append(Candidate(name, other, other_cab, f"a {other} amp, in case the measurement is off by a step", device_index, VIRTUAL_VOICING[other], selector_of(name)))
+                    found.append(Candidate(name, other, other_cab, f"{_amp(other)}, in case the measurement is off by a step", device_index, VIRTUAL_VOICING[other], selector_of(name)))
                     seen.add(name)
                     break
     # Every amp is heard through its tier's cab, set explicitly - so the
@@ -278,7 +293,7 @@ def candidates(
             for name in names:
                 ok, device_index = known(name)
                 if ok and name not in seen:
-                    found.append(Candidate(name, other, other_cab, f"a {other} amp, so every gain range is heard once", device_index, VIRTUAL_VOICING[other], selector_of(name)))
+                    found.append(Candidate(name, other, other_cab, f"{_amp(other)}, so every gain range is heard once", device_index, VIRTUAL_VOICING[other], selector_of(name)))
                     seen.add(name)
                     break
     for candidate in found:
@@ -295,7 +310,7 @@ def stand_in(voicing: int, *, catalog=None) -> Candidate | None:
     for name in names:
         ok, device_index, selector = _lookup(catalog, name)
         if ok:
-            candidate = Candidate(name, tier, cab, f"the simulated amp's {tier} voicing - all four are heard", device_index, voicing, selector)
+            candidate = Candidate(name, tier, cab, f"the simulated amp's {TIER_WORDS.get(tier, tier)} voicing - all four are heard", device_index, voicing, selector)
             _, candidate.cab_index, candidate.cab_selector = _lookup(catalog, cab)
             candidate.cab_voicing = virtual_cab(cab)
             return candidate
