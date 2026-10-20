@@ -138,11 +138,13 @@ ROLES: dict[str, Role] = {
         "tune the knobs, and explain what is still different in guitar words. "
         "When the record was played on a different guitar from the user's "
         "(show_recipe says), move the DI to it with swap_pickup first - an "
-        "amp tuned to make up for a pickup is tuned wrong. "
+        "amp tuned to make up for a pickup is tuned wrong. Before tuning "
+        "against a rendered DI, glance at its notes (song_part_notes): notes "
+        "heard wrong are fixed by render_song_part_di with the right reading. "
         "Finish by offering a blind A/B of the best few.",
         groups=["matching", "loop", "tuning"],
         tools=[
-            "part_target", "render_song_part_di", "show_song", "scan_captures", "rank_captures", "job_status",
+            "part_target", "render_song_part_di", "song_part_notes", "show_song", "scan_captures", "rank_captures", "job_status",
             "start_ab_test", "list_takes", "estimate_pickup", "swap_pickup", "show_recipe",
         ],
     ),

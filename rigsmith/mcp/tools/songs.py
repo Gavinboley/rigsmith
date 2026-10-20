@@ -122,6 +122,26 @@ def render_song_part_di(
 
 
 @tool
+def song_part_notes(song_id: str, part_id: str) -> str:
+    """The notes a part's rendered DI plays: how they were heard, the range,
+    and the first forty. Check them before tuning against the DI - a lead
+    read an octave out, or chords where the record picks an arpeggio, is
+    fixed by rendering again with the right ``reading``, not by the rig."""
+    from ...learn.instrument import midi_to_note
+    from ...learn.synth import NoteEvent
+    from ...learn.transcribe import describe_events
+
+    notes = songs.part_notes(song_id, part_id)
+    events = [NoteEvent.from_dict(e) for e in notes["events"]]
+    if not events:
+        return f"{notes['label']}: the DI plays no notes"
+    low, high = min(e.midi for e in events), max(e.midi for e in events)
+    heard = f", heard as {notes['heard_as']}" if notes.get("heard_as") else ""
+    head = f"{notes['label']}: {len(events)} notes from {notes['source']}{heard}, {midi_to_note(low)} to {midi_to_note(high)}"
+    return head + "\n" + describe_events(events)
+
+
+@tool
 def rename_song_section(song_id: str, index: int, name: str) -> str:
     """Correct a section's guessed name (the map's names are a guess)."""
     songs.rename_section(song_id, index, name)

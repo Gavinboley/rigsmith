@@ -75,6 +75,18 @@ async def test_every_tool_has_a_description(server):
 
 
 @pytest.mark.asyncio
+async def test_an_agent_can_read_the_notes_a_part_s_di_plays(server, monkeypatch):
+    from rigsmith.core import songs
+
+    notes = {"part_id": "intro-1-stem", "label": "intro - all guitars", "duration": 4.0, "source": "transcribed", "heard_as": "arpeggio",
+             "events": [{"start": 0.0, "duration": 0.4, "midi": 52.0}, {"start": 0.14, "duration": 0.4, "midi": 56.0}], "midi_path": None}
+    monkeypatch.setattr(songs, "part_notes", lambda song_id, part_id: notes)
+    out = await call(server, "song_part_notes", {"song_id": "a-song", "part_id": "intro-1-stem"})
+    assert "2 notes from transcribed, heard as arpeggio, E3 to G#3" in out
+    assert "G#3" in out.splitlines()[-1]
+
+
+@pytest.mark.asyncio
 async def test_build_a_rig_end_to_end(server):
     out = await call(server, "create_rig", {"name": "Cherub Rock"})
     assert "cherub-rock" in out
