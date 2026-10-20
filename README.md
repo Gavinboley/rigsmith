@@ -601,6 +601,7 @@ The guides open in the app too (Ctrl+K, or `/docs/<name>`).
 - [docs/FIRST_SESSION.md](docs/FIRST_SESSION.md) — the order that works the first time the Core and an interface are plugged in, from teaching it your guitar to writing the rig
 - [docs/PROTOCOL.md](docs/PROTOCOL.md) — what is known about the Remote Editor protocol, what is not, and how it gets captured
 - [docs/TONE_MATCHING.md](docs/TONE_MATCHING.md) — how tone comparison works and where the numbers stop being trustworthy
+- [docs/AUTOPILOT.md](docs/AUTOPILOT.md) — how autopilot decides: its stages, which parts and amps, what a run at the Core costs, a whole song's rig, and what to trust
 - [docs/READING_NOTES.md](docs/READING_NOTES.md) — how a part's notes are read for its DI, what reads well, how to check them, and how to put them right
 
 ## What's left

@@ -1147,6 +1147,8 @@ def test_the_guides_are_pages(client):
     assert '<a href="/docs/local-models">' in page.text, "a link to another guide goes to its page"
     assert "<script" not in page.text.lower()
     assert client.get("/docs/nope").status_code == 404, "only the guides by name - no path into the repo"
+    guide = client.get("/docs/autopilot")
+    assert guide.status_code == 200 and "How autopilot decides" in guide.text and '<a href="/docs/reading-notes">' in guide.text
 
 
 def test_markdown_is_escaped_before_it_is_marked_up():

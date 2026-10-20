@@ -17,6 +17,7 @@ from pathlib import Path
 GUIDES = {
     "whats-new": "WHATS_NEW.md",
     "first-session": "FIRST_SESSION.md",
+    "autopilot": "AUTOPILOT.md",
     "local-models": "LOCAL_MODELS.md",
     "tone-matching": "TONE_MATCHING.md",
     "reading-notes": "READING_NOTES.md",
