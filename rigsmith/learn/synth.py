@@ -291,8 +291,34 @@ def render(
             "heard and were synthesised generically. Record a fuller protocol "
             "to cover them."
         )
+    below = _below_the_guitar(events, profile)
+    if below:
+        rendered.warnings.append(below)
     rendered.audio = out
     return rendered
+
+
+def _below_the_guitar(events: list[NoteEvent], profile) -> str | None:
+    """A warning when the part goes lower than the guitar's lowest string -
+    a record in a lower tuning than the one the guitar was learned in."""
+    if profile is None or not events:
+        return None
+    from .instrument import midi_to_note, tuning
+
+    try:
+        bottom = min(tuning(getattr(profile, "tuning", None)).open_strings)
+    except Exception:
+        return None
+    low = [e for e in events if round(e.midi) < bottom]
+    # A stray low note is a transcription's slip; a tuning shows in many.
+    if len(low) < max(3, 0.05 * len(events)):
+        return None
+    lowest = min(round(e.midi) for e in low)
+    return (
+        f"{len(low)} note(s) go below this guitar's lowest string ({midi_to_note(bottom)}), down to "
+        f"{midi_to_note(lowest)} - the record is tuned lower than {getattr(profile, 'tuning', None) or 'the guitar'}. "
+        "Tune down to match and learn the guitar in that tuning, for a DI it could really play."
+    )
 
 
 def events_from_notes(notes, *, velocity_from_peak: bool = True) -> list[NoteEvent]:

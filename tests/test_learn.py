@@ -614,3 +614,20 @@ def test_free_play_counts_every_note_as_unasked_for():
 
     notes = [Note(start=0.5 * i, end=0.5 * i + 0.4, hz=110.0, midi=45.0, clarity=0.9, peak_db=-12.0) for i in range(3)]
     assert protocols.align(protocols.get("free"), notes).extra == [0, 1, 2]
+
+
+def test_a_part_below_the_guitars_lowest_string_says_so():
+    """A record tuned lower than the guitar was learned in: the DI plays notes
+    that guitar could not, and the run should say how to fix it."""
+    from rigsmith.learn.synth import NoteEvent, _below_the_guitar
+
+    class Profile:
+        tuning = "E standard"
+
+    events = [NoteEvent(start=i * 0.5, duration=0.5, midi=37.0 if i % 2 else 44.0, velocity=0.8) for i in range(8)]
+    assert _below_the_guitar(events[:3], Profile()) is None, "one stray low note is a slip, not a tuning"
+    said = _below_the_guitar(events, Profile())
+    assert said and "below this guitar's lowest string (E2)" in said and "C#2" in said
+    Profile.tuning = "drop C#"
+    assert _below_the_guitar(events, Profile()) is None
+    assert _below_the_guitar(events, None) is None

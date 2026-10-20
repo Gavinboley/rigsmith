@@ -602,6 +602,10 @@ def _stage_di(run: Run, progress) -> str:
     )
     run.di_path = str(result.path)
     run.mode = "performance"
+    # What the render had to say - notes below the guitar's lowest string, a
+    # tab that does not match the record - is the user's to act on.
+    for warning in result.warnings:
+        run.note(warning)
     if like:
         rendered_pickup = (result.rendered or "").split("pickup: ", 1)
         run.note("the DI's pickup was " + (rendered_pickup[1].splitlines()[0] if len(rendered_pickup) > 1 else f"moved toward {like}"))
