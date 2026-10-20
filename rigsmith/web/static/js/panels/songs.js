@@ -320,7 +320,7 @@ function partsGrid() {
             "div",
             { class: "p-di hint" },
             el("span", { class: `tag ${part.di.kind === "yours" ? "a2" : ""}`, text: part.di.kind === "yours" ? "your take" : "rendered DI" }),
-            el("span", { text: part.di.kind === "yours" ? " autopilot uses it" : ` on ${part.di.guitar || "the synthetic string"}${READ_AS[part.reading] ? `, read as ${READ_AS[part.reading]}` : ""}` }),
+            el("span", { text: part.di.kind === "yours" ? " autopilot uses it" : ` on ${part.di.guitar || "the synthetic string"}${readingText(part)}` }),
             el("button", { class: "btn small ghost", text: "play DI", onclick: (e) => play(part.di.url, e.target) })
           )
         : null,
@@ -440,6 +440,15 @@ const READINGS = [
   { value: "arpeggio", label: "an arpeggio - one note per pick, left to ring" },
 ];
 const READ_AS = { mono: "single notes", poly: "chords", arpeggio: "an arpeggio" };
+//: How a rendered DI's notes were found, when nobody chose a reading.
+const HEARD_AS = { monophonic: "single notes", polyphonic: "chords", arpeggio: "an arpeggio", midi: "the tab", text: "typed notes", "basic-pitch": "basic-pitch" };
+
+function readingText(part) {
+  if (READ_AS[part.reading]) return `, read as ${READ_AS[part.reading]}`;
+  const heard = HEARD_AS[part.heard_as];
+  if (!heard) return "";
+  return part.heard_as === "midi" || part.heard_as === "text" ? `, notes from ${heard}` : `, heard as ${heard}`;
+}
 
 async function renderDi(part) {
   const [{ profiles }, pickups] = await Promise.all([api.get("/api/learn/profiles"), api.get("/api/learn/pickups").catch(() => ({ types: [] }))]);

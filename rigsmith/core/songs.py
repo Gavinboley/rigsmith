@@ -60,6 +60,10 @@ class Part:
     """How its stem is read into notes - auto, mono, poly or arpeggio. Set
     when the user corrects the automatic choice, and kept for every later
     render of the part, autopilot's included."""
+    heard_as: str | None = None
+    """How the notes of its rendered DI were found: monophonic, polyphonic
+    or arpeggio when transcribed, else midi, text or basic-pitch - so a
+    wrong automatic reading shows on the part, next to the fix."""
 
     @property
     def region(self) -> str:
@@ -492,7 +496,7 @@ def analyse(song_id: str, *, progress: Progress | None = None, min_presence: flo
                 old = previous[part_id]
                 part.chosen, part.note, part.recipe_id = old.chosen, old.note, old.recipe_id
                 part.di_take, part.best, part.history = old.di_take, old.best, old.history
-                part.reading = old.reading
+                part.reading, part.heard_as = old.reading, old.heard_as
             parts.append(part)
             step(0.6 + 0.35 * done / max(1, total), f"described {part.label}")
     carry_over(previous, parts)
@@ -531,7 +535,8 @@ def carry_over(previous: dict[str, Part], parts: list[Part]) -> None:
             heir.reading = old.reading
         heir.history = (heir.history or []) + [h for h in (old.history or []) if h not in (heir.history or [])]
         if abs(heir.start - old.start) < 0.5 and abs(heir.end - old.end) < 0.5:
-            heir.di_take = heir.di_take or old.di_take
+            if not heir.di_take:
+                heir.di_take, heir.heard_as = old.di_take, old.heard_as
             heir.best = heir.best or old.best
 
 
@@ -741,10 +746,21 @@ def render_part_di(
     )
     song = get(song_id)
     song.part(part_id).di_take = result.take_id
+    song.part(part_id).heard_as = _heard_as(result)
     if reading is not None:
         song.part(part_id).reading = reading
     song.save()
     return result
+
+
+def _heard_as(result) -> str | None:
+    """``monophonic``, ``polyphonic`` or ``arpeggio`` for notes the built-in
+    transcriber found; the notes' source otherwise."""
+    source = getattr(result, "source", None)
+    if source != "transcribed":
+        return source
+    method, _, mode = (getattr(result, "method", None) or "").partition(", ")
+    return mode if method == "builtin" and mode else method or None
 
 
 def take_for_part(song_id: str, part_id: str, take: str) -> dict:

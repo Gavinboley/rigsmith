@@ -527,6 +527,17 @@ def test_a_reading_follows_its_part_through_a_re_map():
     assert renamed[0].reading == "arpeggio"
 
 
+def test_a_part_says_how_its_rendered_notes_were_heard():
+    """So a wrong automatic reading is visible on the part, beside the fix."""
+    from types import SimpleNamespace
+
+    from rigsmith.core.songs import _heard_as
+
+    assert _heard_as(SimpleNamespace(source="transcribed", method="builtin, polyphonic")) == "polyphonic"
+    assert _heard_as(SimpleNamespace(source="transcribed", method="basic-pitch, polyphonic")) == "basic-pitch"
+    assert _heard_as(SimpleNamespace(source="midi", method=None)) == "midi"
+
+
 def test_a_part_keeps_the_reading_it_was_corrected_to(workspace, monkeypatch):
     """Autopilot renders a part's DI afresh on every run: a part the user
     had read as an arpeggio would have gone back to chords on the next."""
@@ -540,7 +551,7 @@ def test_a_part_keeps_the_reading_it_was_corrected_to(workspace, monkeypatch):
 
     def fake_part_di(profile_id, **kwargs):
         seen.append(kwargs["mode"])
-        return SimpleNamespace(take_id="rendered")
+        return SimpleNamespace(take_id="rendered", source="transcribed", method=f"builtin, {'arpeggio' if kwargs['mode'] == 'arpeggio' else 'polyphonic'}")
 
     monkeypatch.setattr(part_rendering, "part_di", fake_part_di)
     made = songs.create("Picked")
@@ -551,6 +562,7 @@ def test_a_part_keeps_the_reading_it_was_corrected_to(workspace, monkeypatch):
     songs.render_part_di(made.song_id, "intro-1-stem", None)
     assert seen == ["auto", "arpeggio", "arpeggio"]
     assert songs.get(made.song_id).part("intro-1-stem").reading == "arpeggio"
+    assert songs.get(made.song_id).part("intro-1-stem").heard_as == "arpeggio"
     with pytest.raises(Invalid):
         songs.render_part_di(made.song_id, "intro-1-stem", None, reading="chug")
 
