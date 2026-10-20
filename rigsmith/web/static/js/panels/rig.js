@@ -661,6 +661,39 @@ export function init() {
     if (current) window.open(`/api/drafts/${encodeURIComponent(current.draft_id)}/sheet.html`, "_blank");
   };
 
+  // The whole draft heard offline - the effects too - beside the record, so
+  // it can be listened to before anything is written.
+  $("#hear-btn").onclick = () =>
+    attempt(async () => {
+      if (!current) return;
+      const scenes = (current.rig.scenes || []).map((s) => s.name).filter(Boolean);
+      let scene = null;
+      if (scenes.length) {
+        const answer = await prompt("Hear which part of the rig?", [
+          { name: "scene", label: "Scene", type: "select", value: "", options: [{ value: "", label: "every block that is on" }, ...scenes.map((name) => ({ value: name, label: name }))] },
+        ], { okLabel: "Hear it" });
+        if (!answer) return;
+        scene = answer.scene || null;
+      }
+      toast("Playing the DI through the draft...", { key: "hear" });
+      const heard = await api.post(`/api/drafts/${encodeURIComponent(current.draft_id)}/hear`, { scene });
+      $("#heard")?.remove();
+      const players = el("div", { class: "row" });
+      for (const [label, url] of [["the draft", heard.url], ["the record", heard.target_url]]) {
+        if (url) players.append(el("label", { class: "hint heard-player" }, label, el("audio", { controls: true, preload: "none", src: url })));
+      }
+      $("#findings").prepend(
+        el(
+          "div",
+          { class: "finding info", id: "heard" },
+          el("strong", { text: (scene ? `${scene}: ` : "") + (heard.composite != null ? `${heard.composite.toFixed(3)} against the record` : "heard") }),
+          players,
+          el("div", { class: "hint mono", style: "white-space:pre-wrap", text: heard.describe })
+        )
+      );
+      toast("Heard - the players are above the findings", { kind: "ok", key: "hear" });
+    });
+
   $("#export-btn").onclick = () =>
     attempt(async () => {
       const { path } = await api.exportDraft(current.draft_id);

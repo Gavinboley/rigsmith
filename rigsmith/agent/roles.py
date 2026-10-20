@@ -85,7 +85,7 @@ ROLES: dict[str, Role] = {
             "choose_parts", "song_brief", "search_models",
             "run_autopilot", "run_autopilot_demo", "autopilot_status",
             "setup_status", "device_sessions", "estimate_pickup",
-            "autopilot_listen_back", "check_bench_rig", "tone_sheet", "resume_autopilot", "nudge_tone",
+            "autopilot_listen_back", "check_bench_rig", "tone_sheet", "hear_draft", "resume_autopilot", "nudge_tone",
             "undo_rig_edit", "ear_habits",
         ],
     ),

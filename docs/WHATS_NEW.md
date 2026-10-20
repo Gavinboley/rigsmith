@@ -98,6 +98,11 @@ the parts that need the Core, your guitar or your copy of a song say so.
 - **Ear habits**: the knobs you keep turning after autopilot, offered as the
   next run's starting point - never assumed.
 - **Finish by ear** on a finished run opens its draft with the words ready.
+- **Hear it** on the Rig page (`rigsmith rig hear`): your DI through the
+  whole draft - amp, cab, G EQ, boost, the delay at the rig's tempo, the
+  room - on the simulated bench, beside the record and scored against it;
+  a song rig a scene at a time, each against its own part. A rehearsal
+  before anything is written.
 
 ## The Core
 

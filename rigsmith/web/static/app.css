@@ -842,6 +842,8 @@ button.pill { cursor: pointer; font: inherit; font-size: 11px; }
 .rem-bar.audible { background: var(--amber); }
 .rem-db { font-size: 12px; text-align: right; }
 .rem-try { font-size: 12px; }
+.heard-player { display: inline-flex; flex-direction: column; gap: 2px; }
+.heard-player audio { height: 32px; max-width: 100%; }
 /* On a phone the advice had no width left - a word a line, rows a screen
    tall - so it takes its own line under the band. */
 @media (max-width: 640px) {

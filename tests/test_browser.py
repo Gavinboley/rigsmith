@@ -1633,3 +1633,22 @@ def test_a_whole_song_run_says_which_part_it_is_chasing(browser, server):
         page.click("#ap-runs .item:has-text('Whole Song')")
         page.click("#ap-current .item.clickable:has-text('solo - centre')")
         page.wait_for_selector("#ap-current h2:has-text('Solo Part')")
+
+
+def test_a_draft_can_be_heard_beside_the_record(browser, server, tmp_path):
+    from rigsmith.core import autopilot, rigs
+
+    draft_id = rigs.create("Hear Me").draft.draft_id
+    rigs.add_block(draft_id, "amp", "82 Lead 800 100W", params={"GainA": 0.6})
+    rigs.add_block(draft_id, "effect", "AIR Reverb", params={"Mode": 1, "Mix": 0.25})
+    di = audio_file(tmp_path, "di.wav", seconds=4.0)
+    record = audio_file(tmp_path, "record.wav", seconds=4.0)
+    autopilot.Run(run_id="hear-run", request=autopilot.Request(title="Hear Me"), draft_id=draft_id, di_path=str(di), target_path=str(record), mode="performance", state="done").save()
+    with page_at(browser, server) as page:
+        page.click("#tabs .tab[data-panel='rig']")
+        page.select_option("#draft-select", draft_id)
+        page.click("#hear-btn")
+        heard = page.locator("#heard")
+        heard.wait_for(timeout=20000)
+        assert "against the record" in heard.inner_text() and "AIR Reverb" in heard.inner_text()
+        assert heard.locator("audio").count() == 2, "the draft and the record, side by side"

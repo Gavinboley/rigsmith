@@ -85,7 +85,9 @@ the run says which parts were moved.
 ## What to trust
 
 The score ranks; your ears decide. A difference smaller than the score can
-resolve is a tie. The blind A/B plays the finalists without their names, and
+resolve is a tie. **Hear it** on the Rig page plays your DI through the
+whole draft - the boost, EQ and effects the run added after the amp too -
+beside the record, before anything is written. The blind A/B plays the finalists without their names, and
 "use what my ears picked" rebuilds the draft from your choice.
 
 Knobs that land away from the record's settings are usually making up for

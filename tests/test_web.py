@@ -1178,3 +1178,23 @@ def test_a_part_per_sound_is_chosen_from_the_page(client):
     made = _three_sound_song()
     song = client.post(f"/api/songs/{made.song_id}/choose-sounds").json()
     assert sorted(p["part_id"] for p in song["parts"] if p["chosen"]) == ["chorus-3-left", "intro-1-stem", "solo-4-centre"]
+
+
+def test_a_draft_is_heard_from_the_rig_page(client, tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    from rigsmith.core import hear, rigs
+
+    draft_id = rigs.create("Heard").draft.draft_id
+    rendered = tmp_path / "heard.wav"
+    rendered.write_bytes(b"RIFF")
+    asked = {}
+
+    def fake(draft, *, di=None, scene=None):
+        asked.update(draft=draft, di=di, scene=scene)
+        return SimpleNamespace(path=str(rendered), target_path=None, describe=lambda: "through amp", to_dict=lambda: {"played": ["amp"], "composite": None})
+
+    monkeypatch.setattr(hear, "render", fake)
+    heard = client.post(f"/api/drafts/{draft_id}/hear", json={"scene": "verse"}).json()
+    assert asked == {"draft": draft_id, "di": None, "scene": "verse"}
+    assert heard["url"] and heard["target_url"] is None and heard["describe"] == "through amp"

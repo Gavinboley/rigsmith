@@ -480,3 +480,13 @@ def test_following_a_whole_song_says_which_part_is_under_way(runner, monkeypatch
     monkeypatch.setattr(command.time, "sleep", lambda seconds: None)
     result = invoke(runner, "autopilot", "run", "W")
     assert "chasing part 2 of 3: solo - centre (run w-2)" in result.output, result.output
+
+
+def test_rig_hear_plays_a_di_through_the_draft(runner, monkeypatch):
+    from types import SimpleNamespace
+
+    from rigsmith.core import hear
+
+    monkeypatch.setattr(hear, "render", lambda draft, di=None, scene=None: SimpleNamespace(path="heard.wav", describe=lambda: f"through {draft} {scene}"))
+    result = invoke(runner, "rig", "hear", "d1", "--scene", "solo")
+    assert "through d1 solo" in result.output and "Wrote heard.wav" in result.output

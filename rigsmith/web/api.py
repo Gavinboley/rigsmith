@@ -574,6 +574,25 @@ def draft_sheet_page(draft_id: str) -> HTMLResponse:
     return HTMLResponse(sheets.tone_sheet(draft_id).html())
 
 
+class HearBody(BaseModel):
+    di: str | None = None
+    scene: str | None = None
+
+
+@router.post("/drafts/{draft_id}/hear")
+def hear_draft(draft_id: str, body: HearBody) -> dict:
+    """A DI through the whole draft on the simulated bench - effects too."""
+    from ..core import hear
+
+    if body.di:
+        _allow_audio(body.di)
+    heard = hear.render(draft_id, di=body.di, scene=body.scene)
+    return {
+        **heard.to_dict(), "describe": heard.describe(), "url": _audio_url(heard.path),
+        "target_url": _audio_url(heard.target_path) if heard.target_path else None,
+    }
+
+
 class NudgeBody(BaseModel):
     how: str
     slot: int | None = None

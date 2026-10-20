@@ -550,6 +550,21 @@ def rig_sheet(draft_id: str, as_html: bool, out: Path | None) -> None:
     click.echo(f"Wrote the tone sheet for '{sheet.title}' to {out}")
 
 
+@rig.command("hear")
+@click.argument("draft_id")
+@click.option("--scene", help="Only the blocks this scene turns on - a song rig's part.")
+@click.option("--di", type=click.Path(exists=True, dir_okay=False), help="The DI to play; default the one its autopilot run played, else your latest.")
+@handled
+def rig_hear(draft_id: str, scene: str | None, di: str | None) -> None:
+    """Play a DI through the whole draft on the simulated bench - amp, cab,
+    EQ and effects - and score it against the record when a run built it."""
+    from .core import hear
+
+    heard = hear.render(draft_id, di=di, scene=scene)
+    click.echo(heard.describe())
+    click.echo(f"Wrote {heard.path}")
+
+
 @rig.command("write")
 @click.argument("draft_id")
 @click.option("--yes", is_flag=True, help="Skip the confirmation prompt.")

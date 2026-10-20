@@ -94,6 +94,20 @@ def tone_sheet(draft_id: str) -> str:
 
 
 @tool
+def hear_draft(draft_id: str, scene: str | None = None, di_path: str | None = None) -> str:
+    """Play a DI through the whole draft offline - amp, cab, G EQ, boost,
+    delay at the rig's tempo, reverb, chorus, tremolo - on the simulated
+    bench, and score it against the record when an autopilot run built it.
+    ``scene`` hears only what that scene turns on (a song rig's part, against
+    that part's record). A rehearsal: the Core's own amps and effects are not
+    these. Returns what was heard, the score, and the file."""
+    from ...core import hear
+
+    heard = hear.render(draft_id, di=di_path, scene=scene)
+    return heard.describe() + f"\nfile: {heard.path}"
+
+
+@tool
 def delete_draft(draft_id: str) -> str:
     """Discard a draft.
 
