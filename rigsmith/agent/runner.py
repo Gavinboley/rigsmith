@@ -22,7 +22,8 @@ from typing import Callable
 
 from . import roles as role_registry
 from . import tools as tool_registry
-from .providers import ClaudeCode, ToolCall
+from ..core.errors import Unavailable
+from .providers import ClaudeCode, ToolCall, needs_login
 
 Emit = Callable[[dict], None]
 
@@ -239,15 +240,30 @@ def claude_code_exchange(
             "what you would run and why, and the user will do it from the app."
         )
     emit({"kind": "status", "text": "Claude Code is working"})
-    outcome = provider.run(
-        prompt,
-        system_append=role.system_prompt(extra_system + guidance),
-        allowed=allowed,
-        directory=directory,
-        resume=resume,
-        on_event=emit,
-        cancelled=cancelled,
-    )
+
+    def run(session):
+        return provider.run(
+            prompt,
+            system_append=role.system_prompt(extra_system + guidance),
+            allowed=allowed,
+            directory=directory,
+            resume=session,
+            on_event=emit,
+            cancelled=cancelled,
+        )
+
+    try:
+        outcome = run(resume)
+    except Unavailable as exc:
+        # A chat remembers its Claude session to carry the conversation on;
+        # one Claude Code no longer has would fail every turn after. Start a
+        # fresh one instead - the sign-in errors aside, which a new session
+        # would only repeat.
+        said = f"{exc} {getattr(exc, 'hint', '') or ''}".lower()
+        if not resume or needs_login(said) or not any(word in said for word in ("session", "conversation", "resume")):
+            raise
+        emit({"kind": "status", "text": "the chat's earlier Claude session is gone - starting a fresh one"})
+        outcome = run(None)
     if outcome.get("text"):
         emit({"kind": "final", "text": outcome["text"]})
     return RunResult(

@@ -440,3 +440,107 @@ def test_qwen_4_is_picked_ahead_of_an_older_qwen_beside_it():
         return httpx.Response(200, json={"data": [{"id": "qwen3-8b"}, {"id": "qwen4-27b-instruct"}, {"id": "text-embedding-qwen3"}]})
 
     assert local(httpx.MockTransport(handler)).pick_model() == "qwen4-27b-instruct"
+
+
+class FakeClaude:
+    """A Claude Code process: given lines of stream-json, then (optionally) silence."""
+
+    def __init__(self, lines, *, hang=False):
+        import io
+        import threading
+
+        self.args = None
+        self.terminated = threading.Event()
+        self._lines, self._hang = lines, hang
+        self.stdin = io.StringIO()
+        self.stderr = iter([])
+        self.returncode = None
+
+    @property
+    def stdout(self):
+        for line in self._lines:
+            yield line + "\n"
+        if self._hang:
+            self.terminated.wait(10)
+
+    def poll(self):
+        return self.returncode
+
+    def terminate(self):
+        self.terminated.set()
+        self.returncode = -15
+
+    kill = terminate
+
+    def wait(self, timeout=None):
+        if self.returncode is None:
+            self.returncode = 0
+        return self.returncode
+
+
+def _claude(monkeypatch, process, tmp_path):
+    seen = {}
+
+    def popen(args, **kwargs):
+        seen["args"] = args
+        return process
+
+    monkeypatch.setattr(providers.subprocess, "Popen", popen)
+    claude = providers.ClaudeCode.__new__(providers.ClaudeCode)
+    claude.command, claude.model, claude.max_budget_usd = ["claude"], None, None
+    return claude, seen
+
+
+def test_claude_code_refuses_prompts_and_its_tool_server_gets_no_secrets(monkeypatch, tmp_path):
+    import json as _json
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-secret")
+    monkeypatch.setenv("PATH", "C:/Windows")
+    process = FakeClaude(['{"type": "result", "subtype": "success", "result": "hi", "session_id": "s1"}'])
+    claude, seen = _claude(monkeypatch, process, tmp_path)
+    out = claude.run("hello", system_append="", allowed=["mcp__rigsmith__app_mode"], directory=tmp_path)
+    assert out["text"] == "hi"
+    args = seen["args"]
+    assert args[args.index("--permission-prompts") + 1] == "none", "a prompt nobody answers would wait for ever"
+    env = _json.loads((tmp_path / "claude-mcp.json").read_text())["mcpServers"]["rigsmith"]["env"]
+    assert env.get("PATH") == "C:/Windows" and "RIGSMITH_WORKSPACE" in env and "ANTHROPIC_API_KEY" not in env
+
+
+def test_a_silent_claude_code_is_stopped_not_waited_on_for_ever(monkeypatch, tmp_path):
+    monkeypatch.setattr(providers, "CLAUDE_QUIET_LIMIT_S", 1)
+    process = FakeClaude(['{"type": "system", "subtype": "init", "session_id": "s1"}'], hang=True)
+    claude, _ = _claude(monkeypatch, process, tmp_path)
+    out = claude.run("hello", system_append="", allowed=[], directory=tmp_path)
+    assert out["error"] == "timeout" and process.terminated.is_set()
+
+
+def test_claude_code_is_stopped_when_handling_its_output_fails(monkeypatch, tmp_path):
+    process = FakeClaude(['{"type": "assistant", "message": {"content": [{"type": "text", "text": "hi"}]}}'], hang=True)
+    claude, _ = _claude(monkeypatch, process, tmp_path)
+
+    def boom(event):
+        raise RuntimeError("the page went away")
+
+    with pytest.raises(RuntimeError):
+        claude.run("hello", system_append="", allowed=[], directory=tmp_path, on_event=boom)
+    assert process.terminated.is_set(), "no Claude Code left running behind"
+
+
+def test_a_chat_whose_claude_session_is_gone_starts_a_fresh_one(monkeypatch, tmp_path):
+    from rigsmith.agent import roles
+    from rigsmith.core.errors import Unavailable
+
+    asked = []
+
+    class Provider(providers.ClaudeCode):
+        def __init__(self):
+            pass
+
+        def run(self, prompt, *, resume=None, **kw):
+            asked.append(resume)
+            if resume:
+                raise Unavailable("Claude Code exited with 1", hint="No conversation found with session ID: old")
+            return {"text": "fresh", "session_id": "new", "turns": 1}
+
+    result = runner.claude_code_exchange(Provider(), roles.get("assistant"), "hi", emit=lambda e: None, directory=tmp_path, resume="old", allow_writes=False, local=False)
+    assert asked == ["old", None] and result.text == "fresh" and result.session_id == "new"

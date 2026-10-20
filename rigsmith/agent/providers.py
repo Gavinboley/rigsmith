@@ -26,9 +26,12 @@ from __future__ import annotations
 
 import json
 import os
+import queue
 import re
 import shutil
 import subprocess
+import threading
+import time
 import uuid
 from dataclasses import dataclass, field
 
@@ -48,6 +51,19 @@ LOCAL_PREFERENCE = (
 )
 
 DEFAULT_CLAUDE_MODEL = "claude-opus-5-5"
+
+#: How long Claude Code may say nothing - a slow tool runs silently - before
+#: the exchange is taken to have hung and is stopped.
+CLAUDE_QUIET_LIMIT_S = 900
+
+#: The environment rigsmith's tool server is started with when Claude Code
+#: launches it: enough for Python to start and find home and temp on any
+#: system, and nothing secret.
+_SERVER_ENV = (
+    "PATH", "PATHEXT", "SYSTEMROOT", "SYSTEMDRIVE", "WINDIR", "COMSPEC", "USERPROFILE", "HOMEDRIVE", "HOMEPATH",
+    "HOME", "APPDATA", "LOCALAPPDATA", "TEMP", "TMP", "TMPDIR", "LANG", "LC_ALL", "PYTHONPATH", "PYTHONUTF8",
+    "VIRTUAL_ENV",
+)
 
 
 @dataclass
@@ -655,9 +671,12 @@ class ClaudeCode:
 
         from ..config import get_settings
 
-        env = {"RIGSMITH_WORKSPACE": str(get_settings().workspace)}
-        if os.environ.get("RIGSMITH_AUDIO"):
-            env["RIGSMITH_AUDIO"] = os.environ["RIGSMITH_AUDIO"]
+        # What a Python process needs to start and find its files, and the
+        # app's own settings. Not the whole environment: this is written to a
+        # file in the workspace, and API keys do not belong there.
+        env = {name: os.environ[name] for name in _SERVER_ENV if os.environ.get(name)}
+        env.update({name: value for name, value in os.environ.items() if name.startswith("RIGSMITH_")})
+        env["RIGSMITH_WORKSPACE"] = str(get_settings().workspace)
         config = {"mcpServers": {"rigsmith": {"command": sys.executable, "args": ["-m", "rigsmith.mcp.server"], "env": env}}}
         path = Path(directory) / "claude-mcp.json"
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -683,6 +702,9 @@ class ClaudeCode:
             "--strict-mcp-config",
             "--append-system-prompt", system_append,
             "--allowedTools", ",".join(allowed),
+            # Nobody is there to answer a permission prompt: one would wait
+            # for ever. Anything not allowed above is refused instead.
+            "--permission-prompts", "none",
         ]
         if self.model:
             args += ["--model", self.model]
@@ -699,16 +721,61 @@ class ClaudeCode:
             encoding="utf-8",
             errors="replace",
         )
-        assert process.stdin and process.stdout
-        process.stdin.write(prompt)
-        process.stdin.close()
+        assert process.stdin and process.stdout and process.stderr
+        # Both streams read on threads: stderr filling its pipe while only
+        # stdout is read would block Claude Code, and a blocked read here
+        # would never see Stop.
+        lines: queue.Queue = queue.Queue()
+        errors: list[str] = []
+
+        def pump() -> None:
+            for text in process.stdout:
+                lines.put(text)
+            lines.put(None)
+
+        threading.Thread(target=pump, daemon=True).start()
+        threading.Thread(target=lambda: errors.extend(process.stderr), daemon=True).start()
         outcome = {"text": "", "session_id": resume, "cost": None, "turns": 0}
         names: dict[str, str] = {}
-        for line in process.stdout:
+        try:
+            process.stdin.write(prompt)
+            process.stdin.close()
+            self._read(lines, outcome, names, on_event, cancelled, process)
+            process.wait(timeout=30)
+        finally:
+            if process.poll() is None:
+                process.terminate()
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+        if process.returncode not in (0, None) and not outcome["text"]:
+            error = "".join(errors)[-800:]
+            if needs_login(error):
+                raise Unavailable("Claude Code is not signed in", hint=LOGIN_HINT)
+            raise Unavailable(f"Claude Code exited with {process.returncode}", hint=error or None)
+        return outcome
+
+    def _read(self, lines, outcome, names, on_event, cancelled, process) -> None:
+        """Events from Claude Code's stream until it ends, Stop, or it goes quiet."""
+        quiet_since = time.monotonic()
+        while True:
             if cancelled and cancelled():
                 process.terminate()
                 outcome["text"] = (outcome["text"] + "\n(stopped)").strip()
-                break
+                return
+            try:
+                line = lines.get(timeout=0.5)
+            except queue.Empty:
+                if time.monotonic() - quiet_since > CLAUDE_QUIET_LIMIT_S:
+                    process.terminate()
+                    outcome["error"] = "timeout"
+                    outcome["text"] = (outcome["text"] + f"\n(Claude Code said nothing for {CLAUDE_QUIET_LIMIT_S // 60:.0f} minutes and was stopped)").strip()
+                    return
+                continue
+            if line is None:
+                return
+            quiet_since = time.monotonic()
             line = line.strip()
             if not line:
                 continue
@@ -752,13 +819,6 @@ class ClaudeCode:
                     outcome["error"] = "error" if event.get("is_error") else (event.get("subtype") or "error")
                     if needs_login(outcome["text"]):
                         outcome["text"] += "\n" + LOGIN_HINT
-        process.wait(timeout=30)
-        if process.returncode not in (0, None) and not outcome["text"]:
-            error = (process.stderr.read() if process.stderr else "")[-800:]
-            if needs_login(error):
-                raise Unavailable("Claude Code is not signed in", hint=LOGIN_HINT)
-            raise Unavailable(f"Claude Code exited with {process.returncode}", hint=error or None)
-        return outcome
 
 
 def _short(name: str) -> str:

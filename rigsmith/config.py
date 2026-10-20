@@ -13,7 +13,17 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from .core.errors import ReadOnly
 
-DEFAULT_WORKSPACE = Path.home() / ".rigsmith"
+def _default_workspace() -> Path:
+    # A process started with a bare environment - an MCP server spawned by a
+    # host that passes only what it was told to - may have no home to find,
+    # and RIGSMITH_WORKSPACE, read later, is what counts then.
+    try:
+        return Path.home() / ".rigsmith"
+    except RuntimeError:
+        return Path(os.environ.get("USERPROFILE") or os.getcwd()) / ".rigsmith"
+
+
+DEFAULT_WORKSPACE = _default_workspace()
 
 #: mDNS hostnames the HeadRush family answers to, most specific first.
 KNOWN_HOSTNAMES = (
