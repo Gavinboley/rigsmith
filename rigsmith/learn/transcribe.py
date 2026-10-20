@@ -893,6 +893,34 @@ CHORD_VOICINGS = {
     "5": (0, 7, 12), "": (0, 7, 12, 16, 19), "m": (0, 7, 12, 15, 19), "sus4": (0, 7, 12, 17, 19),
     "sus2": (0, 7, 12, 14, 19), "7": (0, 7, 10, 16, 19), "m7": (0, 7, 10, 15, 19), "maj7": (0, 7, 11, 16, 19),
 }
+#: The ways each shape is played, from the root up, for the spectrum to
+#: choose between (:func:`_voice`): close, octave-doubled, barre, open six
+#: strings - and, for a major or minor chord, the power chord its "third"
+#: may really be, the fifth harmonic of the root.
+CHORD_VOICING_OPTIONS = {
+    "5": [(0, 7), (0, 7, 12)],
+    "": [(0, 4, 7), (0, 4, 7, 12), (0, 7, 12, 16), (0, 7, 12, 16, 19), (0, 7, 12, 16, 19, 24), (0, 4, 7, 12, 16, 24), (0, 7), (0, 7, 12)],
+    "m": [(0, 3, 7), (0, 3, 7, 12), (0, 7, 12, 15), (0, 7, 12, 15, 19), (0, 7, 12, 15, 19, 24), (0, 7), (0, 7, 12)],
+    "sus4": [(0, 5, 7), (0, 7, 12, 17, 19)],
+    "sus2": [(0, 2, 7), (0, 7, 12, 14, 19)],
+    "7": [(0, 4, 7, 10), (0, 7, 10, 16, 19)],
+    "m7": [(0, 3, 7, 10), (0, 7, 10, 15, 19)],
+    "maj7": [(0, 4, 7, 11), (0, 7, 11, 16, 19)],
+}
+
+#: What each note of a voicing beyond two costs against the spectrum's fit.
+#: Distortion fills in every harmonic, and a five-string barre then fits a
+#: two-note power chord as well as the power chord does. Swept 0.02-0.07 on
+#: synthetic triads, sevenths, power chords, open chords and re-strums,
+#: clean through high gain: 0.04 scored closest against the parts.
+VOICING_NOTE_COST = 0.04
+
+#: Harmonics in a voicing's template, and how each falls from the last.
+VOICING_PARTIALS, VOICING_DECAY = 10, 0.8
+
+#: The semitones a voicing's spectrum is read over: A1 to E7.
+VOICING_RANGE = (28, 100)
+
 #: What each tone beyond root and fifth costs: a distorted power chord's
 #: harmonics light up the third and seventh too, and a plain chord should
 #: win unless the extra tones are really there.
@@ -954,6 +982,54 @@ def _bass_notes(audio: np.ndarray, sample_rate: int, start: float, end: float) -
     return []
 
 
+def _semitone_spectrum(audio: np.ndarray, sample_rate: int, start: float, end: float) -> np.ndarray | None:
+    """The loudest (compressed) bin in each semitone just after an attack,
+    as a unit vector - octaves kept apart, unlike a chroma."""
+    a, b = int((start + 0.04) * sample_rate), int(min(end, start + 0.5) * sample_rate)
+    piece = audio[a:b]
+    if len(piece) < 2048:
+        return None
+    size = 1 << int(np.ceil(np.log2(max(len(piece), 16384))))
+    spectrum = np.sqrt(np.abs(np.fft.rfft(piece * np.hanning(len(piece)), size)))
+    low, high = VOICING_RANGE
+    centres = 440.0 * 2.0 ** ((np.arange(low, high + 1) - 69) / 12.0)
+    edges = np.searchsorted(np.fft.rfftfreq(size, 1 / sample_rate), np.concatenate([centres * 2 ** (-0.5 / 12), [centres[-1] * 2 ** (0.5 / 12)]]))
+    found = np.array([spectrum[edges[i] : max(edges[i] + 1, edges[i + 1])].max() for i in range(len(centres))])
+    norm = float(np.linalg.norm(found))
+    return found / norm if norm > 0 else None
+
+
+def _voicing_template(notes) -> np.ndarray:
+    low, high = VOICING_RANGE
+    template = np.zeros(high - low + 1)
+    for note in notes:
+        for k in range(1, VOICING_PARTIALS + 1):
+            m = note + int(round(12 * np.log2(k)))
+            if low <= m <= high:
+                template[m - low] += VOICING_DECAY ** (k - 1)
+    return template / np.linalg.norm(template)
+
+
+def _voice(audio: np.ndarray, sample_rate: int, start: float, end: float, base: int, shape: str) -> tuple[int, ...] | None:
+    """How a chord is played, from what its octaves show.
+
+    The chroma names the chord but folds every octave into one: an E5 played
+    as two notes and a five-string E major barre look alike there, the E2's
+    fifth harmonic standing in for the third. Here a real G#3 sits at 208 Hz
+    and the harmonic at 412, so the voicing whose notes and harmonics best
+    match the spectrum after the attack - less :data:`VOICING_NOTE_COST` a
+    note - is the one played. Read as fixed barre shapes, synthetic triads
+    came back at F1 0.49-0.51 a note; chosen this way, 0.93-0.97.
+    """
+    observed = _semitone_spectrum(audio, sample_rate, start, end)
+    if observed is None:
+        return None
+    return max(
+        CHORD_VOICING_OPTIONS[shape],
+        key=lambda voicing: float(np.dot(observed, _voicing_template([base + tone for tone in voicing]))) - VOICING_NOTE_COST * (len(voicing) - 2),
+    )
+
+
 def _chords_from_chroma(audio: np.ndarray, sample_rate: int, onsets, min_midi: int, *, hop_s: float = 0.02) -> list[NoteEvent]:
     """A chord at each attack, from the pitch classes that ring after it.
 
@@ -962,7 +1038,7 @@ def _chords_from_chroma(audio: np.ndarray, sample_rate: int, onsets, min_midi: i
     rings quieter than its fifth (:func:`_bass_notes`) - and the shape the
     one whose pitch classes, harmonics included, best match the chroma once
     each tone beyond a power chord has paid :data:`CHORD_TONE_COST`. Voiced
-    as a barre shape from that root.
+    as the octaves after the attack say it was played (:func:`_voice`).
 
     On synthetic parts this reads triads' pitch classes right at 94% of
     attacks clean, crunchy or driven (the note-by-note estimate: 19-56%),
@@ -1006,7 +1082,7 @@ def _chords_from_chroma(audio: np.ndarray, sample_rate: int, onsets, min_midi: i
         base = int(round(played[0])) if played else min_midi + ((root - min_midi) % 12)
         while base < min_midi:
             base += 12
-        for tone in CHORD_VOICINGS[name]:
+        for tone in _voice(audio, sample_rate, start, end, base, name) or CHORD_VOICINGS[name]:
             events.append(NoteEvent(start=float(start), duration=max(0.05, end - start - 0.02), midi=float(base + tone), velocity=0.75))
     return events
 

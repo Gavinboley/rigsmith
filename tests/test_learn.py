@@ -490,6 +490,46 @@ def test_a_driven_power_chord_is_read_from_its_root_not_its_fifth():
     assert right >= 0.85 * 32, right
 
 
+@pytest.mark.parametrize("amp_type, gain, most_thirds", [(0, 0.1, 3), (2, 0.5, 5)])
+def test_a_power_chord_is_played_back_without_a_third(amp_type, gain, most_thirds):
+    """Named from the chroma and voiced as a barre, an E5 came back as a
+    five-string E major - its root's fifth harmonic taken for a third - on
+    10 or 11 attacks in 15."""
+    from rigsmith.loop.virtual import SimAmp
+
+    beat = 60 / 110
+    truth = []
+    for b in range(16):
+        root = [40, 43, 45, 38][(b // 2) % 4]
+        truth += [(b * beat, beat * 0.9, m, 0.8) for m in (root, root + 7)]
+    audio = SimAmp(Type=amp_type, Gain=gain).process(render_notes(truth, seed=5))
+    result = transcribe(audio, RATE, method="builtin", match_record_pitch=False)
+    thirds, sizes = 0, []
+    for start in sorted({t for t, _, _, _ in truth}):
+        root = min(m for t, _, m, _ in truth if t == start)
+        got = [round(e.midi) for e in result.events if abs(e.start - start) < 0.06]
+        if got:
+            sizes.append(len(got))
+            thirds += any((g - root) % 12 in (3, 4) for g in got)
+    assert thirds <= most_thirds, thirds
+    assert np.median(sizes) <= 3, "two or three strings, not a barre"
+
+
+def test_a_close_triad_is_voiced_the_way_it_was_played():
+    """Every triad came back as a barre from its root - E-G#-B as E-B-E-G#-B."""
+    beat = 60 / 110
+    truth = []
+    for b in range(0, 16, 2):
+        root = [52, 57, 55, 50][(b // 2) % 4]
+        truth += [(b * beat, beat * 1.8, m, 0.7) for m in (root, root + 4, root + 7)]
+    result = transcribe(render_notes(truth, seed=5), RATE, method="builtin", match_record_pitch=False)
+    exact = 0
+    for start in sorted({t for t, _, _, _ in truth}):
+        want = sorted(m for t, _, m, _ in truth if t == start)
+        exact += sorted(round(e.midi) for e in result.events if abs(e.start - start) < 0.06) == want
+    assert exact >= 6, f"{exact} of 8 voiced as played"
+
+
 def test_palm_muted_chugs_are_single_notes_not_chords():
     """Sixteenth-note chugs on the low E came back as a chord at every
     attack - the note's harmonics read as its fifth and octave."""
