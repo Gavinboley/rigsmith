@@ -114,7 +114,8 @@ class Part:
 #: 8: music heard once on the way to the first chorus is a verse, not a bridge.
 #: 9: a centre far under a double-track is said to be its common ground.
 #: 10: a long record's tempo is what it plays at most of the time.
-ANALYSIS_VERSION = 10
+#: 11: of two repeating sections as loud as each other, the first is the verse.
+ANALYSIS_VERSION = 11
 
 
 @dataclass

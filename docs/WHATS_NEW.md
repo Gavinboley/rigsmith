@@ -61,7 +61,10 @@ the parts that need the Core, your guitar or your copy of a song say so.
 - Sections start on the downbeat where the music changes, not up to a
   second late with the next section's start inside them; music heard once
   on the way to the first chorus is the verse (a pre-chorus after one), not
-  a bridge - the demo song now maps as intro, verse, chorus, solo, chorus.
+  a bridge - the demo song now maps as intro, verse, chorus, solo, chorus;
+  and of two repeating sections as loud as each other, the one heard first
+  is the verse (Drain You's were a tenth of a dB apart, the first called
+  the chorus).
 - Power chords up the neck are read as chords, not as the note an octave
   under them; B standard and other low tunings are read at their own
   octave when the research has not named the tuning.

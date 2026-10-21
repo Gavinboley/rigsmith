@@ -459,6 +459,11 @@ def _cluster(vectors: list[np.ndarray], threshold: float = 0.6) -> list[str]:
     return labels
 
 
+#: Repeating sections within this of the loudest are as loud as it, and the
+#: one heard first among them is the verse (see :func:`_name`).
+CHORUS_MARGIN_DB = 1.0
+
+
 def _name(sections: list[Section]) -> None:
     """Name sections by the patterns songs follow. A guess, said as one.
 
@@ -466,7 +471,8 @@ def _name(sections: list[Section]) -> None:
     the intro or outro, whatever it shares a letter with - otherwise a quiet
     intro and outro that match each other are the only "repeating" pair and
     get called the verse. Then, among what is left, the loudest repeating
-    letter is the chorus and the next most repeated is the verse; music
+    letter is the chorus - of two as loud as each other, the one heard
+    later - and the next most repeated is the verse; music
     heard once is the intro when it opens the song, the outro when it ends
     it, the verse on the way to the first chorus (a pre-chorus after a
     verse), and otherwise a solo (loud, past the first stretch) or a bridge -
@@ -495,6 +501,14 @@ def _name(sections: list[Section]) -> None:
         loudness.setdefault(s.label, []).append(s.energy_db)
     repeating = [k for k, c in counts.items() if c >= 2]
     chorus = max(repeating, key=lambda k: float(np.mean(loudness[k]))) if repeating else None
+    if chorus is not None:
+        # As loud as each other, the verse is the one heard first: Drain
+        # You's two repeating sections were 0.1 dB apart, and its first was
+        # called the chorus by that tenth.
+        top = float(np.mean(loudness[chorus]))
+        level = [k for k in repeating if top - float(np.mean(loudness[k])) < CHORUS_MARGIN_DB]
+        first = {k: min(s.start for _, s in body if s.label == k) for k in level}
+        chorus = max(level, key=lambda k: first[k])
     others = [k for k in repeating if k != chorus]
     verse = max(others, key=lambda k: counts[k]) if others else None
     end = sections[-1].end
