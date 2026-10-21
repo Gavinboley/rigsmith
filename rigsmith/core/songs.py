@@ -533,7 +533,8 @@ def analyse(song_id: str, *, progress: Progress | None = None, min_presence: flo
             if part_id in previous:
                 old = previous[part_id]
                 part.chosen, part.note, part.recipe_id = old.chosen, old.note, old.recipe_id
-                part.di_take, part.best, part.history = old.di_take, old.best, old.history
+                part.di_take, part.history = old.di_take, old.history
+                part.best = best_result(part.history, ANALYSIS_VERSION)
                 part.reading, part.heard_as = old.reading, old.heard_as
             parts.append(part)
             step(0.6 + 0.35 * done / max(1, total), f"described {part.label}")
@@ -575,7 +576,7 @@ def carry_over(previous: dict[str, Part], parts: list[Part]) -> None:
         if abs(heir.start - old.start) < 0.5 and abs(heir.end - old.end) < 0.5:
             if not heir.di_take:
                 heir.di_take, heir.heard_as = old.di_take, old.heard_as
-            heir.best = heir.best or old.best
+            heir.best = best_result(heir.history, ANALYSIS_VERSION)
 
 
 #: A centre this far or more under a double-track on both sides is most
@@ -745,6 +746,21 @@ def part_audio(song_id: str, part_id: str, *, pad: float = 0.0) -> Path:
     return path
 
 
+def best_result(history: list[dict], analysis_version: int) -> dict | None:
+    """The closest result measured on this map, in the mode of the latest.
+
+    A score from before a re-map was measured against other audio - another
+    layer split, other section edges - so it stays in the history but is
+    not compared: the demo song's solo showed an untuned 0.386 from two maps
+    back as its best, over the 0.353 its latest run tuned to.
+    """
+    current = [h for h in history or [] if h.get("analysis", 0) == analysis_version]
+    if not current:
+        return None
+    mode = current[-1]["mode"]
+    return min((h for h in current if h["mode"] == mode), key=lambda h: h["composite"])
+
+
 def record_result(song_id: str, part_id: str, *, label: str, composite: float, mode: str, path: str | None = None) -> Part:
     """Remember how a candidate did against a part; keep the best."""
     require_writable("record a result")
@@ -756,10 +772,10 @@ def record_result(song_id: str, part_id: str, *, label: str, composite: float, m
         "mode": mode,
         "path": path,
         "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "analysis": song.analysis_version,
     }
     part.history.append(entry)
-    same_mode = [h for h in part.history if h["mode"] == mode]
-    part.best = min(same_mode, key=lambda h: h["composite"])
+    part.best = best_result(part.history, song.analysis_version)
     song.save()
     return part
 

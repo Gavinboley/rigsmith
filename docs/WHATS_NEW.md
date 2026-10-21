@@ -98,6 +98,9 @@ the parts that need the Core, your guitar or your copy of a song say so.
   one in front, left on only where the whole draft is heard closer to the
   record with it - the amp was tuned with nothing there, so its gain
   already reaches the record's. At the Core it goes in off, for you to try.
+- **A part's best so far** is what its runs finished with - tuned, through
+  the G EQ - on the song's current map; scores from before a re-map stay in
+  its history, since they were measured against other audio.
 - **A song rig's third sound** goes to the kept amp nearest what its own
   run found; [AUTOPILOT.md](AUTOPILOT.md) says how every choice is made.
 

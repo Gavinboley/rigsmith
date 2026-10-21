@@ -317,6 +317,12 @@ def test_a_song_maps_into_parts_and_remembers_choices(workspace):
     part = songs.record_result(made.song_id, first, label="a", composite=0.3, mode="distribution")
     part = songs.record_result(made.song_id, first, label="b", composite=0.2, mode="distribution")
     assert part.best["label"] == "b"
+    # A score from an earlier map was against other audio: kept, not compared.
+    held = songs.get(made.song_id)
+    held.part(first).history.insert(0, {"label": "old map", "composite": 0.1, "mode": "distribution", "analysis": 1})
+    held.save()
+    part = songs.record_result(made.song_id, first, label="c", composite=0.25, mode="distribution")
+    assert part.best["label"] == "b" and len(part.history) == 4
 
 
 def test_an_unknown_part_lists_the_real_ones(workspace):

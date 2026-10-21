@@ -1221,6 +1221,12 @@ def _stage_rig(run: Run, *, from_ears: bool = False) -> str:
     if run.request.ear_habits:
         _start_from_habits(run, best["model"])
     run.built_at = rigs.get(run.draft_id).updated_at
+    # The part's best so far is what the run finished with - tuned, through
+    # its G EQ - not only the untuned amps the candidates stage recorded.
+    try:
+        songs.record_result(run.song_id, part.part_id, label=best["label"], composite=best["composite"], mode=run.mode or best.get("mode") or "performance", path=best.get("path"))
+    except Exception:
+        pass
     if run.request.bench == "virtual":
         run.note(
             "the amp knob values came from the simulated amp - a rehearsal of the search. "
