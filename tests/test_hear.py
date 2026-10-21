@@ -79,6 +79,17 @@ def test_a_scene_is_heard_alone_and_against_its_own_part(workspace):
         hear.render(draft_id, scene="nope")
 
 
+def test_a_scene_leaves_what_it_does_not_name_as_it_is(workspace):
+    """Built a block at a time, a scene names only what it changes - the
+    rest keeps its setting, as on the Core."""
+    draft_id = _draft()
+    reverb = next(b.slot for b in rigs.get(draft_id).rig.blocks if b.model_id == "AIR Reverb")
+    rigs.configure_scene(draft_id, "dry", off_slots=[reverb], footswitch=1)
+    heard = hear.render(draft_id, di=str(_di(workspace / "di.wav")), scene="dry")
+    played = " | ".join(heard.played)
+    assert "82 Lead 800 100W" in played and "M104 Analog Delay" in played and "AIR Reverb" not in played, played
+
+
 def test_with_no_di_anywhere_it_says_what_to_do(workspace):
     with pytest.raises(Invalid, match="no DI"):
         hear.render(_draft())

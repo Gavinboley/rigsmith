@@ -96,14 +96,17 @@ def _tremolo(audio, rate: int, hz: float, depth: float):
     return audio * (1 - depth / 2 + depth / 2 * np.sin(2 * np.pi * hz * t))
 
 
-def _in_scene(rig, scene: str | None) -> set[int] | None:
-    """The slots a scene turns on, or None for every enabled block."""
+def _blocks_in(rig, scene: str | None) -> list:
+    """The rig's blocks as ``scene`` leaves them (all of them as they stand,
+    without one): what it turns on is on, what it turns off is off, and what
+    it does not name keeps its setting - as on the Core. Taking only what a
+    scene turned on, a scene that only turned the reverb off played nothing."""
     if not scene:
-        return None
+        return list(rig.blocks)
     found = rig.scene_named(scene) if hasattr(rig, "scene_named") else None
     if found is None:
         raise Invalid(f"no scene '{scene}' in this rig", hint="Scenes: " + ", ".join(s.name for s in rig.scenes))
-    return {slot for slot, state in found.states.items() if getattr(state, "value", state) == "on"}
+    return found.apply_to(rig.blocks)
 
 
 def play(rig, audio, rate: int, *, scene: str | None = None) -> tuple[np.ndarray, list[str], list[str]]:
@@ -113,8 +116,7 @@ def play(rig, audio, rate: int, *, scene: str | None = None) -> tuple[np.ndarray
     from ..tune.candidates import DELAY_DIVISIONS, DIVISION_BEATS, RATE_DIVISIONS, VIRTUAL_VOICING, _tier_of, virtual_cab
     from ..tune.eq import GEQ_NAMES, GEQ_RANGE, apply_graphic
 
-    on = _in_scene(rig, scene)
-    blocks = sorted((b for b in rig.blocks if b.enabled and (on is None or b.slot in on)), key=lambda b: b.slot)
+    blocks = sorted((b for b in _blocks_in(rig, scene) if b.enabled), key=lambda b: b.slot)
     beat = _seconds_per_beat(rig.tempo)
     played: list[str] = []
     skipped: list[str] = []
