@@ -64,6 +64,10 @@ class Part:
     """How the notes of its rendered DI were found: monophonic, polyphonic
     or arpeggio when transcribed, else midi, text or basic-pitch - so a
     wrong automatic reading shows on the part, next to the fix."""
+    under_double_db: float | None = None
+    """For a centre with a double-track either side: how far under the two
+    takes it sits, when that is :data:`COMMON_GROUND_DB` or more - most
+    likely their common ground rather than a part of its own."""
 
     @property
     def region(self) -> str:
@@ -81,6 +85,8 @@ class Part:
         line = f"{mark} {self.part_id:<22} {minutes} {self.end - self.start:5.1f}s  {summary}"
         if self.best:
             line += f"  [best: {self.best.get('label')} {self.best.get('composite', 0):.3f}]"
+        if self.under_double_db:
+            line += f"  ({self.under_double_db:.0f} dB under the double-track - probably its common ground)"
         return line
 
     def to_dict(self) -> dict:
@@ -106,7 +112,8 @@ class Part:
 #: 7: the centre layer is what both sides share, so a lead between a
 #: double-track comes out with less of the rhythm in it, and the sides too.
 #: 8: music heard once on the way to the first chorus is a verse, not a bridge.
-ANALYSIS_VERSION = 8
+#: 9: a centre far under a double-track is said to be its common ground.
+ANALYSIS_VERSION = 9
 
 
 @dataclass
@@ -505,6 +512,11 @@ def analyse(song_id: str, *, progress: Progress | None = None, min_presence: flo
                 if echo:
                     sketch.delay_ms, sketch.delay_strength, sketch.delay_note = echo
                     sketch.suggestions = describe._suggestions(sketch)
+            under = None
+            if layer_id == "centre" and doubled and "left" in sources and "right" in sources:
+                sides = (_level_db(sources["left"][a:b]) + _level_db(sources["right"][a:b])) / 2
+                gap = sides - _level_db(piece)
+                under = round(gap, 1) if gap >= COMMON_GROUND_DB else None
             part_id = f"{slugify(name)}-{index + 1}-{layer_id}"
             part = Part(
                 part_id=part_id,
@@ -515,6 +527,7 @@ def analyse(song_id: str, *, progress: Progress | None = None, min_presence: flo
                 end=section.end,
                 presence=round(float(presence), 3),
                 sketch=sketch.to_dict(),
+                under_double_db=under,
             )
             # Keep what the user decided about a part across re-analysis.
             if part_id in previous:
@@ -565,9 +578,31 @@ def carry_over(previous: dict[str, Part], parts: list[Part]) -> None:
             heir.best = heir.best or old.best
 
 
+#: A centre this far or more under a double-track on both sides is most
+#: likely the two takes' common ground - what they share, summed - and not a
+#: part of its own. Measured from the layer split: a double-tracked riff or
+#: chords alone left a centre 8.3-12.0 dB under the sides (the demo song's
+#: verse and choruses 11.5-12.0, where the map called it a clean centre
+#: part); real centred parts sat at 0-8.2 - a lead at 0.4 of the doubles'
+#: level 7.7, a clean arpeggio under crunch chords 8.2. The two overlap at
+#: the edge, so it is said and ranked down, not dropped.
+COMMON_GROUND_DB = 8.0
+
+
+def _level_db(audio) -> float:
+    import numpy as np
+
+    audio = np.asarray(audio, dtype=np.float64)
+    if audio.ndim > 1:
+        audio = audio.mean(axis=1)
+    return 20 * float(np.log10(np.sqrt(np.mean(audio ** 2)) + 1e-12)) if len(audio) else -240.0
+
+
 def prominence(part: Part) -> float:
     """How much a part is worth chasing: loud, in a chorus, on a layer of its own."""
     value = part.presence
+    if part.under_double_db:
+        value -= 0.5
     if part.section_name == "chorus":
         value += 0.5
     elif part.section_name in ("verse", "solo"):

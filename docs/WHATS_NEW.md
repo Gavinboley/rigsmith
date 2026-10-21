@@ -71,6 +71,10 @@ the parts that need the Core, your guitar or your copy of a song say so.
   demo song's intro read 18 notes right of 18 (it was 41 for 18), and its
   closest amp is the clean one it was made with - 0.204, where the crunch
   amp it went to before came to 0.308.
+- Where only a double-track plays, the centre it leaves - the two takes'
+  common ground, 8 dB or more under them - is drawn faint and said to be
+  that, not offered as a clean centre guitar; the demo song's verse and
+  choruses showed one.
 - A lead centred between a double-track comes out with less of the rhythm
   in it, and the sides with less of the lead: the centre is taken as what
   the two sides share. On the demo song's solo the lead came out 5.5 dB

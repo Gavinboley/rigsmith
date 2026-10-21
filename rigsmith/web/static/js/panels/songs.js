@@ -299,12 +299,17 @@ function timeline() {
     sections.forEach((section, index) => {
       const part = byKey.get(`${index}:${layer}`);
       if (!part) return;
-      const alpha = 0.18 + 0.6 * Math.min(1, part.presence);
+      // A centre far under a double-track is drawn faint: most likely the
+      // two takes' common ground, not a guitar of its own.
+      const common = Boolean(part.under_double_db);
+      const alpha = common ? 0.12 : 0.18 + 0.6 * Math.min(1, part.presence);
       track.append(
         el("div", {
-          class: `seg layer ${chosen.has(part.part_id) ? "chosen" : ""}`,
+          class: `seg layer ${chosen.has(part.part_id) ? "chosen" : ""} ${common ? "common" : ""}`,
           style: `left:${(section.start / duration) * 100}%;width:${((section.end - section.start) / duration) * 100}%;background:rgba(90,163,224,${alpha})`,
-          title: `${part.label}: ${part.sketch?.summary || ""} - click to choose`,
+          title: common
+            ? `${part.label}: ${Math.round(part.under_double_db)} dB under the double-track - probably the two takes' common ground, not a part of its own, unless a quiet one sits between them`
+            : `${part.label}: ${part.sketch?.summary || ""} - click to choose`,
           // The short form - "saturated", not "saturated (fuzz or very high
           // gain)" - with a mark for movement; the tooltip has the rest.
           text: `${(part.sketch?.gain_label || "").split(" (")[0]}${part.sketch?.modulation ? " ~" : ""}`,
@@ -374,6 +379,7 @@ function partsGrid() {
       el("div", { class: "gainbar", title: `gain ${(sketch.gain ?? 0).toFixed(2)}` }, el("i", { style: `left:${(sketch.gain ?? 0) * 100}%` })),
       el("div", { class: "p-sketch", text: sketch.summary || "" }),
       part.layer !== "stem" ? el("div", { class: "hint", text: `present ${Math.round(part.presence * 100)}% of its loudest` }) : null,
+      part.under_double_db ? el("div", { class: "hint p-common", text: `${Math.round(part.under_double_db)} dB under the double-track either side - probably the two takes' common ground, not a part of its own` }) : null,
       part.best ? el("div", { class: "p-best", text: `best so far: ${part.best.label} (${part.best.composite.toFixed(3)}, ${part.best.mode})` }) : null,
       part.di
         ? el(

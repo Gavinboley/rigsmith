@@ -116,6 +116,15 @@ def test_the_whole_demo_is_a_part_for_each_guitar_and_a_scene_each(workspace):
         assert answers["clean"]["effects"]["reverb"]["right"], answers["clean"]["summary"]
     if "rhythm" in answers:
         assert answers["rhythm"]["effects"] == {}, answers["rhythm"]["summary"]
+    # The map is the song as it was made, and where only the double-track
+    # plays its common ground is not taken for a clean centre guitar.
+    mapped = songs.get(song.song_id)
+    assert [s["name"] for s in mapped.structure["sections"]] == ["intro", "verse", "chorus", "solo", "chorus"]
+    centres = [p for p in mapped.parts if p.layer == "centre"]
+    under = [p for p in centres if p.section_name in ("verse", "chorus")]
+    assert under and all(p.under_double_db >= songs.COMMON_GROUND_DB for p in under), [(p.part_id, p.under_double_db) for p in under]
+    assert all(p.under_double_db is None for p in centres if p.section_name == "solo")
+    assert "common ground" in under[0].describe()
 
 
 def test_a_sound_is_chased_once_however_many_sections_play_it():
