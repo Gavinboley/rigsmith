@@ -55,6 +55,9 @@ the parts that need the Core, your guitar or your copy of a song say so.
   editor, and choose or drop the file back into "on my guitar".
 - A re-map keeps your choices, even where sections moved, and the names
   you gave sections; a run keeps a song's map rather than redrawing it.
+- A song's tempo is the one it plays at most of the time: a band drifts,
+  and one steady stretch carried the whole reading - Nirvana's "Drain You"
+  read 129.5 off its breakdown, and reads 133.1 now (published: 133-136).
 - Sections start on the downbeat where the music changes, not up to a
   second late with the next section's start inside them; music heard once
   on the way to the first chorus is the verse (a pre-chorus after one), not

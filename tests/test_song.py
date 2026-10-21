@@ -144,6 +144,28 @@ def test_tempo_and_most_section_changes_are_found():
     assert all(a.end == b.start for a, b in zip(result.sections, result.sections[1:])), "no gaps"
 
 
+def test_a_song_s_tempo_is_what_it_plays_most_of_the_time(monkeypatch):
+    """One steady stretch carried the whole reading: Drain You read 129.5
+    off its breakdown, where it plays at 133-136."""
+    rng = np.random.default_rng(4)
+    hop = 0.01
+
+    def pulses(bpm, seconds, jitter, strength):
+        envelope = np.zeros(int(seconds / hop))
+        for k in range(int(seconds * bpm / 30)):  # eighth notes, the beat louder
+            at = int(round((k * 30 / bpm + rng.normal(0, jitter)) / hop))
+            if 0 <= at < len(envelope):
+                envelope[at] += strength * rng.uniform(0.5, 1.0) * (1.0 if k % 2 == 0 else 0.5)
+        return envelope
+
+    envelope = np.concatenate([pulses(134, 70, 0.005, 1.0), pulses(126, 40, 0.0, 4.0), pulses(134, 70, 0.005, 1.0)])
+    monkeypatch.setattr(structure, "onset_envelope", lambda audio, rate, hop_s=hop: envelope)
+    whole, _ = structure._tempo_of(envelope, hop)
+    assert abs(whole - 126) < 2, whole  # the steady stretch carries one reading
+    tempo, _ = structure.estimate_tempo(np.zeros(10), RATE)
+    assert abs(tempo - 134) < 1.5, tempo
+
+
 @pytest.mark.parametrize("letters, names", [
     ("ABCDC", ["intro", "verse", "chorus", "solo", "chorus"]),
     ("ABECDC", ["intro", "verse", "pre-chorus", "chorus", "solo", "chorus"]),

@@ -113,7 +113,8 @@ class Part:
 #: double-track comes out with less of the rhythm in it, and the sides too.
 #: 8: music heard once on the way to the first chorus is a verse, not a bridge.
 #: 9: a centre far under a double-track is said to be its common ground.
-ANALYSIS_VERSION = 9
+#: 10: a long record's tempo is what it plays at most of the time.
+ANALYSIS_VERSION = 10
 
 
 @dataclass

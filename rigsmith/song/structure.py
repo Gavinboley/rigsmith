@@ -76,9 +76,44 @@ def estimate_tempo(audio: np.ndarray, sample_rate: int) -> tuple[float, float]:
     from 19 exact, 8 octave errors and 6 others to 26 exact, 7 octave
     errors and no others. Octave errors - 70 for 140 - remain the known
     failure, and the song page fixes one in a click.
+
+    A record a minute or longer is also read window by window
+    (:data:`TEMPO_WINDOW_S`, half overlapping), each folded to the whole
+    reading's octave, and its tempo is the median: the tempo it plays at
+    most of the time. A band drifts, and one steady stretch can carry the
+    whole song's reading - Nirvana's "Drain You" read 129.5 off its
+    breakdown, where its verses and choruses play at 133-136 (published:
+    133-136); windowed, 132.9. Steady tracks read the same either way.
     """
     hop_s = 0.01
     envelope = onset_envelope(audio, sample_rate, hop_s=hop_s)
+    tempo, confidence = _tempo_of(envelope, hop_s)
+    span = int(TEMPO_WINDOW_S / hop_s)
+    if tempo <= 0 or len(envelope) * hop_s < TEMPO_WINDOWED_FROM_S:
+        return tempo, confidence
+    reads = []
+    for start in range(0, len(envelope) - span // 2, span // 2):
+        window, _ = _tempo_of(envelope[start : start + span], hop_s)
+        if window <= 0:
+            continue
+        while window / tempo > 2 ** 0.5:
+            window /= 2
+        while tempo / window > 2 ** 0.5:
+            window *= 2
+        reads.append(window)
+    if len(reads) >= 3:
+        tempo = round(float(np.median(reads)), 1)
+    return tempo, confidence
+
+
+#: Long records are read in windows this long (see :func:`estimate_tempo`)...
+TEMPO_WINDOW_S = 20.0
+#: ...from this long up.
+TEMPO_WINDOWED_FROM_S = 60.0
+
+
+def _tempo_of(envelope: np.ndarray, hop_s: float) -> tuple[float, float]:
+    """Tempo and confidence of one stretch of onset envelope."""
     if len(envelope) < 400:
         return 0.0, 0.0
     envelope = envelope - envelope.mean()
