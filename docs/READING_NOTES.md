@@ -26,6 +26,7 @@ note right):
 | Power chords - E or drop C, two or three strings, low or up the neck | 0.46-1.00 (high gain lowest) |
 | Arpeggios and Travis picking, each note left to ring | 0.62-1.00 |
 | Clean arpeggios in a long reverb | read as arpeggios 41 times in 45 |
+| Driven notes each held into the next - a pedal note, legato eighths | 0.89-1.00 |
 
 Chords are voiced the way they were played - a two-note E5 as two notes, a
 close triad close, a drop-D low string kept - by reading the octaves after

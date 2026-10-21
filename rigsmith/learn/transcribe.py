@@ -537,6 +537,10 @@ def _single_notes(notes, min_midi: int) -> list[NoteEvent]:
 # arpeggios
 # --------------------------------------------------------------------------
 
+#: The share of a part's attacks (those a new pitch confirms) the segmenter
+#: has to find before its notes' periodicity can call the part single notes.
+SEGMENTED_SHARE = 0.5
+
 #: What makes a part an arpeggio, each tested on its own share of the
 #: attacks. Most attacks bring one new pitch alone (``SINGLE``) - or, driven,
 #: show only as a new pitch (``PITCH_ONLY``) - and some of what sounds after
@@ -899,7 +903,7 @@ def transcribe(
     """
     from ..match.pitch import analyse as pitch_analyse
     from .instrument import note_to_midi
-    from .segment import detect_onsets, segment
+    from .segment import detect_onsets, pitch_onsets, segment
 
     # A NaN sample from a damaged file made a near-silent stem a note as long
     # as the file; read it as silence.
@@ -966,7 +970,10 @@ def transcribe(
             # as polyphony 4 and was transcribed as chords (F1 0.39, against
             # 0.99 as single notes).
             notes = segment(audio, sample_rate)
-            if notes:
+            # Only where the segmenter heard the part's attacks: a driven
+            # Travis pattern whose level never rises gave it two notes of
+            # forty, both periodic, and was read as those two.
+            if notes and len(notes) >= SEGMENTED_SHARE * len(pitch_onsets(audio, sample_rate).times):
                 # Measured: distorted single notes sit at 0.73-0.87 clarity,
                 # chords - clean or distorted - at 0.61 and below.
                 periodic = sum(1 for n in notes if n.clarity >= 0.7) / len(notes)

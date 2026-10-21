@@ -490,6 +490,19 @@ def refine_onset(audio: np.ndarray, sample_rate: int, coarse: float) -> float:
     return round((first + int(crossing[0]) * ms) / sample_rate, 4)
 
 
+#: The noise floor is the envelope's 10th percentile - the gaps between
+#: phrases - but no higher than this far under the part's loud level. A part
+#: that never goes quiet, each note held into the next through high gain, has
+#: its playing level for a 10th percentile, and every note failed "12 dB over
+#: the floor": the demo song's solo rhythm read as no notes at all, and a
+#: driven pedal note at 0.50, against 0.99 with the floor held down.
+FLOOR_UNDER_LOUD_DB = 30.0
+
+
+def _floor(envelope: np.ndarray) -> float:
+    return min(float(np.percentile(envelope, 10)), float(np.percentile(envelope, 95)) - FLOOR_UNDER_LOUD_DB)
+
+
 def segment(
     audio,
     sample_rate: int,
@@ -512,7 +525,7 @@ def segment(
 
     onsets = detect_onsets(audio, sample_rate, sensitivity=sensitivity)
     envelope = _envelope_db(audio, sample_rate)
-    floor = float(np.percentile(envelope, 10))
+    floor = _floor(envelope)
     total = len(audio) / sample_rate
 
     notes: list[Note] = []

@@ -956,6 +956,22 @@ def test_an_arpeggio_is_read_note_for_note_and_left_to_ring(amp_type, gain, shar
     assert np.median([e.velocity for e in result.events]) == pytest.approx(0.75, abs=0.03)
 
 
+@pytest.mark.parametrize("per_beat", [1, 2])
+def test_a_driven_part_that_never_goes_quiet_is_still_read(per_beat):
+    """Each note held into the next through high gain: the part's quietest
+    tenth is its playing level, and every note was taken for the noise floor
+    twitching - the demo song's solo rhythm read as no notes at all."""
+    from rigsmith.loop.virtual import SimAmp
+
+    beat = 60 / 110
+    truth = [(b * beat + k * beat / per_beat, beat / per_beat * 0.95, [45, 48, 43, 50][(b // 4) % 4], 0.7)
+             for b in range(16) for k in range(per_beat)]
+    audio = SimAmp(Type=3, Gain=0.85).process(render_notes(truth, seed=5))
+    result = transcribe(audio, RATE, method="builtin", match_record_pitch=False)
+    hits = sum(any(abs(e.start - t) < 0.06 and abs(e.midi - m) < 0.5 for e in result.events) for t, _, m, _ in truth)
+    assert hits >= 0.85 * len(truth) and len(result.events) <= 1.1 * len(truth), (result.mode, hits, len(result.events))
+
+
 def test_a_clean_arpeggio_in_a_reverb_is_still_an_arpeggio():
     """The reverb keeps each note ringing into the next, and the attack's
     phantom an octave under the note counted as a second pitch: the demo

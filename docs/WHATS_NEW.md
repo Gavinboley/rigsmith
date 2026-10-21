@@ -60,6 +60,10 @@ the parts that need the Core, your guitar or your copy of a song say so.
 - Power chords up the neck are read as chords, not as the note an octave
   under them; B standard and other low tunings are read at their own
   octave when the research has not named the tuning.
+- A driven part that never goes quiet - each note held into the next, a
+  pedal note under a solo - is read: its playing level was taken for the
+  noise floor and every note thrown out (0.50, now 0.99). The demo song's
+  solo rhythm read as no notes at all; each side now reads 23 of its 24.
 - A clean arpeggio in a reverb is read as an arpeggio, not as chords: the
   phantom an octave under each pick no longer counts as a second note. The
   demo song's intro read 18 notes right of 18 (it was 41 for 18), and its
