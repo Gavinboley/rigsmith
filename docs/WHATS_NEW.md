@@ -56,7 +56,9 @@ the parts that need the Core, your guitar or your copy of a song say so.
 - A re-map keeps your choices, even where sections moved, and the names
   you gave sections; a run keeps a song's map rather than redrawing it.
 - Sections start on the downbeat where the music changes, not up to a
-  second late with the next section's start inside them.
+  second late with the next section's start inside them; music heard once
+  on the way to the first chorus is the verse (a pre-chorus after one), not
+  a bridge - the demo song now maps as intro, verse, chorus, solo, chorus.
 - Power chords up the neck are read as chords, not as the note an octave
   under them; B standard and other low tunings are read at their own
   octave when the research has not named the tuning.

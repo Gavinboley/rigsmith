@@ -105,7 +105,8 @@ class Part:
 #: centred part's echo read from the stem; the room and a chorus told apart.
 #: 7: the centre layer is what both sides share, so a lead between a
 #: double-track comes out with less of the rhythm in it, and the sides too.
-ANALYSIS_VERSION = 7
+#: 8: music heard once on the way to the first chorus is a verse, not a bridge.
+ANALYSIS_VERSION = 8
 
 
 @dataclass

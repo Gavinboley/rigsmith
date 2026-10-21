@@ -144,6 +144,20 @@ def test_tempo_and_most_section_changes_are_found():
     assert all(a.end == b.start for a, b in zip(result.sections, result.sections[1:])), "no gaps"
 
 
+@pytest.mark.parametrize("letters, names", [
+    ("ABCDC", ["intro", "verse", "chorus", "solo", "chorus"]),
+    ("ABECDC", ["intro", "verse", "pre-chorus", "chorus", "solo", "chorus"]),
+    ("ABCBCDC", ["intro", "verse", "chorus", "verse", "chorus", "solo", "chorus"]),
+])
+def test_music_heard_once_on_the_way_to_the_first_chorus_is_a_verse(letters, names):
+    """A bridge comes after a chorus: the demo song's verse, heard once
+    between its intro and its first chorus, was called one."""
+    loud = {"A": -30.0, "B": -21.0, "E": -20.0, "C": -18.0, "D": -18.5}
+    sections = [structure.Section(start=12.0 * i, end=12.0 * (i + 1), label=letter, energy_db=loud[letter]) for i, letter in enumerate(letters)]
+    structure._name(sections)
+    assert [s.name for s in sections] == names
+
+
 def test_a_quiet_intro_is_named_an_intro_not_a_verse():
     stem, _ = song()
     result = structure.analyse(with_drums(stem), RATE)

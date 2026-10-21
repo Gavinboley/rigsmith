@@ -433,7 +433,9 @@ def _name(sections: list[Section]) -> None:
     get called the verse. Then, among what is left, the loudest repeating
     letter is the chorus and the next most repeated is the verse; music
     heard once is the intro when it opens the song, the outro when it ends
-    it, and otherwise a solo (loud, past the first stretch) or a bridge.
+    it, the verse on the way to the first chorus (a pre-chorus after a
+    verse), and otherwise a solo (loud, past the first stretch) or a bridge -
+    which comes after a chorus, not before the first.
     """
     if not sections:
         return
@@ -461,6 +463,7 @@ def _name(sections: list[Section]) -> None:
     others = [k for k in repeating if k != chorus]
     verse = max(others, key=lambda k: counts[k]) if others else None
     end = sections[-1].end
+    first_chorus = min((s.start for _, s in body if s.label == chorus), default=None)
     for index, section in body:
         if section.label == chorus:
             section.name = "chorus"
@@ -472,6 +475,13 @@ def _name(sections: list[Section]) -> None:
         elif counts.get(section.label, 0) == 1 and index == len(sections) - 1:
             # ...or that ends it: a solo is seldom the last thing played.
             section.name = "outro"
+        elif counts.get(section.label, 0) == 1 and first_chorus is not None and section.start < first_chorus:
+            # Heard once on the way to the first chorus: the verse - its
+            # second time round can read as other music - or, after one,
+            # the build into the chorus. The demo song's verse was called a
+            # bridge, which comes after a chorus.
+            earlier = [s.name for _, s in body if s.start < section.start]
+            section.name = "pre-chorus" if "verse" in earlier else "verse"
         elif counts.get(section.label, 0) == 1 and section.start > end * 0.4 and section.energy_db >= typical:
             section.name = "solo"
         elif counts.get(section.label, 0) == 1:
