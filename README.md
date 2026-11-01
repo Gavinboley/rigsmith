@@ -1,94 +1,92 @@
 <div align="center">
 
-# 🎛️ rigsmith
+# rigsmith
 
-**Autonomous AI Tone Engineering & Smart Remote Control for HeadRush Core / Prime**
+**Autonomous Tone Engineering and Remote Control for HeadRush Core / Prime**
 
-*Recreate any recorded guitar or bass tone on your real hardware amp modeler over Wi-Fi — automated, measured, and verified.*
+*Recreate recorded guitar and bass tones on hardware modelers over Wi-Fi — automated, measured, and verified.*
 
 [![License: PolyForm Noncommercial](https://img.shields.io/badge/License-PolyForm%20Noncommercial-blue.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-brightgreen.svg)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-teal.svg)](https://fastapi.tiangolo.com)
 [![Tests Passing](https://img.shields.io/badge/tests-1170%2B%20passing-success.svg)](tests/)
 
-[Features](#-features) • [Quickstart](#-quickstart) • [Architecture](#-architecture) • [Workflow](#-the-end-to-end-workflow) • [Safety](#-hardware-safety-first) • [License](#-license)
+[Features](#features) • [Quickstart](#quickstart) • [Workflow](#workflow) • [CLI Reference](#cli-reference) • [Safety](#safety) • [License](#license)
 
 </div>
 
 ---
 
-## ⚡ What is Rigsmith?
+## Overview
 
-**Rigsmith** turns your **HeadRush Core / Prime** into an autonomous tone engineering lab. It bridges the gap between a song you love and your modeler's real rig chain.
+Rigsmith connects HeadRush Core and Prime modelers directly to audio analysis and optimization pipelines.
 
-Instead of spending hours manually guessing amp models, cab IRs, drive settings, and EQ curves, Rigsmith:
-1. **Analyzes songs & stems**: Isolates the guitar/bass layers, transcribes chords, detects tuning, and measures spectral & dynamic fingerprints.
-2. **Researches historic gear recipes**: Identifies what amps, cabs, mics, and pickups were originally used on the recording.
-3. **Learns your specific guitar & bass**: Uses a clicked, interactive lab with built-in chromatic/string tuning (down to 25 Hz), gain staging coaching, and voice modeling.
-4. **Optimizes your hardware over Wi-Fi**: Controls your HeadRush unit via its native Remote Editor protocol, sweeping candidate amps/cabs/NAM captures, reamping test takes through your audio interface, and matching harmonic profiles until the ESR error is minimized.
-5. **Gives you the final say**: Generates automated blind A/B trials and exports full multi-scene song rigs directly to your device.
+Instead of manually guessing amp voicings, IRs, and EQ curves by ear, Rigsmith:
 
-Available as a **Modern Dark Web UI** (`http://127.0.0.1:8765`), a full **CLI**, and a standard **MCP Server** for Claude, Gemini, and local LLM agents.
+1. **Analyzes songs and stems**: Isolates guitar/bass tracks, transcribes chords and voicings, detects tunings, and measures spectral and dynamic envelopes.
+2. **Researches historic rigs**: Resolves production notes and gear records to match original amps, cabs, mics, and pickups.
+3. **Profiles your instrument**: Interactive lab with chromatic and string tuning down to 25 Hz (supporting 4, 5, and 6-string bass), audio interface gain coaching, and pickup voice modeling.
+4. **Optimizes hardware over Wi-Fi**: Controls HeadRush units via their remote editor protocol, auditioning candidate amps, cabs, and NAM captures through an audio interface loop to minimize Error-to-Signal Ratio (ESR).
+5. **Double-blind verification**: Produces automated blind A/B trials and writes multi-scene rigs directly to hardware memory.
 
----
-
-## ✨ Features
-
-- **🚀 Autopilot Mode**: Drop in an audio track or pick a song title. Rigsmith analyzes the track, drafts the rig, matches the tone, runs blind listening tests, and outputs a ready-to-gig rig.
-- **🎸 Guitar & Bass Lab (Step 1 Pre-Flight)**:
-  - Real-time chromatic tuner supporting standard guitars and 4/5/6-string basses down to 25 Hz ($A_0$, $B_0$, $E_1$) with needle gauge and audio reference pitches.
-  - Interactive dBFS gain staging meter with a dedicated **-18 to -6 dBFS sweet-spot coach** for your audio interface knob.
-  - Zero-latency duplex live audio pass-through monitoring + instant check-clip recording and browser playback.
-  - Guided session protocols that map your fretboard coverage and fit a harmonic voice model.
-- **🔊 Hardware Loop & NAM Integration**:
-  - Sample-aligned round-trip reamping across analog, USB, and hybrid interface loops.
-  - Native integration with Neural Amp Modeler (NAM A1/A2) and IR impulse responses.
-  - Automated knob-turning search across gain, EQ, presence, and master controls.
-- **🛡️ Rock-Solid Device Safety**:
-  - Zero firmware flashing or modification. Operates strictly over HeadRush's standard Wi-Fi Remote Editor protocol.
-  - Strict **Validate → Backup → Diff → Confirm → Write → Verify** pipeline. Factory rigs are never overwritten without an atomic local backup.
-- **🤖 Built-in Agentic AI & Command Palette**:
-  - Full MCP tool interface (`mcp_rigsmith_*`) allowing LLMs (Claude Code, Antigravity, LM Studio, Ollama) to drive tone research and rig building.
-  - Global `Ctrl+K` command palette to navigate anywhere instantly.
+Available via browser UI, CLI, and Model Context Protocol (MCP) server for integration with agent runtimes.
 
 ---
 
-## 🚀 Quickstart
+## Features
+
+- **Autopilot**: Ingest audio stems or songs to automatically analyze tone, construct candidate rigs, run reamp sweeps, and compile ready-to-use presets.
+- **Guitar & Bass Lab**:
+  - Chromatic and open-string tuner supporting standard guitars and extended-range/drop-tuned bass down to 25 Hz ($A_0$, $B_0$, $E_1$).
+  - Gain staging meter with real-time headroom feedback and audio interface input gain coaching.
+  - Duplex hardware pass-through monitoring and one-click test clip recording/playback.
+  - Guided session protocols to map fretboard coverage and train pickup harmonic models.
+- **Hardware Loop & NAM Integration**:
+  - Sample-aligned reamping across analog, USB, and hybrid loop routes.
+  - Native support for Neural Amp Modeler (NAM A1/A2) captures and impulse responses.
+  - Automated parameter search across gain stages, tonestacks, presence, and master volume.
+- **Hardware Safety**:
+  - Zero firmware modifications or binary patching; communicates strictly via native remote network protocols.
+  - Mandatory backup verification before any preset write operation.
+  - Network listener defaults to local loopback with origin validation and DNS rebinding protections.
+- **MCP & Tooling Support**:
+  - Full MCP tool definitions for external LLMs and CLI workflows.
+  - Global navigation and quick-action command palette.
+
+---
+
+## Quickstart
 
 ### 1. Installation
 
 ```bash
-# Clone the repository
 git clone https://github.com/Gavinboley/rigsmith.git
 cd rigsmith
-
-# Install in editable mode with all DSP dependencies
 pip install -e ".[all]"
-
-# Check environment, audio devices, and audio interface setup
 rigsmith doctor
 ```
 
-### 2. Launch the Web UI
+### 2. Launch the Web Interface
 
 ```bash
 rigsmith ui
 ```
-Open **`http://127.0.0.1:8765`** in your browser to access the control surface.
 
-### 3. Connect Your HeadRush Core / Prime
+The interface launches locally and opens in your default browser.
 
-1. Connect your HeadRush Core/Prime to the same local Wi-Fi network as your computer.
-2. On your HeadRush screen, enable **Global Settings → Wi-Fi → HeadRush Remote**.
-3. In your terminal or the Web UI:
+### 3. Connect to HeadRush Hardware
+
+1. Connect your HeadRush Core/Prime to the same local network as your workstation.
+2. On the unit, enable **Global Settings -> Wi-Fi -> HeadRush Remote**.
+3. Pair the device:
    ```bash
-   rigsmith discover              # Scan local subnet for your device
-   rigsmith device pair           # Confirm the pairing PIN on the device screen
+   rigsmith discover
+   rigsmith device pair
    ```
 
 ---
 
-## 🔄 The End-to-End Workflow
+## Workflow
 
 ```mermaid
 flowchart LR
@@ -99,54 +97,47 @@ flowchart LR
     E --> F["Blind A/B Hearing Test"]
     F --> G["HeadRush Wi-Fi Write & Backup"]
     
-    H["Your Guitar / Bass"] --> I["Guitar Lab: Tuner & Gain Staging"]
+    H["Guitar / Bass Input"] --> I["Guitar Lab: Tuner & Gain Staging"]
     I --> D
 ```
 
-1. **Intake & Separation**: Demucs splits guitar, bass, vocal, and drum stems. Pitch and chord transcribers extract exact rhythms and voicings.
-2. **Instrument Profiling**: Plug into your audio interface (e.g., E2x2, Scarlett, Volt), dial your gain knob into the `-18 to -6 dBFS` sweet spot, tune up, and play a 1-minute guided chromatic sequence.
-3. **Tone Matching**: Rigsmith compares your reamped DI against the isolated song stem, calculating envelope-aligned ESR (Error-to-Signal Ratio) and spectral balance.
-4. **Hardware Sync**: The resulting rig chain, complete with calibrated scenes, delay divisions, and custom NAM captures, is written straight to your HeadRush unit over Wi-Fi.
+1. **Stem Separation**: Demucs extracts dry instrument stems; pitch trackers isolate chord voicings and playing techniques.
+2. **Instrument Staging**: Connect your instrument through an audio interface, verify levels in the target input range, tune, and run a short calibration sequence.
+3. **Tone Matching**: Rigsmith compares reamped takes against source references, optimizing frequency response, compression, and harmonic distortion.
+4. **Hardware Sync**: Finalized rigs, calibrated scenes, delay times, and IR assignments write to the unit with full backup logs.
 
 ---
 
-## 🧰 CLI Cheat Sheet
+## CLI Reference
 
 | Task | Command |
 |---|---|
-| Launch Web UI | `rigsmith ui` |
-| Health Check | `rigsmith doctor` |
-| Device Discovery | `rigsmith discover` |
+| Launch Web Interface | `rigsmith ui` |
+| Environment Check | `rigsmith doctor` |
+| Discover Network Devices | `rigsmith discover` |
 | Run Autopilot Demo | `rigsmith autopilot demo` |
-| Autopilot on a Song | `rigsmith autopilot run "Song Title" --artist "Artist" --mix track.flac` |
-| Test Hardware Loop Wiring | `rigsmith loop test` |
-| Capture Audio Take | `rigsmith loop record 10 --device "Analog 1/2"` |
-| Inspect Rig JSON | `rigsmith rig show "MyRig"` |
+| Run Autopilot on Track | `rigsmith autopilot run "Song Title" --artist "Artist" --mix track.flac` |
+| Test Loop Wiring | `rigsmith loop test` |
+| Record DI Take | `rigsmith loop record 10 --device "Analog 1/2"` |
+| Inspect Rig Configuration | `rigsmith rig show "MyRig"` |
 
 ---
 
-## 🛡️ Hardware Safety First
+## Safety
 
-Rigsmith treats your hardware with care:
-- **Loopback Default**: Web UI binds exclusively to `127.0.0.1` with DNS rebinding protection and strict HTTP Origin validation.
-- **Mandatory Backup Gate**: Rig writes fail closed unless an atomic backup of the device state exists in `~/.rigsmith/backups`.
-- **Read-Only Mode**: Run `RIGSMITH_READONLY=1 rigsmith ui` to lock all hardware write mutations during live shows or rehearsal.
-- **Zero Risk Recovery**: Powering on the HeadRush unit while holding footswitches **4 + 5** boots into safe factory restore at any time.
-
----
-
-## 📜 License
-
-This project is licensed under the **PolyForm Noncommercial License 1.0.0**.
-
-- ✅ **Free for personal use, hobbyist experimentation, research, and educational study.**
-- ✅ **You may fork, modify, and distribute with prominent attribution to Gavin Boley.**
-- ❌ **Commercial use, selling the software, hosting it as a paid service, or redistributing it for commercial advantage is strictly prohibited.**
-
-See the full [LICENSE](LICENSE) file for complete legal terms.
+- **Local Network Scope**: The web interface binds to loopback by default and verifies host headers to block cross-site scripting and DNS rebinding.
+- **State Backups**: Writes require an existing device backup snapshot in `~/.rigsmith/backups`.
+- **Read-Only Mode**: Set `RIGSMITH_READONLY=1` to disable state mutations on connected hardware.
+- **Hardware Recovery**: Holding footswitches 4 and 5 during device boot restores factory settings at any time.
 
 ---
 
-<div align="center">
-  <sub>Crafted by <strong><a href="https://github.com/Gavinboley/rigsmith">Gavin Boley</a></strong>. Powered by open-source audio DSP and modern AI.</sub>
-</div>
+## License
+
+This software is released under the **PolyForm Noncommercial License 1.0.0**.
+
+- Free for personal use, hobbyist experimentation, research, and non-commercial educational study.
+- Source code may be modified and redistributed with attribution to Gavin Boley.
+- Commercial distribution, commercial hosting, and commercial software integration are prohibited without a separate license.
+
+See the complete [LICENSE](LICENSE) text for details.
