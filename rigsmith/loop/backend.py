@@ -16,6 +16,7 @@ capture carries sync marks that measure it.
 
 from __future__ import annotations
 
+import ctypes
 import os
 import threading
 import time
@@ -24,6 +25,21 @@ from dataclasses import dataclass
 import numpy as np
 
 from ..core.errors import Invalid, Unavailable
+
+
+def _ensure_com() -> None:
+    """Initialize COM on the current worker thread on Windows.
+
+    PortAudio initializes COM on the thread that first imports ``sounddevice``,
+    but FastAPI/Starlette serves sync routes and background jobs on worker
+    threads where COM is uninitialized. Without ``CoInitializeEx``, Windows
+    WASAPI stream start fails with PaErrorCode -9999 (HTTP 500).
+    """
+    if os.name == "nt":
+        try:
+            ctypes.windll.ole32.CoInitializeEx(None, 0)
+        except Exception:
+            pass
 
 
 @dataclass
@@ -159,6 +175,7 @@ class SoundDeviceBackend(AudioBackend):
         self.sd = sd
 
     def devices(self) -> list[DeviceInfo]:
+        _ensure_com()
         hostapis = self.sd.query_hostapis()
         found = []
         for index, raw in enumerate(self.sd.query_devices()):
@@ -173,6 +190,22 @@ class SoundDeviceBackend(AudioBackend):
                 )
             )
         return found
+
+    def _fallbacks(self, name: str, *, need_inputs: int = 0, need_outputs: int = 0, exclude_index: int = -1) -> list[DeviceInfo]:
+        """Other host-API entries for the same hardware port when the preferred API refuses to start."""
+        from .routes import HOSTAPI_PREFERENCE
+
+        order = {api: i for i, api in enumerate(HOSTAPI_PREFERENCE)}
+        candidates = [
+            d for d in self.devices()
+            if (d.name == name or name.lower() in d.name.lower())
+            and d.inputs >= need_inputs
+            and d.outputs >= need_outputs
+            and d.index != exclude_index
+            and d.hostapi != "Windows WDM-KS"
+        ]
+        candidates.sort(key=lambda d: order.get(d.hostapi, len(order)))
+        return candidates
 
     def _extra(self, device: DeviceInfo, sample_rate) -> object | None:
         """WASAPI's shared mode refuses any rate but the device's own; ask
@@ -192,6 +225,7 @@ class SoundDeviceBackend(AudioBackend):
         return mapping
 
     def playrec(self, playback, *, output_device, input_device, output_channels, input_channels, sample_rate, hostapi=None):
+        _ensure_com()
         playback = np.asarray(playback, dtype=np.float32)
         if playback.ndim == 1:
             playback = playback[:, None]
@@ -200,16 +234,22 @@ class SoundDeviceBackend(AudioBackend):
         out_dev = self.find(output_device, hostapi=hostapi, need_outputs=max(out_map))
         in_dev = self.find(input_device, hostapi=hostapi, need_inputs=max(in_map))
         if out_dev.index == in_dev.index:
-            recorded = self.sd.playrec(
-                playback,
-                samplerate=sample_rate,
-                device=out_dev.index,
-                input_mapping=in_map,
-                output_mapping=out_map,
-                blocking=True,
-                extra_settings=self._extra(out_dev, sample_rate),
-            )
-            return np.asarray(recorded, dtype=np.float64)
+            try:
+                recorded = self.sd.playrec(
+                    playback,
+                    samplerate=sample_rate,
+                    device=out_dev.index,
+                    input_mapping=in_map,
+                    output_mapping=out_map,
+                    blocking=True,
+                    extra_settings=self._extra(out_dev, sample_rate),
+                )
+                return np.asarray(recorded, dtype=np.float64)
+            except Exception as exc:
+                raise Unavailable(
+                    f"could not play and record on '{out_dev.name}' ({out_dev.hostapi}): {exc}",
+                    hint="Check that no other application has exclusive control of the audio interface.",
+                ) from exc
         return self._two_streams(playback, out_dev, in_dev, out_map, in_map, sample_rate)
 
     def _two_streams(self, playback, out_dev, in_dev, out_map, in_map, sample_rate):
@@ -225,6 +265,7 @@ class SoundDeviceBackend(AudioBackend):
         errors: list[BaseException] = []
 
         def capture():
+            _ensure_com()
             try:
                 data = sd.rec(
                     frames + sample_rate // 2, samplerate=sample_rate, device=in_dev.index, mapping=in_map,
@@ -237,7 +278,10 @@ class SoundDeviceBackend(AudioBackend):
         thread = threading.Thread(target=capture, daemon=True)
         thread.start()
         time.sleep(0.05)
-        sd.play(playback, samplerate=sample_rate, device=out_dev.index, mapping=out_map, blocking=True, extra_settings=self._extra(out_dev, sample_rate))
+        try:
+            sd.play(playback, samplerate=sample_rate, device=out_dev.index, mapping=out_map, blocking=True, extra_settings=self._extra(out_dev, sample_rate))
+        except Exception as exc:
+            raise Unavailable(f"playback on {out_dev.name} failed: {exc}") from exc
         thread.join(timeout=len(playback) / sample_rate + 5)
         if errors:
             raise Unavailable(f"recording from {in_dev.name} failed: {errors[0]}")
@@ -246,18 +290,49 @@ class SoundDeviceBackend(AudioBackend):
         return recorded["data"]
 
     def record(self, seconds, *, input_device, input_channels, sample_rate, hostapi=None):
+        _ensure_com()
         in_map = self._mapping(input_channels)
         device = self.find(input_device, hostapi=hostapi, need_inputs=max(in_map))
-        data = self.sd.rec(int(seconds * sample_rate), samplerate=sample_rate, device=device.index, mapping=in_map, blocking=True, extra_settings=self._extra(device, sample_rate))
-        return np.asarray(data, dtype=np.float64)
+        candidates = [device] + (self._fallbacks(input_device, need_inputs=max(in_map), exclude_index=device.index) if not hostapi else [])
+        last_exc: Exception | None = None
+        for dev in candidates:
+            rate = int(round(dev.sample_rate)) if int(round(dev.sample_rate)) in (44100, 48000, 88200, 96000) else sample_rate
+            try:
+                data = self.sd.rec(
+                    int(seconds * rate),
+                    samplerate=rate,
+                    device=dev.index,
+                    mapping=in_map,
+                    blocking=True,
+                    extra_settings=self._extra(dev, rate),
+                )
+                if rate != sample_rate:
+                    from ..match.render_offline import resample
+
+                    arr = np.asarray(data, dtype=np.float64)
+                    if arr.ndim > 1:
+                        return np.column_stack([resample(arr[:, c], rate, sample_rate) for c in range(arr.shape[1])])
+                    return resample(arr, rate, sample_rate)
+                return np.asarray(data, dtype=np.float64)
+            except Exception as exc:
+                last_exc = exc
+                continue
+        raise Unavailable(
+            f"could not record from '{device.name}' ({device.hostapi}): {last_exc}",
+            hint="Check that the interface is plugged in and not locked in exclusive mode by another app.",
+        )
 
     def play(self, audio, *, output_device, output_channels, sample_rate, hostapi=None) -> None:
+        _ensure_com()
         out_map = self._mapping(output_channels)
         device = self.find(output_device, hostapi=hostapi, need_outputs=max(out_map))
         audio = np.asarray(audio, dtype=np.float32)
         if audio.ndim == 1:
             audio = np.repeat(audio[:, None], len(out_map), axis=1)
-        self.sd.play(audio, samplerate=sample_rate, device=device.index, mapping=out_map, blocking=True, extra_settings=self._extra(device, sample_rate))
+        try:
+            self.sd.play(audio, samplerate=sample_rate, device=device.index, mapping=out_map, blocking=True, extra_settings=self._extra(device, sample_rate))
+        except Exception as exc:
+            raise Unavailable(f"could not play to '{device.name}' ({device.hostapi}): {exc}") from exc
 
 
 _override: AudioBackend | None = None

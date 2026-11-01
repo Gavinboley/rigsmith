@@ -382,20 +382,27 @@ def preview(song_id: str) -> Song:
     return song
 
 
-def isolate(song_id: str, *, progress: Progress | None = None) -> Song:
-    """Separate the guitar stem from the song's mix."""
+def isolate(song_id: str, *, stem_name: str = "guitar", progress: Progress | None = None) -> Song:
+    """Separate the guitar (or bass) stem from the song's mix."""
     from . import matching
 
-    require_writable("isolate a guitar stem")
+    require_writable(f"isolate a {stem_name} stem")
     song = get(song_id)
     if not song.mix:
         raise Invalid("this song has no mix to separate", hint="Add one with:  rigsmith song add-audio <song> --mix <file>")
-    result = matching.isolate_guitar(song.mix, out_dir=song.directory / "stems", progress=progress)
-    guitar = next((p for name, p in result.stems.items() if name == "guitar"), None)
-    if guitar is None:
-        raise Invalid("the separation produced no guitar stem", hint=f"Stems: {', '.join(result.stems)}")
+    if stem_name == "bass":
+        from ..match.separate import separate
+
+        if progress:
+            progress.update(0.05, "separating bass stem with Demucs")
+        result = separate(song.mix, song.directory / "stems", stems=("bass",))
+    else:
+        result = matching.isolate_guitar(song.mix, out_dir=song.directory / "stems", progress=progress)
+    extracted = next((p for name, p in result.stems.items() if name == stem_name), None)
+    if extracted is None:
+        raise Invalid(f"the separation produced no {stem_name} stem", hint=f"Stems: {', '.join(result.stems)}")
     song = get(song_id)
-    song.stem = str(guitar)
+    song.stem = str(extracted)
     song.layers = None
     song.layer_files = {}
     song.save()

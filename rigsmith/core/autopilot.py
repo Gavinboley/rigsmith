@@ -297,6 +297,24 @@ def _stage_song(run: Run) -> str:
     return f"{song.title}" + (f" - {song.artist}" if song.artist else "")
 
 
+def _is_bass_run(run: Run) -> bool:
+    """Whether this autopilot run is targeting a bass instrument."""
+    from ..learn.instrument import tuning as get_tuning
+    from . import appsettings, profiles
+
+    pid = run.request.profile_id or appsettings.load().default_profile
+    if pid and pid != "synthetic":
+        try:
+            prof = profiles.get(pid)
+            if get_tuning(prof.tuning).is_bass or "bass" in (prof.guitar or "").lower() or "bass" in prof.profile_id.lower():
+                return True
+        except Exception:
+            pass
+    if run.request.like and "bass" in run.request.like.lower():
+        return True
+    return False
+
+
 def _stage_stem(run: Run, progress) -> str:
     from ..match.separate import demucs_available
     from . import songs
@@ -307,8 +325,9 @@ def _stage_stem(run: Run, progress) -> str:
     if not demucs_available():
         run.note("Demucs is not installed, so parts are measured from the full mix - expect drums and bass in the numbers")
         raise _Skip("no Demucs - mapping the full mix")
-    songs.isolate(run.song_id, progress=progress)
-    return "guitar isolated"
+    stem_kind = "bass" if _is_bass_run(run) else "guitar"
+    songs.isolate(run.song_id, stem_name=stem_kind, progress=progress)
+    return f"{stem_kind} isolated"
 
 
 def _stage_map(run: Run, progress) -> str:
@@ -732,7 +751,7 @@ def _stage_candidates(run: Run, progress) -> str:
     # simulated bench hears every one of its voicings anyway.)
     field_ = pick(
         gain, researched=_researched_amps(run), favoured=_ear_winners(run), count=run.request.candidates,
-        catalog=get_catalog(), every_tier=run.request.bench == "device",
+        catalog=get_catalog(), every_tier=run.request.bench == "device", bass=_is_bass_run(run),
     )
     if not field_:
         raise Invalid("no candidate amps to try")
@@ -821,7 +840,7 @@ def _stage_cabs(run: Run, progress) -> str:
         raise _Skip("no amp to hear cabs with")
     best = run.results[0]
     amp = Candidate.from_dict(best)
-    options = cab_options(amp.tier, researched=_researched_cabs(run), catalog=get_catalog(), count=4)
+    options = cab_options(amp.tier, researched=_researched_cabs(run), catalog=get_catalog(), count=4, bass=_is_bass_run(run))
     options = [o for o in options if o[0] != amp.cab]
     hosts = _device_hosts(run)
     if hosts is not None:

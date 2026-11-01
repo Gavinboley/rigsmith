@@ -30,10 +30,11 @@ A4_HZ = 440.0
 
 NOTE_NAMES = ("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
 
-#: The guitar's usable fundamental range, generously bounded: a drop-A
-#: seven-string's low A is 55 Hz and an eight-string's low F# 46 Hz, and
-#: the 24th fret of the high E is 1319 Hz.
+#: The guitar and 4-string bass usable fundamental range, generously bounded:
+#: a 4-string bass E1 is 41.2 Hz and the 24th fret of the high E is 1319 Hz.
+#: Drop/5-string bass callers pass ``min_f0=25.0`` to reach A0 (27.5 Hz).
 MIN_F0 = 40.0
+BASS_MIN_F0 = 25.0
 MAX_F0 = 1400.0
 
 #: A lag half as long whose correlation comes within this share of the
@@ -62,6 +63,13 @@ COMMON_TUNINGS = {
     "C standard": "C2",
     "open G": "D2",
     "open D": "D2",
+    "Bass E standard": "E1",
+    "Bass drop D": "D1",
+    "Bass Eb standard": "D#1",
+    "Bass D standard": "D1",
+    "Bass C standard": "C1",
+    "Bass 5-string standard": "B0",
+    "Bass 5-string drop A": "A0",
 }
 
 
@@ -160,7 +168,9 @@ class PitchReport:
         }
 
 
-def _estimate_f0(window: np.ndarray, sample_rate: int) -> tuple[float, float]:
+def _estimate_f0(
+    window: np.ndarray, sample_rate: int, *, min_f0: float = MIN_F0
+) -> tuple[float, float]:
     """Autocorrelation pitch for one window: ``(frequency, clarity)``.
 
     Clarity is the normalised autocorrelation at the chosen lag - near 1 for
@@ -178,29 +188,57 @@ def _estimate_f0(window: np.ndarray, sample_rate: int) -> tuple[float, float]:
     correlation = np.fft.irfft(spectrum * np.conjugate(spectrum), size)[: len(window)]
 
     min_lag = max(2, int(sample_rate / MAX_F0))
-    max_lag = min(len(correlation) - 1, int(sample_rate / MIN_F0))
+    max_lag = min(len(correlation) - 1, int(sample_rate / min_f0))
     if max_lag <= min_lag:
         return 0.0, 0.0
 
-    segment = correlation[min_lag : max_lag + 1]
-    peak = int(np.argmax(segment)) + min_lag
-    # Prefer the shorter period when one half as long is nearly as strong.
-    while peak // 2 >= min_lag:
-        around = correlation[max(min_lag, peak // 2 - 2) : peak // 2 + 3]
-        shorter = int(np.argmax(around)) + max(min_lag, peak // 2 - 2)
-        if correlation[shorter] < SUBOCTAVE_SHARE * correlation[peak]:
-            break
-        peak = shorter
+    # Skip the initial descending lobe from lag 0 so low bass notes (whose
+    # first zero-crossing sits past min_lag) do not pick min_lag as the peak.
+    search_start = min_lag
+    while search_start < max_lag and correlation[search_start] > 0 and correlation[search_start] >= correlation[search_start + 1]:
+        search_start += 1
+    if search_start >= max_lag:
+        return 0.0, 0.0
+
+    segment = correlation[search_start : max_lag + 1]
+    if min_f0 < 40.0:
+        taper = np.maximum(len(window) * 0.25, len(window) - np.arange(search_start, max_lag + 1, dtype=np.float64))
+        peak = int(np.argmax(segment / taper)) + search_start
+    else:
+        peak = int(np.argmax(segment)) + search_start
+    # Prefer the shorter period when a divisor (1/2 or 1/3 period) is nearly as strong.
+    divisors = (2, 3) if min_f0 < 40.0 else (2,)
+    improved = True
+    while improved:
+        improved = False
+        for div in divisors:
+            if peak // div >= search_start:
+                center = int(round(peak / div))
+                radius = max(3, int(round(center * 0.04)))
+                lo = max(search_start, center - radius)
+                hi = min(len(correlation), center + radius + 1)
+                around = correlation[lo:hi]
+                if len(around):
+                    shorter = int(np.argmax(around)) + lo
+                    if correlation[shorter] >= SUBOCTAVE_SHARE * correlation[peak]:
+                        peak = shorter
+                        improved = True
+                        break
     clarity = float(correlation[peak] / correlation[0]) if correlation[0] else 0.0
     if clarity < MIN_CLARITY:
         return 0.0, clarity
 
     # Parabolic interpolation around the peak, so the answer is not quantised
     # to whole samples - at 48 kHz that quantisation alone is tens of cents.
+    # Debias the triangular overlap taper (N - lag) at long lags so low bass
+    # strings (A0/B0/E1) do not read a few cents sharp.
     if 0 < peak < len(correlation) - 1:
-        before, centre, after = correlation[peak - 1 : peak + 2]
+        n = float(len(window))
+        before = correlation[peak - 1] / max(1.0, n - (peak - 1))
+        centre = correlation[peak] / max(1.0, n - peak)
+        after = correlation[peak + 1] / max(1.0, n - (peak + 1))
         denominator = before - 2 * centre + after
-        if denominator:
+        if denominator < 0:
             peak = peak + 0.5 * (before - after) / denominator
 
     return (sample_rate / peak if peak else 0.0), clarity

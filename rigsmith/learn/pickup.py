@@ -46,6 +46,7 @@ class PickupType:
     q: float
     description: str
     aliases: tuple[str, ...] = ()
+    instrument: str = "guitar"
 
 
 #: Typical resonances on a ~3 m cable into a high-impedance input. These are
@@ -61,6 +62,10 @@ PICKUPS: dict[str, PickupType] = {
         PickupType("hot-humbucker", 2300, 1.3, "high-output passive humbucker", ("jb", "distortion", "super distortion", "dimarzio", "duncan", "invader", "x2n", "high output", "high-output", "500t", "dirty fingers")),
         PickupType("active", 7500, 0.9, "active humbucker (EMG 81/85 style)", ("emg", "emg 81", "emg 85", "81", "85", "fishman", "fluence", "active")),
         PickupType("filtertron", 4200, 1.8, "Filter'Tron / Gretsch-style humbucker", ("filter'tron", "filtertron", "gretsch", "tv jones")),
+        PickupType("p-bass", 2050, 1.7, "Precision Bass split-coil", ("p-bass", "p bass", "precision", "precision bass", "split coil", "split-coil"), "bass"),
+        PickupType("j-bass-bridge", 3350, 2.2, "Jazz Bass bridge single coil", ("j-bass bridge", "jazz bass bridge", "j bass bridge"), "bass"),
+        PickupType("j-bass-neck", 2550, 1.9, "Jazz Bass neck single coil", ("j-bass", "j bass", "jazz bass", "j-bass neck", "jazz bass neck"), "bass"),
+        PickupType("musicman", 1900, 1.4, "StingRay / Music Man bass humbucker", ("stingray", "music man", "musicman", "mm humbucker", "bass humbucker"), "bass"),
     )
 }
 
@@ -82,7 +87,9 @@ class Resonance:
         def distance(p: PickupType) -> float:
             return abs(np.log2(self.f0_hz / p.f0_hz)) * 2 + abs(np.log2(self.q / p.q))
 
-        return min(PICKUPS.values(), key=distance).name
+        want_bass = "bass" in (self.label or "").lower()
+        candidates = [p for p in PICKUPS.values() if (p.instrument == "bass") == want_bass] or list(PICKUPS.values())
+        return min(candidates, key=distance).name
 
     @property
     def clear(self) -> bool:

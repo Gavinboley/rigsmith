@@ -45,6 +45,36 @@ TIERS: dict[str, tuple[tuple[str, ...], str]] = {
     ),
 }
 
+BASS_TIERS: dict[str, tuple[tuple[str, ...], str]] = {
+    "clean": (
+        ("66 Flip Bass", "59 Tweed Bass", "69 Blue Line Bass", "69 Blue Line Scoop", "72 Basic 100 Bass"),
+        "1x15 Open Back",
+    ),
+    "edge": (
+        ("59 Tweed Bass", "66 Flip Bass", "69 Blue Line Bass", "69 Blue Line Scoop", "72 Basic 100 Bass"),
+        "4x10 Tweed Bass",
+    ),
+    "crunch": (
+        ("69 Blue Line Bass", "59 Tweed Bass", "82 Lead 800 Bass Mod", "72 Basic 100 Bass", "66 Flip Bass"),
+        "8x10 Blue Line",
+    ),
+    "high": (
+        ("82 Lead 800 Bass Mod", "69 Blue Line Bass", "69 Blue Line Scoop", "72 Basic 100 Bass", "97 RB-01B Red"),
+        "8x10 Blue Line",
+    ),
+    "modern": (
+        ("69 Blue Line Scoop", "82 Lead 800 Bass Mod", "69 Blue Line Bass", "72 Basic 100 Bass", "97 RB-01B Red"),
+        "8x10 Blue Line",
+    ),
+}
+
+BASS_CAB_CHOICES: tuple[tuple[str, str], ...] = (
+    ("8x10 Blue Line", "8x10 SVT bass cab - classic punch and low end"),
+    ("4x10 Tweed Bass", "4x10 bass cab - tight, articulate midrange"),
+    ("1x15 Open Back", "1x15 bass cab - warm, deep fundamental"),
+    ("Peavey TVX 410", "modern 4x10 bass enclosure"),
+)
+
 ORDER = ("clean", "edge", "crunch", "high", "modern")
 
 #: A simulated amp voicing per tier, for the virtual bench.
@@ -188,7 +218,7 @@ def _lookup(catalog, name: str) -> tuple[bool, int | None, str | None]:
     return True, getattr(spec, "device_index", None), getattr(spec, "selector", None)
 
 
-def cab_options(tier: str, *, researched: list[str] | None = None, catalog=None, count: int = 4) -> list[tuple[str, str, int | None, str | None]]:
+def cab_options(tier: str, *, researched: list[str] | None = None, catalog=None, count: int = 4, bass: bool = False) -> list[tuple[str, str, int | None, str | None]]:
     """Cabs to hear the best amp through: (name, why, device index, selector).
 
     Researched cabs first, then the tier's usual one and its alternatives.
@@ -196,7 +226,8 @@ def cab_options(tier: str, *, researched: list[str] | None = None, catalog=None,
     """
     found: list[tuple[str, str, int | None, str | None]] = []
     seen: set[str] = set()
-    for name, why in [(n, "named by the research") for n in researched or []] + list(CAB_CHOICES.get(tier, ())):
+    tier_cabs = list(BASS_CAB_CHOICES) if bass else list(CAB_CHOICES.get(tier, ()))
+    for name, why in [(n, "named by the research") for n in researched or []] + tier_cabs:
         if name in seen:
             continue
         ok, index, selector = _lookup(catalog, name)
@@ -225,7 +256,7 @@ def _tier_of(name: str, fallback: str) -> str:
 
 def candidates(
     gain: float, *, researched: list[str] | None = None, favoured: list[str] | None = None,
-    count: int = 6, catalog=None, every_tier: bool = False,
+    count: int = 6, catalog=None, every_tier: bool = False, bass: bool = False,
 ) -> list[Candidate]:
     """Amps to try: researched ones first, then the measured tier and its neighbours.
 
@@ -234,6 +265,7 @@ def candidates(
     past ``count``, one amp from each tier the field has not got - a guard
     against a gain read two tiers out (see :mod:`rigsmith.core.autopilot`).
     """
+    table = BASS_TIERS if bass else TIERS
     tier = tier_for(gain)
     index = ORDER.index(tier)
     neighbours = [ORDER[i] for i in (index - 1, index + 1) if 0 <= i < len(ORDER)]
@@ -257,9 +289,9 @@ def candidates(
             ok, device_index = known(name)
             if ok and name not in seen:
                 own = _tier_of(name, tier)
-                found.append(Candidate(name, own, TIERS[own][1], reason, device_index, VIRTUAL_VOICING[own], selector_of(name)))
+                found.append(Candidate(name, own, table[own][1], reason, device_index, VIRTUAL_VOICING[own], selector_of(name)))
                 seen.add(name)
-    primary, cab = TIERS[tier]
+    primary, cab = table[tier]
     for name in primary:
         if len(found) >= max(1, count - 2):
             break
@@ -272,7 +304,7 @@ def candidates(
     # direction still has its answer in the field.
     for depth in range(2):
         for other in neighbours:
-            names, other_cab = TIERS[other]
+            names, other_cab = table[other]
             if depth >= len(names) or len(found) >= count:
                 continue
             for name in names[depth:]:
@@ -289,7 +321,7 @@ def candidates(
         for other in ORDER:
             if any(c.tier == other for c in found):
                 continue
-            names, other_cab = TIERS[other]
+            names, other_cab = table[other]
             for name in names:
                 ok, device_index = known(name)
                 if ok and name not in seen:

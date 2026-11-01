@@ -763,6 +763,241 @@ button:focus-visible, summary:focus-visible, [tabindex]:focus-visible { outline:
 .stat .k { font-size: 11px; color: var(--text-faint); }
 .stat .v { font-size: 16px; font-weight: 600; font-family: var(--mono); }
 
+/* Step 1: Tuner, Gain Staging & Live Monitor */
+.preflight-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-top: 12px;
+}
+@media (max-width: 860px) {
+  .preflight-grid { grid-template-columns: 1fr; }
+}
+.pf-pane {
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 13px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.pf-pane-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.pf-pane-title {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.tuner-display {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 10px;
+  background: var(--bg-sunken);
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+}
+.tuner-note {
+  font-family: var(--mono);
+  font-size: 34px;
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--text);
+}
+.tuner-note.in-tune { color: var(--green); }
+.tuner-note.off-tune { color: var(--amber); }
+.tuner-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.tuner-gauge {
+  position: relative;
+  height: 24px;
+  background: var(--bg-sunken);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.tuner-sweet {
+  position: absolute;
+  left: 45%;
+  width: 10%;
+  top: 0;
+  bottom: 0;
+  background: rgba(72, 184, 132, 0.18);
+  border-left: 1px dashed rgba(72, 184, 132, 0.55);
+  border-right: 1px dashed rgba(72, 184, 132, 0.55);
+}
+.tuner-center {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--green);
+}
+.tuner-needle {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  width: 4px;
+  margin-left: -2px;
+  left: 50%;
+  border-radius: 2px;
+  background: var(--amber);
+  transition: left .1s linear, background .15s ease;
+}
+.tuner-needle.in-tune {
+  background: var(--green);
+  box-shadow: 0 0 8px rgba(72, 184, 132, 0.8);
+}
+.tuner-scale {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-faint);
+  margin-top: -4px;
+}
+.string-targets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.string-pill {
+  flex: 1 1 68px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 5px 7px;
+  background: var(--bg-sunken);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  cursor: pointer;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--text-dim);
+  transition: border-color .12s, background .12s;
+}
+.string-pill:hover { border-color: var(--amber-dim); color: var(--text); }
+.string-pill.active { border-color: var(--amber); background: #221b0e; color: var(--amber); }
+.string-pill.tuned { border-color: #2d6a4f; background: #142a21; color: var(--green); }
+.string-pill small { font-size: 9.5px; color: var(--text-faint); }
+
+.gain-meter-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.gain-track {
+  position: relative;
+  height: 24px;
+  background: var(--bg-sunken);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  overflow: hidden;
+}
+/* -60 to 0 dBFS: sweet spot -18 to -6 dBFS is 70% to 90% */
+.gain-sweet-zone {
+  position: absolute;
+  left: 70%;
+  width: 20%;
+  top: 0;
+  bottom: 0;
+  background: rgba(72, 184, 132, 0.16);
+  border-left: 1px dashed var(--green);
+  border-right: 1px dashed var(--green);
+  z-index: 1;
+}
+.gain-sweet-label {
+  position: absolute;
+  left: 70%;
+  width: 20%;
+  top: 4px;
+  text-align: center;
+  font-family: var(--mono);
+  font-size: 9.5px;
+  color: var(--green);
+  pointer-events: none;
+  z-index: 3;
+}
+.gain-fill-rms {
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 0%;
+  background: rgba(90, 163, 224, 0.45);
+  transition: width .1s linear;
+  z-index: 2;
+}
+.gain-fill-peak {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 0%;
+  background: linear-gradient(90deg, #3c78a8 0%, #48b884 70%, #f0a020 90%, #e0574b 98%);
+  opacity: 0.78;
+  transition: width .08s linear;
+  z-index: 2;
+}
+.gain-hold-tick {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  left: 0%;
+  background: var(--text);
+  z-index: 4;
+  transition: left .1s linear;
+}
+.gain-scale {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-faint);
+}
+.gain-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+.gain-stat {
+  background: var(--bg-sunken);
+  border: 1px solid var(--line-soft);
+  border-radius: 6px;
+  padding: 5px 7px;
+  text-align: center;
+}
+.gain-stat .k { font-size: 10px; color: var(--text-faint); }
+.gain-stat .v { font-family: var(--mono); font-size: 12.5px; font-weight: 600; }
+.coach-banner {
+  font-size: 12.5px;
+  padding: 8px 11px;
+  border-radius: 7px;
+  background: var(--bg-sunken);
+  border-left: 3px solid var(--line);
+  color: var(--text-dim);
+}
+.coach-banner.ok { border-left-color: var(--green); color: #b9e3cf; background: #12221b; }
+.coach-banner.warn { border-left-color: var(--amber); color: #e8cb96; background: #211b10; }
+.coach-banner.bad { border-left-color: var(--red); color: #f4b2ab; background: #261412; }
+
 /* ---------------------------------------------------------------- loop */
 
 .vu { display: flex; gap: 8px; align-items: center; }

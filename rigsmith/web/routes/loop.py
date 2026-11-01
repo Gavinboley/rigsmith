@@ -62,6 +62,25 @@ class AssessBody(BaseModel):
     capture: str
 
 
+class MonitorStartBody(BaseModel):
+    input_device: str
+    input_channel: int = 1
+    output_device: str | None = None
+    output_channels: list[int] | None = None
+    listen: bool = False
+    gain_db: float = 0.0
+    tuning: str | None = None
+    backend: str | None = None
+
+
+class CheckClipBody(BaseModel):
+    device: str
+    channel: int = 1
+    seconds: float = 3.5
+    tuning: str | None = None
+    backend: str | None = None
+
+
 @router.get("/devices")
 def devices(backend: str | None = None) -> dict:
     try:
@@ -147,6 +166,52 @@ def tone(route_id: str | None = None, frequency: float = 440.0, level_db: float 
 def level(device: str, channel: int = 1, seconds: float = 3.0, backend: str | None = None) -> dict:
     """Listen to a guitar input for a few seconds and judge the level. Saves nothing."""
     return loop.input_level(device, channel=channel, seconds=seconds, backend=backend)
+
+
+@router.get("/tuner")
+def tuner(device: str, channel: int = 1, seconds: float = 0.35, tuning: str | None = None, backend: str | None = None) -> dict:
+    """Single-shot or monitor-backed tuner + gain-staging probe."""
+    return loop.tuner_probe(device, channel=channel, seconds=seconds, tuning=tuning, backend=backend)
+
+
+@router.post("/monitor/start")
+def monitor_start(body: MonitorStartBody) -> dict:
+    """Start or update live low-latency input monitoring + optional output pass-through."""
+    return loop.start_monitor(
+        input_device=body.input_device,
+        input_channel=body.input_channel,
+        output_device=body.output_device,
+        output_channels=body.output_channels,
+        listen=body.listen,
+        gain_db=body.gain_db,
+        tuning=body.tuning,
+        backend=body.backend,
+    )
+
+
+@router.post("/monitor/stop")
+def monitor_stop() -> dict:
+    """Stop live monitoring."""
+    return loop.stop_monitor()
+
+
+@router.get("/monitor")
+def monitor_status(tuning: str | None = None, reset_peak: bool = False) -> dict:
+    """Read live tuner and gain staging telemetry from the active monitor."""
+    return loop.monitor_status(tuning=tuning, reset_peak=reset_peak)
+
+
+@router.post("/check-clip")
+def check_clip(body: CheckClipBody) -> dict:
+    """Record a short DI check clip, analyze gain staging + pitch, and return a playable audio URL."""
+    result = loop.check_clip(
+        body.device,
+        channel=body.channel,
+        seconds=body.seconds,
+        tuning=body.tuning,
+        backend=body.backend,
+    )
+    return {**result, "url": _audio_url(result["path"])}
 
 
 @router.get("/meter")

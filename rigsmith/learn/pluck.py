@@ -57,6 +57,10 @@ PICKUPS = {
     "middle": Pickup("middle single coil", 0.16, 5200.0, 2.2, 0.55),
     "bridge-single": Pickup("bridge single coil", 0.07, 5800.0, 2.4, 0.6),
     "neck-single": Pickup("neck single coil", 0.24, 5000.0, 2.0, 0.6),
+    "p-bass": Pickup("P-Bass split coil", 0.18, 2800.0, 1.8, 0.9),
+    "j-bass-bridge": Pickup("J-Bass bridge single coil", 0.08, 3800.0, 2.2, 0.75),
+    "j-bass-neck": Pickup("J-Bass neck single coil", 0.22, 3200.0, 2.0, 0.8),
+    "musicman": Pickup("Music Man bass humbucker", 0.13, 2500.0, 1.5, 1.05),
 }
 
 

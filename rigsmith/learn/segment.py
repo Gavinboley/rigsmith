@@ -322,6 +322,34 @@ def _settled_pitch(segment: np.ndarray, sample_rate: int) -> tuple[float, float]
         if MIN_F0 <= hz <= MAX_F0:
             estimates.append(hz)
     if not estimates:
+        # Low bass strings (A0=27.5 Hz .. E1=41.2 Hz) have periods of 24-36 ms,
+        # so a 46 ms window holds fewer than two cycles and fails clarity.
+        # Re-read over a 140 ms window (~4-6 cycles) for bass fundamentals (< 65 Hz).
+        bass_window = int(0.14 * sample_rate)
+        bass_hop = bass_window // 2
+        bass_last = min(len(segment), int(0.48 * sample_rate))
+        bass_clarities = []
+        for start in range(first, max(first + 1, bass_last - bass_window + 1), bass_hop):
+            chunk = segment[start : start + bass_window]
+            if len(chunk) < bass_window:
+                break
+            if float(np.max(np.abs(chunk))) < loudest * 0.03:
+                continue
+            hz, clarity = _estimate_f0(chunk, sample_rate, min_f0=25.0)
+            if 25.0 <= hz < 65.0 and clarity >= 0.65:
+                # Reject "missing fundamental" beat frequencies of guitar power
+                # chords (e.g. D2 73.4 Hz + A2 110.1 Hz beating at D1 36.7 Hz):
+                # a real bass note has fundamental energy at f0 itself.
+                t = np.arange(len(chunk)) / sample_rate
+                a1 = float(np.hypot(np.dot(chunk, np.cos(2 * np.pi * hz * t)), np.dot(chunk, np.sin(2 * np.pi * hz * t))))
+                a2 = float(np.hypot(np.dot(chunk, np.cos(4 * np.pi * hz * t)), np.dot(chunk, np.sin(4 * np.pi * hz * t))))
+                a3 = float(np.hypot(np.dot(chunk, np.cos(6 * np.pi * hz * t)), np.dot(chunk, np.sin(6 * np.pi * hz * t))))
+                if a1 >= 0.18 * max(a2, a3, 1e-9):
+                    bass_clarities.append(clarity)
+                    estimates.append(hz)
+        if estimates:
+            clarities = bass_clarities
+    if not estimates:
         return 0.0, float(np.median(clarities)) if clarities else 0.0
     # Octave errors are the autocorrelator's characteristic mistake; the
     # median of a handful of windows throws out the odd one.

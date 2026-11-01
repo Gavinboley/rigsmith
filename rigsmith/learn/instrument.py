@@ -44,6 +44,14 @@ TUNINGS: dict[str, tuple[str, ...]] = {
     "DADGAD": ("D2", "A2", "D3", "G3", "A3", "D4"),
     "7-string standard": ("B1", "E2", "A2", "D3", "G3", "B3", "E4"),
     "7-string drop A": ("A1", "E2", "A2", "D3", "G3", "B3", "E4"),
+    "Bass E standard": ("E1", "A1", "D2", "G2"),
+    "Bass drop D": ("D1", "A1", "D2", "G2"),
+    "Bass Eb standard": ("D#1", "G#1", "C#2", "F#2"),
+    "Bass D standard": ("D1", "G1", "C2", "F2"),
+    "Bass C standard": ("C1", "F1", "A#1", "D#2"),
+    "Bass 5-string standard": ("B0", "E1", "A1", "D2", "G2"),
+    "Bass 5-string drop A": ("A0", "E1", "A1", "D2", "G2"),
+    "Bass 6-string standard": ("B0", "E1", "A1", "D2", "G2", "C3"),
 }
 
 DEFAULT_TUNING = "E standard"
@@ -140,6 +148,15 @@ class Tuning:
     def lowest(self) -> int:
         return min(self.open_strings)
 
+    @property
+    def is_bass(self) -> bool:
+        """Whether this tuning represents a bass guitar (4, 5, or 6-string bass)."""
+        return (
+            "bass" in self.name.lower()
+            or self.lowest <= 32
+            or (self.string_count <= 5 and self.lowest <= 38)
+        )
+
     def range(self, *, max_fret: int = MAX_FRET) -> tuple[int, int]:
         return self.lowest, max(self.open_strings) + max_fret
 
@@ -152,6 +169,8 @@ class Tuning:
             "name": self.name,
             "strings": [midi_to_note(m) for m in self.open_strings],
             "open_midi": list(self.open_strings),
+            "open_hz": [round(midi_to_hz(m), 2) for m in self.open_strings],
+            "is_bass": self.is_bass,
         }
 
 

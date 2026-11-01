@@ -239,3 +239,79 @@ def test_one_box_listed_as_two_devices_is_one_clock(monkeypatch):
     for route in (one_box, two_boxes):
         loop_run.reamp(route, np.zeros(4410), backend=Silent())
     assert seen == [False, True], "drift is only corrected between two clocks"
+
+
+def test_bass_is_supported_end_to_end_from_tuner_to_learned_profile(workspace):
+    """4-string and 5-string bass tunings tune, segment, align, and fit a voice model."""
+    from rigsmith.core import profiles
+    from rigsmith.learn.instrument import midi_to_hz, tuning
+
+    # 1. Verify bass tunings and open string frequencies down to A0 (27.5 Hz) and E1 (41.2 Hz)
+    bass4 = tuning("Bass E standard")
+    assert bass4.is_bass and bass4.string_count == 4
+    assert bass4.open_strings == (28, 33, 38, 43)
+
+    bass5 = tuning("Bass 5-string drop A")
+    assert bass5.is_bass and bass5.lowest == 21
+
+    # 2. Verify Step 1 tuner detects low E1 (41.20 Hz) and B0 (30.87 Hz) accurately
+    t = np.arange(int(0.35 * RATE)) / RATE
+    for target_midi, tune_name, expected_note, expected_str in (
+        (28, "Bass E standard", "E1", 4),
+        (23, "Bass 5-string standard", "B0", 5),
+        (21, "Bass 5-string drop A", "A0", 5),
+    ):
+        f0 = midi_to_hz(target_midi)
+        sig = 0.25 * np.sin(2 * np.pi * f0 * t) + 0.12 * np.sin(2 * np.pi * 2 * f0 * t)
+        res = loop.analyze_tuner(sig, RATE, tuning_name=tune_name)
+        assert res["pitched"] is True
+        assert res["note"] == expected_note
+        assert res["target_string"] == expected_str
+        assert res["in_tune"] is True
+        assert abs(res["target_cents"]) <= 5.0
+
+    # 3. Verify end-to-end Bass guided protocol demo take + profile learning
+    profiles.create("my-bass", guitar="Precision Bass", pickup="p-bass", tuning="Bass E standard")
+    demo_path, proto = profiles.demo_take("quick", tuning="Bass E standard", pickup="p-bass")
+    report = profiles.learn("my-bass", str(demo_path), protocol_id="quick")
+    assert report.samples_added >= 12
+    learned = profiles.get("my-bass")
+    assert learned.tuning == "Bass E standard"
+    assert len(learned.coverage(frets=12)["grid"]) == 4
+
+
+def test_step1_live_monitor_and_check_clip_work_end_to_end(workspace):
+    """Live monitor, tuner probe, and 3.5s check-and-playback work through the service."""
+    status = loop.start_monitor(
+        input_device="Virtual HeadRush Core",
+        input_channel=5,
+        output_device="Virtual HeadRush Core",
+        output_channels=[1, 2],
+        listen=True,
+        gain_db=0.0,
+        tuning="Bass E standard",
+        backend="virtual",
+    )
+    try:
+        assert status["active"] is True
+        import time
+
+        time.sleep(0.25)
+        polled = loop.monitor_status(tuning="Bass E standard")
+        assert polled["active"] is True
+        assert polled["tuner"]["tuning"] == "Bass E standard"
+        assert "coaching" in polled["level"]
+        assert "headroom_db" in polled["level"]
+    finally:
+        stopped = loop.stop_monitor()
+        assert stopped["active"] is False
+
+    clip = loop.check_clip(
+        "Virtual HeadRush Core",
+        channel=5,
+        seconds=1.2,
+        tuning="Bass E standard",
+        backend="virtual",
+    )
+    assert clip["seconds"] == pytest.approx(1.2, abs=0.1)
+    assert "level" in clip and "tuner" in clip

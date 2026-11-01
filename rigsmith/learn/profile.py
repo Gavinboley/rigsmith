@@ -173,7 +173,7 @@ class GuitarProfile:
         grid = [[0] * (frets + 1) for _ in range(tune.string_count)]
         unplaced = 0
         for sample in self.samples:
-            if sample.string and sample.fret is not None and sample.fret <= frets:
+            if sample.string and 1 <= sample.string <= tune.string_count and sample.fret is not None and 0 <= sample.fret <= frets:
                 grid[sample.string - 1][sample.fret] += 1
             else:
                 unplaced += 1

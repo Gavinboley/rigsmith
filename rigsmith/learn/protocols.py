@@ -153,15 +153,26 @@ def techniques(tune: Tuning) -> Protocol:
         steps.append(step)
     for root_fret in (0, 5, 7):
         midi = tune.open_midi(low) + root_fret
-        steps.append(Step(low, root_fret, midi, "chord", "mf", f"power chord, root on string {low} fret {root_fret}"))
-    for name in ("open E", "open A", "open D", "open G", "open C"):
-        steps.append(Step(None, None, None, "strum", "mf", f"{name} chord, one strum, let it ring"))
-    steps.append(_note_step(tune, max(1, low - 3), 12, technique="harmonic"))
-    steps[-1].prompt = f"natural harmonic, string {max(1, low - 3)} fret 12"
+        if tune.is_bass:
+            steps.append(Step(low, root_fret, midi, "chord", "mf", f"octave / fifth double-stop, root on string {low} fret {root_fret}"))
+        else:
+            steps.append(Step(low, root_fret, midi, "chord", "mf", f"power chord, root on string {low} fret {root_fret}"))
+    if tune.is_bass:
+        for s in _strings_low_to_high(tune):
+            step = _note_step(tune, s, 0, dynamic="ff")
+            step.prompt = f"hard thumb/slap or dig-in on open string {s}, let it ring"
+            steps.append(step)
+        steps.append(_note_step(tune, 1, 12, technique="harmonic"))
+        steps[-1].prompt = "natural harmonic, string 1 fret 12"
+    else:
+        for name in ("open E", "open A", "open D", "open G", "open C"):
+            steps.append(Step(None, None, None, "strum", "mf", f"{name} chord, one strum, let it ring"))
+        steps.append(_note_step(tune, max(1, low - 3), 12, technique="harmonic"))
+        steps[-1].prompt = f"natural harmonic, string {max(1, low - 3)} fret 12"
     return Protocol(
         "techniques", "Techniques",
-        "Palm mutes, power chords and open strums. Not used for the sampler - "
-        "used to check that gain staging and chord definition behave the way "
+        "Mutes, double-stops/chords and hard attacks. Not used for the sampler - "
+        "used to check that gain staging and note definition behave the way "
         "your real playing will push them.",
         tune.name, steps, spacing_s=2.2, purpose="reference",
     )

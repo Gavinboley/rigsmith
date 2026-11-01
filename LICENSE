@@ -1,21 +1,54 @@
-MIT License
+PolyForm Noncommercial License 1.0.0
+<https://polyformproject.org/licenses/noncommercial/1.0.0>
 
 Copyright (c) 2026 Gavin Boley
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+## Purpose
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+This license allows you to use this software for free, as long as you do not use it for commercial purposes and provide credit to the licensor.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+## Agreement
+
+In order to receive this license, you have to agree to its rules. Those rules are both terms of this agreement and conditions to this license. You do not have to accept this agreement, but you can only use this software under this license.
+
+## Notices
+
+You must ensure that anyone who gets a copy of any part of this software from you also gets a copy of this license, including the copyright notice above.
+
+## Noncommercial Use
+
+You may not use this software for any commercial purpose. Commercial purposes include any activity primarily intended for or directed towards commercial advantage or monetary compensation.
+
+Examples of commercial purposes include:
+
+- Selling products or services that include this software
+- Charging for access to this software, hosting this software as a paid service, or charging for support or consulting related to this software
+- Running this software as part of a commercial product, platform, or business infrastructure
+- Using this software to develop or test proprietary or commercial software
+
+Examples of noncommercial purposes include:
+
+- Personal use and private study
+- Educational use by students and teachers
+- Research and hobbyist experimentation
+- Non-profit and community contributions without commercial compensation
+
+## Attribution & Credit
+
+Any redistribution of the software, in whole or in part, in source or compiled form, or in substantial portions of derivative works, must prominently display clear attribution and credit to the original author: **Gavin Boley** (https://github.com/Gavinboley/rigsmith).
+
+## Fair Use
+
+You may make "fair use" of this software, as allowed by law.
+
+## No Other Rights
+
+These terms do not give you any patent, trademark, or other rights.
+
+## Relay
+
+If you distribute this software to anyone else, this license automatically extends from the original author to that recipient. You cannot impose any further restrictions on their use.
+
+## No Warranty
+
+As far as the law allows, this software comes as is, without any warranty or condition, and no contributor will be liable to anyone for any damages related to this software or this license, under any kind of legal claim.
